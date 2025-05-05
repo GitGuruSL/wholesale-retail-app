@@ -1,0 +1,168 @@
+// frontend/src/components/CategoryForm.jsx
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import { useParams, useNavigate } from 'react-router-dom';
+
+// Configuration
+const API_BASE_URL = 'http://localhost:5001/api'; // Use environment variables for production
+
+// Component for Adding or Editing a Category
+function CategoryForm() {
+    // Hooks
+    const { categoryId } = useParams(); // Get categoryId from URL parameters if present
+    const navigate = useNavigate(); // Hook for programmatic navigation
+    const isEditing = Boolean(categoryId); // Determine if we are editing or creating
+
+    // State variables
+    const [name, setName] = useState(''); // Category name input
+    const [description, setDescription] = useState(''); // Category description input
+    const [loading, setLoading] = useState(false); // Tracks loading state (for API calls)
+    const [error, setError] = useState(null); // Stores error messages
+
+    // useEffect hook to fetch category data when editing
+    useEffect(() => {
+        // Only run if in editing mode (categoryId is present)
+        if (isEditing) {
+            setLoading(true); // Start loading indicator
+            setError(null); // Clear previous errors
+            axios.get(`${API_BASE_URL}/categories/${categoryId}`)
+                .then(response => {
+                    // Populate form fields with fetched data
+                    setName(response.data.name);
+                    setDescription(response.data.description || ''); // Handle null description from DB
+                    setLoading(false); // Stop loading indicator
+                })
+                .catch(err => {
+                    console.error("Error fetching category details:", err);
+                    setError('Failed to load category data. It might not exist or the API is down.');
+                    setLoading(false); // Stop loading indicator even on error
+                });
+        } else {
+            // If creating a new category, ensure form is reset
+            setName('');
+            setDescription('');
+            setError(null);
+        }
+    }, [categoryId, isEditing]); // Dependency array: re-run effect if categoryId or isEditing changes
+
+    // Handler for form submission
+    const handleSubmit = async (e) => {
+        e.preventDefault(); // Prevent default browser form submission
+        setLoading(true); // Start loading indicator
+        setError(null); // Clear previous errors
+
+        // Prepare data payload for the API
+        const categoryData = {
+            name: name.trim(), // Trim whitespace from name
+            // Send null for description if it's empty after trimming, otherwise send trimmed value
+            description: description.trim() === '' ? null : description.trim(),
+        };
+
+        // Basic validation (already handled by 'required' on input, but good practice)
+        if (!categoryData.name) {
+             setError("Category name cannot be empty.");
+             setLoading(false);
+             return;
+        }
+
+
+        try {
+            // Choose API endpoint and method based on whether we are editing or creating
+            if (isEditing) {
+                await axios.put(`${API_BASE_URL}/categories/${categoryId}`, categoryData);
+            } else {
+                await axios.post(`${API_BASE_URL}/categories`, categoryData);
+            }
+            navigate('/categories'); // Navigate back to the category list on success
+        } catch (err) {
+            console.error("Error saving category:", err);
+            // Set error message based on backend response or provide a default
+            setError(err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} category.`);
+        } finally {
+            setLoading(false); // Stop loading indicator regardless of success/failure
+        }
+    };
+
+    // --- Render Logic ---
+
+    // Display loading message while fetching data for editing
+    if (loading && isEditing) return <p>Loading category details...</p>;
+
+    // Render the form
+    return (
+        <div style={styles.container}>
+            <h2 style={styles.title}>{isEditing ? 'Edit Category' : 'Add New Category'}</h2>
+
+            {/* Display error message if any */}
+            {error && <p style={styles.errorBox}>Error: {error}</p>}
+
+            <form onSubmit={handleSubmit}>
+                {/* Category Name Input */}
+                <div style={styles.formGroup}>
+                    <label htmlFor="categoryName" style={styles.label}>Category Name: *</label>
+                    <input
+                        type="text"
+                        id="categoryName"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        required // HTML5 validation for required field
+                        style={styles.input}
+                        disabled={loading} // Disable input while loading
+                    />
+                </div>
+
+                {/* Category Description Input */}
+                <div style={styles.formGroup}>
+                    <label htmlFor="categoryDescription" style={styles.label}>Description:</label>
+                    <textarea
+                        id="categoryDescription"
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        rows="4"
+                        style={styles.textarea}
+                        disabled={loading} // Disable input while loading
+                    />
+                </div>
+
+                {/* Action Buttons */}
+                <div style={styles.buttonGroup}>
+                    <button
+                        type="submit"
+                        disabled={loading} // Disable button while loading
+                        style={styles.buttonPrimary}
+                    >
+                        {loading ? 'Saving...' : (isEditing ? 'Update Category' : 'Create Category')}
+                    </button>
+                    {/* Cancel button navigates back to the list */}
+                    <button
+                        type="button"
+                        onClick={() => navigate('/categories')}
+                        style={styles.buttonSecondary}
+                        disabled={loading} // Disable cancel button while loading
+                    >
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    );
+}
+
+// --- Basic Inline Styles ---
+const styles = {
+    container: { padding: '20px', maxWidth: '600px', margin: '0 auto', fontFamily: 'Arial, sans-serif' },
+    title: { marginBottom: '20px', color: '#333' },
+    errorBox: { color: 'red', border: '1px solid red', padding: '10px', marginBottom: '15px', borderRadius: '4px', backgroundColor: '#ffe6e6' },
+    formGroup: { marginBottom: '20px' },
+    label: { display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#555' },
+    input: { width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px' },
+    textarea: { width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', minHeight: '80px' },
+    buttonGroup: { marginTop: '25px' },
+    buttonPrimary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', marginRight: '10px', opacity: 1 },
+    buttonSecondary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px' },
+    // Add disabled styles directly (or use CSS classes)
+    // buttonPrimary:disabled, buttonSecondary:disabled { cursor: 'wait', opacity: 0.6 }
+};
+
+
+export default CategoryForm;
