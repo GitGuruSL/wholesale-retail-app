@@ -164,8 +164,34 @@ function createProductsRouter(knex) {
     });
 
     // DELETE /api/products/:id - Delete
-    router.delete('/:id', async (req, res, next) => { /* ... includes validation and logs ... */ });
-
+    router.delete('/:id', async (req, res, next) => {
+        const { id } = req.params;
+        const productId = parseInt(id, 10);
+        if (isNaN(productId)) {
+            return res.status(400).json({ message: 'Invalid product ID.' });
+        }
+        console.log(`[DEBUG] DELETE /api/products/${productId} handler started...`);
+        try {
+            // Check if the product exists before attempting deletion
+            const product = await knex('products').where({ id: productId }).first();
+            if (!product) {
+                console.log(`[DEBUG] Product ${productId} not found for deletion.`);
+                return res.status(404).json({ message: `Product with ID ${id} not found.` });
+            }
+            // Delete the product
+            const deletedCount = await knex('products').where({ id: productId }).del();
+            if (deletedCount > 0) {
+                console.log(`[DEBUG] Product ${productId} deleted successfully.`);
+                return res.status(200).json({ message: `Product ${productId} deleted successfully.` });
+            } else {
+                console.log(`[DEBUG] No rows deleted for product ${productId}.`);
+                return res.status(500).json({ message: 'Failed to delete product. No rows affected.' });
+            }
+        } catch (err) {
+            console.error(`[ERROR] DELETE /api/products/${productId} failed:`, err);
+            return res.status(500).json({ message: 'Internal server error.' });
+        }
+    });
     return router;
 }
 
