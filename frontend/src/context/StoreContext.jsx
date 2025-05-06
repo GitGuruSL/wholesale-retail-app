@@ -1,127 +1,130 @@
-import React, { createContext, useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../context/AuthContext'; // Correctly import useAuth
+import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
+import { useAuth } from './AuthContext';
 
-// Create and export the context itself
-export const StoreContext = createContext(null);
+const StoreContext = createContext(null); // Keep as is
+
+export const useStore = () => useContext(StoreContext);
+
+// Add this export if absolutely necessary for an external file
+export { StoreContext }; // <--- ADD THIS LINE
 
 export const StoreProvider = ({ children }) => {
+    // ... rest of your StoreProvider code
+    const { user, ROLES: AUTH_ROLES, api, isLoading: isAuthLoading } = useAuth();
     const [stores, setStores] = useState([]);
-    const [selectedStore, setSelectedStore] = useState(null); // Will store the full store object
+    const [selectedStore, setSelectedStore] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
-    const { api, user, isLoading: isAuthLoading } = useAuth();
 
-    const fetchStoresForUser = useCallback(async () => {
-        console.log("StoreContext: fetchStoresForUser triggered.");
-        if (isAuthLoading) {
-            console.log("StoreContext: Auth is still loading, deferring store fetch.");
-            return;
-        }
+    const GLOBAL_STORE_VIEW_ID = 'all_stores';
 
-        // Ensure user object and its id property exist
-        if (!api || !user || !user.id) { // CHANGED: !user.user_id to !user.id
-            console.log("StoreContext: API, user, or user.id not ready. Clearing stores. User:", user, "API:", !!api);
-            setStores([]);
-            setSelectedStore(null);
-            localStorage.removeItem('selectedStoreId');
-            return;
-        }
-
-        setIsLoading(true);
-        setError(null);
-        // Use user.id for fetching stores
-        console.log(`StoreContext: Fetching stores for user ID: ${user.id}, Role: ${user.role}`); // CHANGED: user.user_id to user.id
-
-        try {
-            let response;
-            let endpoint = '';
-            if (user.role === 'global_admin') {
-                console.log("StoreContext: User is global_admin, fetching all stores.");
-                endpoint = '/stores'; // API endpoint to get all stores
-                response = await api.get(endpoint);
-            } else {
-                // Ensure this endpoint expects user.id
-                console.log(`StoreContext: User is ${user.role}, fetching assigned stores for user ID: ${user.id}.`); // CHANGED: user.user_id to user.id
-                endpoint = `/users/${user.id}/assigned-stores`; // CHANGED: user.user_id to user.id
-                response = await api.get(endpoint);
+    useEffect(() => {
+        const fetchStoresForUser = async () => {
+            if (isAuthLoading || !user || !api) {
+                if (!user && !isAuthLoading) {
+                    setStores([]);
+                    setSelectedStore(null);
+                }
+                return;
             }
-            console.log(`StoreContext: API call to ${endpoint} successful.`);
-            console.log("StoreContext: Stores API response received (response.data):", response.data);
-            setStores(Array.isArray(response.data) ? response.data : []); // Ensure stores is always an array
 
-        } catch (err) {
-            console.error("StoreContext: Error fetching stores:", err.response?.data || err.message, err);
-            setError(err.response?.data?.message || 'Failed to fetch stores.');
-            setStores([]);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [api, user, isAuthLoading]);
+            console.log("StoreContext: fetchStoresForUser triggered. User Role:", user.role);
+            setIsLoading(true);
+            setError(null);
+            try {
+                let response;
+                if (user.role === AUTH_ROLES.GLOBAL_ADMIN) {
+                    console.log("StoreContext: User is global_admin, fetching all stores for selector.");
+                    response = await api.get('/stores');
+                    setStores(response.data || []);
+                } else if (user.role === AUTH_ROLES.STORE_ADMIN || user.role === AUTH_ROLES.STORE_STAFF) {
+                    console.log(`StoreContext: User is ${user.role}, fetching stores for user ID: ${user.employeeId || user.id}`);
+                    const userIdParam = user.employeeId || user.id;
+                    response = await api.get(`/users/${userIdParam}/stores`);
+                    setStores(response.data || []);
+                } else {
+                    console.log("StoreContext: User role not recognized for store fetching or no permission.");
+                    setStores([]);
+                }
+            } catch (err) {
+                console.error("StoreContext: Failed to fetch stores:", err.response?.data?.message || err.message, err);
+                setError(err.response?.data?.message || "Failed to load stores.");
+                setStores([]);
+            } finally {
+                setIsLoading(false);
+            }
+        };
 
-    // Effect to fetch stores when user or auth state changes
+        fetchStoresForUser();
+    }, [api, user, isAuthLoading, AUTH_ROLES]);
+
     useEffect(() => {
-        console.log("StoreContext: useEffect for fetchStoresForUser is running due to dependency change (api, user, isAuthLoading).");
-        if (user && api && !isAuthLoading) { // Only fetch if user and api are available and auth is not loading
-            fetchStoresForUser();
-        } else if (!user && !isAuthLoading) { // If no user and auth is done loading, clear stores
-            setStores([]);
-            setSelectedStore(null);
-            localStorage.removeItem('selectedStoreId');
-        }
-    }, [api, user, isAuthLoading, fetchStoresForUser]);
+        if (isAuthLoading || !user) return;
 
-    // Effect to set selected store from localStorage or default when stores array changes
-    useEffect(() => {
-        console.log("StoreContext: useEffect for selecting store is running. Stores count:", stores.length);
-        if (stores.length > 0) {
-            const previouslySelectedId = localStorage.getItem('selectedStoreId');
+        console.log("StoreContext: useEffect for selecting store. Stores count:", stores.length, "User role:", user.role);
+        const storageKey = `selectedStoreId_${user.id}`;
+        const previouslySelectedId = localStorage.getItem(storageKey);
+
+        if (user.role === AUTH_ROLES.GLOBAL_ADMIN) {
+            let storeToSet = { id: GLOBAL_STORE_VIEW_ID, name: 'All Stores' };
+            if (previouslySelectedId) {
+                if (previouslySelectedId === GLOBAL_STORE_VIEW_ID) {
+                    // "All Stores" was previously selected
+                } else {
+                    const foundStore = stores.find(s => s.id.toString() === previouslySelectedId);
+                    if (foundStore) {
+                        storeToSet = foundStore;
+                    }
+                }
+            }
+            setSelectedStore(storeToSet);
+            if (storeToSet.id !== GLOBAL_STORE_VIEW_ID) {
+                 localStorage.setItem(storageKey, storeToSet.id.toString());
+            }
+
+        } else if (stores.length > 0) {
             let storeToSelect = null;
-            console.log("StoreContext: Previously selected store ID from localStorage:", previouslySelectedId);
-
             if (previouslySelectedId) {
                 storeToSelect = stores.find(s => s.id.toString() === previouslySelectedId);
-                console.log("StoreContext: Found store by previouslySelectedId:", storeToSelect);
             }
-
+            
             if (storeToSelect) {
                 setSelectedStore(storeToSelect);
-                console.log("StoreContext: Setting selected store to (from localStorage):", storeToSelect);
             } else {
-                // Default to the first store in the list if no valid selection or previous selection
                 setSelectedStore(stores[0]);
-                localStorage.setItem('selectedStoreId', stores[0].id.toString());
-                console.log("StoreContext: Setting selected store to default (first in list):", stores[0]);
+                localStorage.setItem(storageKey, stores[0].id.toString());
             }
-        } else { // No stores available
+        } else if (!isLoading && stores.length === 0 && user.role !== AUTH_ROLES.GLOBAL_ADMIN) {
             setSelectedStore(null);
-            localStorage.removeItem('selectedStoreId');
-            console.log("StoreContext: No stores available, clearing selected store.");
-        }
-    }, [stores]); // This effect depends only on the 'stores' array
-
-    const selectStore = (storeObject) => {
-        if (storeObject && storeObject.id) {
-            console.log("StoreContext: selectStore called with object:", storeObject);
-            setSelectedStore(storeObject); // storeObject is the full store object
-            localStorage.setItem('selectedStoreId', storeObject.id.toString());
-        } else if (storeObject === null) {
-            console.log("StoreContext: selectStore called with null, clearing selection.");
+            console.warn("StoreContext: Non-global admin has no stores associated or fetched.");
+        } else if (user.role !== AUTH_ROLES.GLOBAL_ADMIN) {
             setSelectedStore(null);
-            localStorage.removeItem('selectedStoreId');
         }
-    };
 
-    const value = {
+    }, [stores, user, isLoading, isAuthLoading, AUTH_ROLES, GLOBAL_STORE_VIEW_ID]); // Added GLOBAL_STORE_VIEW_ID
+
+    const selectStore = useCallback((store) => {
+        if (user && store) {
+            setSelectedStore(store);
+            localStorage.setItem(`selectedStoreId_${user.id}`, store.id.toString());
+            console.log("StoreContext: Store selected:", store);
+        } else if (user && !store) {
+            setSelectedStore(null);
+            localStorage.removeItem(`selectedStoreId_${user.id}`);
+        }
+    }, [user]);
+
+    const contextValue = {
         stores,
-        selectedStore, // This is the full store object or null
-        selectStore,
+        selectedStore,
         isLoading,
         error,
-        refreshStores: fetchStoresForUser
+        selectStore,
+        GLOBAL_STORE_VIEW_ID,
     };
 
     return (
-        <StoreContext.Provider value={value}>
+        <StoreContext.Provider value={contextValue}>
             {children}
         </StoreContext.Provider>
     );
