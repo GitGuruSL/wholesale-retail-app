@@ -1,4 +1,3 @@
-// frontend/src/components/SupplierList.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
@@ -12,76 +11,139 @@ function SupplierList() {
     const [feedback, setFeedback] = useState({ message: null, type: null });
     const navigate = useNavigate();
 
-    const fetchSuppliers = useCallback(async () => { /* ... same as before ... */
-        setLoading(true); setError(null); setFeedback({ message: null, type: null });
+    const fetchSuppliers = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        setFeedback({ message: null, type: null });
         try {
-            const response = await axios.get(`${API_BASE_URL}/suppliers`);
-            setSuppliers(response.data);
-        } catch (err) { console.error("Error fetching suppliers:", err); setError(err.response?.data?.message || 'Failed to fetch suppliers.'); }
-        finally { setLoading(false); }
-    }, []);
+            const token = localStorage.getItem('token');
+            if (!token) {
+                setError('Authentication token not found. Please log in.');
+                setLoading(false);
+                // navigate('/login'); // Optionally redirect
+                return;
+            }
+            const config = {
+                headers: { Authorization: `Bearer ${token}` }
+            };
+            const response = await axios.get(`${API_BASE_URL}/suppliers`, config);
+            setSuppliers(response.data || []);
+        } catch (err) {
+            console.error("Error fetching suppliers:", err);
+            const errorMsg = err.response?.data?.message || 'Failed to fetch suppliers.';
+            if (err.response?.status === 401 || err.response?.status === 403) {
+                setError('Unauthorized: Could not fetch suppliers. Please log in again.');
+            } else {
+                setError(errorMsg);
+            }
+        } finally {
+            setLoading(false);
+        }
+    }, [navigate]); // Added navigate
 
-    useEffect(() => { fetchSuppliers(); }, [fetchSuppliers]);
+    useEffect(() => {
+        fetchSuppliers();
+    }, [fetchSuppliers]);
 
-    const handleDelete = async (supplierId, supplierName) => { /* ... same as before ... */
-        if (!window.confirm(`Are you sure you want to delete supplier: "${supplierName}" (ID: ${supplierId})?\nThis might fail if they are linked to products or purchase orders.`)) return;
+    const handleDelete = async (supplierId, supplierName) => {
+        if (!window.confirm(`Are you sure you want to delete supplier: "${supplierName}" (ID: ${supplierId})?\nThis might fail if they are linked to products or purchase orders.`)) {
+            return;
+        }
         setError(null);
         try {
-            await axios.delete(`${API_BASE_URL}/suppliers/${supplierId}`);
+            const token = localStorage.getItem('token');
+            if (!token) {
+                setFeedback({ message: 'Authentication token not found. Please log in.', type: 'error' });
+                return;
+            }
+            const config = {
+                headers: { Authorization: `Bearer ${token}` }
+            };
+            await axios.delete(`${API_BASE_URL}/suppliers/${supplierId}`, config);
             setFeedback({ message: `Supplier "${supplierName}" deleted successfully.`, type: 'success' });
             setSuppliers(prev => prev.filter(s => s.id !== supplierId));
-        } catch (err) { console.error(`Error deleting supplier ${supplierId}:`, err); const errorMsg = err.response?.data?.message || 'Failed to delete supplier.'; setFeedback({ message: errorMsg, type: 'error' }); setError(errorMsg); }
-        finally { setTimeout(() => setFeedback({ message: null, type: null }), 5000); }
+        } catch (err) {
+            console.error(`Error deleting supplier ${supplierId}:`, err);
+            const errorMsg = err.response?.data?.message || 'Failed to delete supplier.';
+            if (err.response?.status === 401 || err.response?.status === 403) {
+                setFeedback({ message: 'Unauthorized: Could not delete supplier. Please log in again.', type: 'error' });
+            } else {
+                setFeedback({ message: errorMsg, type: 'error' });
+            }
+        } finally {
+            setTimeout(() => setFeedback({ message: null, type: null }), 5000);
+        }
     };
 
-    // Helper to format boolean
-    const renderBoolean = (value) => (value ? <span style={{ color: 'green' }}>Yes</span> : <span style={{ color: 'grey' }}>No</span>);
-    // Helper to format date
+    const renderBoolean = (value) => (value ? <span style={{ color: 'green', fontWeight:'bold' }}>Yes</span> : <span style={{ color: 'grey' }}>No</span>);
     const formatDate = (dateString) => (dateString ? new Date(dateString).toLocaleDateString() : '-');
 
-
-    if (loading) return <p>Loading suppliers...</p>;
-    if (error && suppliers.length === 0) return <p style={{ color: 'red' }}>Error: {error}</p>;
+    if (loading) return <div style={styles.centeredMessage}>Loading suppliers...</div>;
+    if (error && suppliers.length === 0) return <div style={{ ...styles.centeredMessage, ...styles.errorText }}>Error: {error}</div>;
 
     return (
-        <div>
-            <h2>Manage Suppliers</h2>
+        <div style={styles.container}>
+            <h2 style={styles.title}>Manage Suppliers</h2>
 
-            {/* Feedback Area */}
-            {feedback.message && ( <div style={{ padding: '10px', marginBottom: '15px', border: '1px solid', borderRadius: '4px', borderColor: feedback.type === 'success' ? 'green' : 'red', color: feedback.type === 'success' ? 'green' : 'red', backgroundColor: feedback.type === 'success' ? '#e6ffed' : '#ffe6e6' }}> {feedback.message} </div> )}
-            {error && suppliers.length > 0 && (<p style={{ color: 'red' }}>Warning: Could not refresh list. Error: {error}</p>)}
+            {feedback.message && (
+                <div style={{
+                   ...styles.feedbackBox,
+                   ...(feedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError)
+                }}>
+                    {feedback.message}
+                </div>
+            )}
+            {error && suppliers.length > 0 && !feedback.message && (
+                 <p style={{...styles.errorText, textAlign: 'center', marginBottom: '10px'}}>
+                    Warning: An operation failed. Error: {error}
+                 </p>
+            )}
 
-            <Link to="/suppliers/new"> <button style={{ marginBottom: '15px', padding: '8px 12px' }}>Add New Supplier</button> </Link>
+            <Link to="/suppliers/new" style={styles.addButtonLink}>
+                <button style={{...styles.button, ...styles.buttonAdd}}>Add New Supplier</button>
+            </Link>
 
-            {suppliers.length === 0 && !loading ? ( <p>No suppliers found.</p> ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9em' }}>
-                    <thead>
-                        <tr style={{ borderBottom: '2px solid #ccc', backgroundColor: '#f8f8f8' }}>
-                            <th style={tableCellStyle}>ID</th>
-                            {/* <th style={tableCellStyle}>Code</th> */} {/* REMOVED Code Header */}
-                            <th style={tableCellStyle}>Name</th>
-                            <th style={tableCellStyle}>City</th>
-                            <th style={tableCellStyle}>Telephone</th>
-                            <th style={tableCellStyle}>Email</th>
-                            <th style={tableCellStyle}>Since</th>
-                            <th style={tableCellStyle}>Default?</th>
-                            <th style={tableCellStyle}>Actions</th>
+            {suppliers.length === 0 && !loading && !error ? (
+                <p>No suppliers found.</p>
+            ) : (
+                <table style={styles.table}>
+                    <thead style={styles.tableHeader}>
+                        <tr>
+                            <th style={styles.tableCell}>ID</th>
+                            <th style={styles.tableCell}>Name</th>
+                            <th style={styles.tableCell}>City</th>
+                            <th style={styles.tableCell}>Telephone</th>
+                            <th style={styles.tableCell}>Email</th>
+                            <th style={styles.tableCell}>Since</th>
+                            <th style={styles.tableCell}>Default?</th>
+                            <th style={styles.tableCell}>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {suppliers.map((supplier, index) => (
-                            <tr key={supplier.id} style={{ borderBottom: '1px solid #eee', backgroundColor: index % 2 === 0 ? '#fff' : '#f9f9f9' }}>
-                                <td style={tableCellStyle}>{supplier.id}</td>
-                                {/* <td style={tableCellStyle}>{supplier.code || '-'}</td> */} {/* REMOVED Code Cell */}
-                                <td style={tableCellStyle}>{supplier.name}</td>
-                                <td style={tableCellStyle}>{supplier.city || '-'}</td>
-                                <td style={tableCellStyle}>{supplier.telephone || '-'}</td>
-                                <td style={tableCellStyle}>{supplier.email || '-'}</td>
-                                <td style={tableCellStyle}>{formatDate(supplier.since_date)}</td>
-                                <td style={tableCellStyle}>{renderBoolean(supplier.is_default_supplier)}</td>
-                                <td style={tableCellStyle}>
-                                    <button onClick={() => navigate(`/suppliers/edit/${supplier.id}`)} style={actionButtonStyle} title="Edit Supplier"> Edit </button>
-                                    <button onClick={() => handleDelete(supplier.id, supplier.name)} style={{...actionButtonStyle, backgroundColor: '#dc3545', color: 'white'}} title="Delete Supplier"> Delete </button>
+                            <tr key={supplier.id} style={index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd}>
+                                <td style={styles.tableCell}>{supplier.id}</td>
+                                <td style={styles.tableCell}>{supplier.name}</td>
+                                <td style={styles.tableCell}>{supplier.city || '-'}</td>
+                                <td style={styles.tableCell}>{supplier.telephone || '-'}</td>
+                                <td style={styles.tableCell}>{supplier.email || '-'}</td>
+                                <td style={styles.tableCell}>{formatDate(supplier.since_date)}</td>
+                                <td style={styles.tableCell}>{renderBoolean(supplier.is_default_supplier)}</td>
+                                <td style={{...styles.tableCell, ...styles.actionsCell}}>
+                                    <button
+                                        onClick={() => navigate(`/suppliers/edit/${supplier.id}`)}
+                                        style={{...styles.button, ...styles.buttonEdit}}
+                                        title="Edit Supplier"
+                                    >
+                                        Edit
+                                    </button>
+                                    <button
+                                        onClick={() => handleDelete(supplier.id, supplier.name)}
+                                        style={{...styles.button, ...styles.buttonDelete}}
+                                        title="Delete Supplier"
+                                    >
+                                        Delete
+                                    </button>
                                 </td>
                             </tr>
                         ))}
@@ -92,9 +154,26 @@ function SupplierList() {
     );
 }
 
-// Basic styles
-const tableCellStyle = { padding: '8px 6px', textAlign: 'left', verticalAlign: 'top', borderRight: '1px solid #eee' };
-const actionButtonStyle = { marginRight: '5px', padding: '4px 8px', fontSize: '0.85em', cursor:'pointer', border:'1px solid #ccc', borderRadius:'3px', backgroundColor:'#eee' };
-
+// Consistent List Styles
+const styles = {
+    container: { padding: '20px', fontFamily: 'Arial, sans-serif' },
+    title: { marginBottom: '20px', color: '#333', textAlign: 'center' },
+    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
+    errorText: { color: '#D8000C', fontWeight: 'bold' },
+    feedbackBox: { padding: '10px 15px', marginBottom: '15px', borderRadius: '4px', textAlign: 'center', border: '1px solid' },
+    feedbackSuccess: { borderColor: 'green', color: 'green', backgroundColor: '#e6ffed' },
+    feedbackError: { borderColor: 'red', color: 'red', backgroundColor: '#ffe6e6' },
+    addButtonLink: { textDecoration: 'none', display: 'inline-block', marginBottom: '15px' },
+    button: { padding: '8px 12px', margin: '0 5px 0 0', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9em' },
+    buttonAdd: { backgroundColor: '#28a745', color: 'white'},
+    buttonEdit: { backgroundColor: '#ffc107', color: '#000' },
+    buttonDelete: { backgroundColor: '#dc3545', color: 'white' },
+    table: { width: '100%', borderCollapse: 'collapse', marginTop: '0px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
+    tableHeader: { backgroundColor: '#e9ecef' },
+    tableCell: { padding: '12px 10px', textAlign: 'left', verticalAlign: 'top', borderBottom: '1px solid #dee2e6' },
+    actionsCell: { whiteSpace: 'nowrap' },
+    tableRowOdd: { backgroundColor: '#fff' },
+    tableRowEven: { backgroundColor: '#f8f9fa' }
+};
 
 export default SupplierList;

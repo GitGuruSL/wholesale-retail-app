@@ -1,4 +1,3 @@
-// frontend/src/components/BrandList.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
@@ -15,17 +14,33 @@ function BrandList() {
     const fetchBrands = useCallback(async () => {
         setLoading(true);
         setError(null);
-        setFeedback({ message: null, type: null });
+        setFeedback({ message: null, type: null }); // Clear previous feedback
         try {
-            const response = await axios.get(`${API_BASE_URL}/brands`);
+            const token = localStorage.getItem('token');
+            if (!token) {
+                setError('Authentication token not found. Please log in.');
+                setLoading(false);
+                // navigate('/login'); // Optionally redirect
+                return;
+            }
+            const config = {
+                headers: { Authorization: `Bearer ${token}` }
+            };
+            const response = await axios.get(`${API_BASE_URL}/brands`, config);
             setBrands(response.data);
         } catch (err) {
             console.error("Error fetching brands:", err);
-            setError(err.response?.data?.message || 'Failed to fetch brands.');
+            const errorMsg = err.response?.data?.message || 'Failed to fetch brands.';
+            if (err.response?.status === 401 || err.response?.status === 403) {
+                setError('Unauthorized: Could not fetch brands. Please log in again.');
+                // navigate('/login'); // Optionally redirect
+            } else {
+                setError(errorMsg);
+            }
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [navigate]); // Added navigate to dependency array if used for redirection
 
     useEffect(() => {
         fetchBrands();
@@ -35,71 +50,86 @@ function BrandList() {
         if (!window.confirm(`Are you sure you want to delete brand: "${brandName}" (ID: ${brandId})?\nThis might fail if it's linked to products.`)) {
             return;
         }
-
-        setError(null);
+        setError(null); // Clear previous general errors
         try {
-            await axios.delete(`${API_BASE_URL}/brands/${brandId}`);
+            const token = localStorage.getItem('token');
+            if (!token) {
+                setFeedback({ message: 'Authentication token not found. Please log in.', type: 'error' });
+                return;
+            }
+            const config = {
+                headers: { Authorization: `Bearer ${token}` }
+            };
+            await axios.delete(`${API_BASE_URL}/brands/${brandId}`, config);
             setFeedback({ message: `Brand "${brandName}" deleted successfully.`, type: 'success' });
-            setBrands(prev => prev.filter(b => b.id !== brandId));
+            setBrands(prevBrands => prevBrands.filter(br => br.id !== brandId));
         } catch (err) {
             console.error(`Error deleting brand ${brandId}:`, err);
-            const errorMsg = err.response?.data?.message || 'Failed to delete brand.';
+            const errorMsg = err.response?.data?.message || 'Failed to delete brand. It might be in use.';
             setFeedback({ message: errorMsg, type: 'error' });
-            setError(errorMsg);
+            // setError(errorMsg); // Also set general error if you want it displayed outside feedback
         } finally {
-             setTimeout(() => setFeedback({ message: null, type: null }), 5000);
+            setTimeout(() => setFeedback({ message: null, type: null }), 5000);
         }
     };
 
-    if (loading) return <p>Loading brands...</p>;
-    if (error && brands.length === 0) return <p style={{ color: 'red' }}>Error: {error}</p>;
+    if (loading) return <div style={styles.centeredMessage}>Loading brands...</div>;
+    // Show error prominently if list is empty and an error occurred
+    if (error && brands.length === 0) {
+        return <div style={{ ...styles.centeredMessage, ...styles.errorText }}>Error: {error}</div>;
+    }
 
     return (
-        <div>
-            <h2>Manage Brands</h2>
+        <div style={styles.container}>
+            <h2 style={styles.title}>Manage Brands</h2>
 
-            {/* Feedback Area */}
             {feedback.message && (
-                <div style={{ padding: '10px', marginBottom: '15px', border: '1px solid', borderRadius: '4px', borderColor: feedback.type === 'success' ? 'green' : 'red', color: feedback.type === 'success' ? 'green' : 'red', backgroundColor: feedback.type === 'success' ? '#e6ffed' : '#ffe6e6' }}>
+                <div style={{
+                   ...styles.feedbackBox,
+                   ...(feedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError)
+                }}>
                     {feedback.message}
                 </div>
             )}
-            {error && brands.length > 0 && (<p style={{ color: 'red' }}>Warning: Could not refresh list. Error: {error}</p>)}
+            {/* Display general error if list is populated but an error occurred (e.g. during delete that wasn't a feedback message) */}
+            {error && brands.length > 0 && !feedback.message && (
+                 <p style={{...styles.errorText, textAlign: 'center', marginBottom: '10px'}}>An error occurred: {error}</p>
+            )}
 
-
-            <Link to="/brands/new">
-                <button style={{ marginBottom: '15px', padding: '8px 12px' }}>Add New Brand</button>
+            <Link to="/brands/new" style={styles.addButtonLink}>
+                <button style={styles.button}>Add New Brand</button>
             </Link>
 
-            {brands.length === 0 && !loading ? (
+            {brands.length === 0 && !loading && !error ? (
                 <p>No brands found.</p>
             ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                        <tr style={{ borderBottom: '2px solid #ccc', backgroundColor: '#f8f8f8' }}>
-                            <th style={tableCellStyle}>ID</th>
-                            <th style={tableCellStyle}>Name</th>
-                            <th style={tableCellStyle}>Description</th>
-                            <th style={tableCellStyle}>Actions</th>
+                <table style={styles.table}>
+                    <thead style={styles.tableHeader}>
+                        <tr>
+                            <th style={styles.tableCell}>ID</th>
+                            <th style={styles.tableCell}>Name</th>
+                            {/* Brands typically don't have a description field shown in list, adjust if yours do */}
+                            {/* <th style={styles.tableCell}>Description</th> */}
+                            <th style={styles.tableCell}>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {brands.map((brand, index) => (
-                            <tr key={brand.id} style={{ borderBottom: '1px solid #eee', backgroundColor: index % 2 === 0 ? '#fff' : '#f9f9f9' }}>
-                                <td style={tableCellStyle}>{brand.id}</td>
-                                <td style={tableCellStyle}>{brand.name}</td>
-                                <td style={tableCellStyle}>{brand.description || '-'}</td>
-                                <td style={tableCellStyle}>
+                            <tr key={brand.id} style={index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd}>
+                                <td style={styles.tableCell}>{brand.id}</td>
+                                <td style={styles.tableCell}>{brand.name}</td>
+                                {/* <td style={styles.tableCell}>{brand.description || '-'}</td> */}
+                                <td style={{...styles.tableCell, ...styles.actionsCell}}>
                                     <button
                                         onClick={() => navigate(`/brands/edit/${brand.id}`)}
-                                        style={{ marginRight: '5px', padding: '5px 8px', cursor:'pointer' }}
+                                        style={{...styles.button, ...styles.buttonEdit}}
                                         title="Edit Brand"
                                     >
                                         Edit
                                     </button>
                                     <button
                                         onClick={() => handleDelete(brand.id, brand.name)}
-                                        style={{ padding: '5px 8px', cursor:'pointer', backgroundColor: '#f44336', color: 'white', border:'none', borderRadius:'3px'}}
+                                        style={{...styles.button, ...styles.buttonDelete}}
                                         title="Delete Brand"
                                     >
                                         Delete
@@ -114,11 +144,25 @@ function BrandList() {
     );
 }
 
-// Basic styles
-const tableCellStyle = {
-    padding: '10px 8px',
-    textAlign: 'left',
-    verticalAlign: 'top',
+// --- Basic Inline Styles (Consider moving to a separate CSS/SCSS file or a styled-components approach for larger apps) ---
+const styles = {
+    container: { padding: '20px', fontFamily: 'Arial, sans-serif' },
+    title: { marginBottom: '20px', color: '#333' },
+    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
+    errorText: { color: '#D8000C', fontWeight: 'bold' },
+    feedbackBox: { padding: '10px 15px', marginBottom: '15px', borderRadius: '4px', textAlign: 'center', border: '1px solid' },
+    feedbackSuccess: { borderColor: 'green', color: 'green', backgroundColor: '#e6ffed' },
+    feedbackError: { borderColor: 'red', color: 'red', backgroundColor: '#ffe6e6' },
+    addButtonLink: { textDecoration: 'none' },
+    button: { padding: '8px 12px', margin: '0 5px 5px 0', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9em' },
+    buttonEdit: { backgroundColor: '#ffc107', color: '#000' },
+    buttonDelete: { backgroundColor: '#dc3545', color: 'white' },
+    table: { width: '100%', borderCollapse: 'collapse', marginTop: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
+    tableHeader: { backgroundColor: '#e9ecef' },
+    tableCell: { padding: '12px 10px', textAlign: 'left', verticalAlign: 'top', borderBottom: '1px solid #dee2e6' },
+    actionsCell: { whiteSpace: 'nowrap' },
+    tableRowOdd: { backgroundColor: '#fff' },
+    tableRowEven: { backgroundColor: '#f8f9fa' }
 };
 
-export default BrandList;
+export default BrandList; // Corrected export name

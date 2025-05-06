@@ -22,16 +22,30 @@ function CategoryList() {
         setError(null); // Clear previous errors
         setFeedback({ message: null, type: null }); // Clear previous feedback
         try {
-            const response = await axios.get(`${API_BASE_URL}/categories`);
+            const token = localStorage.getItem('token');
+            if (!token) {
+                setError('Authentication token not found. Please log in.');
+                setLoading(false);
+                // navigate('/login'); // Optionally redirect
+                return;
+            }
+            const config = {
+                headers: { Authorization: `Bearer ${token}` }
+            };
+            const response = await axios.get(`${API_BASE_URL}/categories`, config); // Added config
             setCategories(response.data); // Update state with fetched data
         } catch (err) {
             console.error("Error fetching categories:", err);
             const errorMsg = err.response?.data?.message || 'Failed to fetch categories. Please check the API connection.';
-            setError(errorMsg); // Set error message state
+            if (err.response?.status === 401 || err.response?.status === 403) {
+                setError('Unauthorized: Could not fetch categories. Please log in again.');
+            } else {
+                setError(errorMsg); // Set error message state
+            }
         } finally {
             setLoading(false); // Stop loading indicator regardless of success/failure
         }
-    }, []); // useCallback ensures this function reference is stable unless dependencies change (none here)
+    }, [navigate]); // Added navigate to dependency array
 
     // useEffect hook to call fetchCategories when the component mounts
     useEffect(() => {
@@ -47,8 +61,16 @@ function CategoryList() {
 
         setError(null); // Clear previous general errors before attempting delete
         try {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                setFeedback({ message: 'Authentication token not found. Please log in.', type: 'error' });
+                return;
+            }
+            const config = {
+                headers: { Authorization: `Bearer ${token}` }
+            };
             // Send DELETE request to the backend API
-            await axios.delete(`${API_BASE_URL}/categories/${categoryId}`);
+            await axios.delete(`${API_BASE_URL}/categories/${categoryId}`, config); // Added config
             setFeedback({ message: `Category "${categoryName}" deleted successfully.`, type: 'success' }); // Set success feedback
             // Update the local state to remove the deleted category immediately from the UI
             setCategories(prevCategories => prevCategories.filter(cat => cat.id !== categoryId));
@@ -56,8 +78,12 @@ function CategoryList() {
             console.error(`Error deleting category ${categoryId}:`, err);
             // Extract error message from backend response or provide a default
             const errorMsg = err.response?.data?.message || 'Failed to delete category. It might be in use.';
-            setFeedback({ message: errorMsg, type: 'error' }); // Set error feedback
-            setError(errorMsg); // Optionally set the general error state as well
+            if (err.response?.status === 401 || err.response?.status === 403) {
+                setFeedback({ message: 'Unauthorized: Could not delete category. Please log in again.', type: 'error' });
+            } else {
+                setFeedback({ message: errorMsg, type: 'error' }); // Set error feedback
+            }
+            // setError(errorMsg); // Optionally set the general error state as well
         } finally {
             // Clear the feedback message after 5 seconds
              setTimeout(() => setFeedback({ message: null, type: null }), 5000);
@@ -89,18 +115,20 @@ function CategoryList() {
                 </div>
             )}
 
-            {/* Display general error if fetch failed but list might have old data */}
-            {error && categories.length > 0 && (
-                 <p style={styles.errorText}>Warning: Could not refresh category list. Error: {error}</p>
+            {/* Display general error if an operation failed but list might have old data */}
+            {error && categories.length > 0 && !feedback.message && (
+                 <p style={{...styles.errorText, textAlign: 'center', marginBottom: '10px'}}>
+                    Warning: An operation failed. Error: {error}
+                 </p>
             )}
 
             {/* Button to navigate to the 'Add New Category' form */}
             <Link to="/categories/new" style={styles.addButtonLink}>
-                <button style={styles.button}>Add New Category</button>
+                <button style={{...styles.button, ...styles.buttonAdd}}>Add New Category</button>
             </Link>
 
             {/* Display table or 'No categories' message */}
-            {categories.length === 0 && !loading ? (
+            {categories.length === 0 && !loading && !error ? (
                 <p>No categories found.</p>
             ) : (
                 <table style={styles.table}>
@@ -109,6 +137,7 @@ function CategoryList() {
                             <th style={styles.tableCell}>ID</th>
                             <th style={styles.tableCell}>Name</th>
                             <th style={styles.tableCell}>Description</th>
+                            {/* <th style={styles.tableCell}>Parent ID</th> */} {/* Uncomment if showing parent category */}
                             <th style={styles.tableCell}>Actions</th>
                         </tr>
                     </thead>
@@ -119,6 +148,7 @@ function CategoryList() {
                                 <td style={styles.tableCell}>{category.id}</td>
                                 <td style={styles.tableCell}>{category.name}</td>
                                 <td style={styles.tableCell}>{category.description || '-'}</td> {/* Show dash if description is null/empty */}
+                                {/* <td style={styles.tableCell}>{category.parent_category_id || '-'}</td> */} {/* Uncomment if showing parent category */}
                                 <td style={{...styles.tableCell, ...styles.actionsCell}}>
                                     {/* Edit Button */}
                                     <button
@@ -156,11 +186,12 @@ const styles = {
     feedbackBox: { padding: '10px 15px', marginBottom: '15px', borderRadius: '4px', textAlign: 'center', border: '1px solid' },
     feedbackSuccess: { borderColor: 'green', color: 'green', backgroundColor: '#e6ffed' },
     feedbackError: { borderColor: 'red', color: 'red', backgroundColor: '#ffe6e6' },
-    addButtonLink: { textDecoration: 'none' },
-    button: { padding: '8px 12px', margin: '0 5px 5px 0', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9em' },
+    addButtonLink: { textDecoration: 'none', display: 'inline-block', marginBottom: '15px' },
+    button: { padding: '8px 12px', margin: '0 5px 0 0', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9em' },
+    buttonAdd: { backgroundColor: '#28a745', color: 'white'},
     buttonEdit: { backgroundColor: '#ffc107', color: '#000' }, // Yellow
     buttonDelete: { backgroundColor: '#dc3545', color: 'white' }, // Red
-    table: { width: '100%', borderCollapse: 'collapse', marginTop: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
+    table: { width: '100%', borderCollapse: 'collapse', marginTop: '0px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
     tableHeader: { backgroundColor: '#e9ecef' }, // Lighter grey header
     tableCell: { padding: '12px 10px', textAlign: 'left', verticalAlign: 'top', borderBottom: '1px solid #dee2e6' },
     actionsCell: { whiteSpace: 'nowrap' }, // Prevent action buttons from wrapping

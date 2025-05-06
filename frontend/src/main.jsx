@@ -1,14 +1,17 @@
-// frontend/src/main.jsx
+// frontend/src/App.js or index.js
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom'; // Import BrowserRouter
-import App from './App.jsx';
-// Removed import "./index.css"; (or ensure file exists)
+import App from './App';
+import { AuthProvider } from './context/AuthContext';
+import { BrowserRouter } from 'react-router-dom';
 
-ReactDOM.createRoot(document.getElementById('root')).render(
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
   <React.StrictMode>
-    <BrowserRouter> {/* Wrap App with BrowserRouter */}
-      <App />
+    <BrowserRouter>
+      <AuthProvider>
+        <App />
+      </AuthProvider>
     </BrowserRouter>
-  </React.StrictMode>,
+  </React.StrictMode>
 );

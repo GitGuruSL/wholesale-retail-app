@@ -1,126 +1,128 @@
-// backend/server.js
-
-// Load environment variables from .env file first
-require('dotenv').config();
-
-// Import necessary modules
+require('dotenv').config(); // Load environment variables at the very top
 const express = require('express');
-const cors = require('cors'); // For handling Cross-Origin Resource Sharing
-const knexConfig = require('./knexfile'); // Knex configuration from knexfile.js
-const knex = require('knex')(knexConfig[process.env.NODE_ENV || 'development']); // Initialize Knex based on environment
+const cors = require('cors');
+const morgan = require('morgan'); // For HTTP request logging
 
-// --- Import Route Factory Functions ---
-// These functions create the specific routers, passing the knex instance
+// --- Knex Database Setup ---
+const knexConfig = require('./knexfile');
+const environment = process.env.NODE_ENV || 'development';
+const knex = require('knex')(knexConfig[environment]);
+
+// --- Middleware Imports ---
+// ####################################################################################
+// #                                                                                  #
+// #  >>>>> CRITICAL ERROR LOCATION <<<<<                                             #
+// #                                                                                  #
+// # The error "column 'email' does not exist" originates from the                    #
+// # 'authenticateToken' function in the file:                                        #
+// #                                                                                  #
+// #          >>>   ./middleware/authMiddleware.js   <<<                             #
+// #                                                                                  #
+// # You MUST modify the Knex database query inside that 'authenticateToken' function #
+// # to select only columns that actually exist in your 'users' table.                #
+// # For example, remove 'email' and 'store_id' from its SELECT statement if they     #
+// # are not in the 'users' table.                                                    #
+// #                                                                                  #
+// ####################################################################################
+const { authenticateToken, authorizeRole } = require('./middleware/authMiddleware');
+const errorHandler = require('./middleware/errorHandler');
+const notFoundHandler = require('./middleware/notFoundHandler');
+
+// --- Role Constants Import ---
+const ROLES = require('./utils/roles');
+
+// --- Router Imports (Creator Functions) ---
+const createAuthRouter = require('./routes/auth');
+const createUsersRouter = require('./routes/users');
+const createStoresRouter = require('./routes/stores');
+const createEmployeesRouter = require('./routes/employees');
 const createProductsRouter = require('./routes/products');
 const createCategoriesRouter = require('./routes/categories');
 const createSubCategoriesRouter = require('./routes/sub_categories');
 const createBrandsRouter = require('./routes/brands');
-const createUnitsRouter = require('./routes/units'); // Manages simplified unit definitions
-const createProductUnitsRouter = require('./routes/product_units'); // Manages product-specific unit configs
+const createUnitsRouter = require('./routes/units');
 const createSuppliersRouter = require('./routes/suppliers');
+const createTaxTypesRouter = require('./routes/tax_types');
 const createTaxesRouter = require('./routes/taxes');
 const createManufacturersRouter = require('./routes/manufacturers');
 const createWarrantiesRouter = require('./routes/warranties');
-const createDiscountTypesRouter = require('./routes/discount_types'); // <-- Import
-const createStoresRouter = require('./routes/stores');
-const createTaxTypesRouter = require('./routes/tax_types');
 const createBarcodeSymbologiesRouter = require('./routes/barcode_symbologies');
+const createDiscountTypesRouter = require('./routes/discount_types');
 const createSpecialCategoriesRouter = require('./routes/special_categories');
-// Import any other routers as you create them (e.g., users, orders, stock)
+const createInventoryRouter = require('./routes/inventory');
+const createSalesRouter = require('./routes/sales');
+// Add other router imports as needed
 
-// --- Initialize Express App ---
+// --- Express App Setup ---
 const app = express();
-// Determine the port from environment variables or use a default
-const PORT = process.env.PORT || 5001;
 
-// --- Database Connection Test ---
-// Attempt a simple query on startup to verify the database connection
-knex.raw('SELECT 1 AS result')
-  .then(() => {
-    console.log('PostgreSQL connected successfully using Knex.');
-  })
-  .catch((e) => {
-    // Log detailed error and exit if connection fails - essential for diagnosing startup issues
-    console.error('FATAL: PostgreSQL connection error:', e.message);
-    console.error('Stack:', e.stack);
-    console.error('Please check your database server status and .env connection settings (DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME).');
-    process.exit(1); // Exit the application if DB connection fails
-  });
-
-// --- Global Middleware ---
-
-// Enable CORS: Allows requests from your frontend (running on a different port)
-// For production, restrict the origin: app.use(cors({ origin: 'YOUR_FRONTEND_URL' }));
-app.use(cors());
-
-// Parse incoming JSON request bodies: Makes `req.body` available for POST/PUT requests
+// --- Basic Global Middleware ---
+app.use(cors({
+    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    credentials: true,
+}));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(morgan(environment === 'development' ? 'dev' : 'common'));
 
-// Optional: Basic request logger middleware
-app.use((req, res, next) => {
-    // Log method, URL, and timestamp for each incoming request
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.originalUrl}`);
-    next(); // Pass control to the next middleware or route handler
-});
+// --- Mount Public Routers ---
+// Authentication routes (login, etc.) are public and do not require prior token authentication.
+app.use('/api/auth', createAuthRouter(knex)); // `authenticateToken` is NOT applied here
+
+// --- Apply Global Authentication for Protected API Routes ---
+// All routes defined under '/api' AFTER this line will first pass through `authenticateToken`
+// from './middleware/authMiddleware.js'.
+// If the token is valid, `req.user` should be populated.
+// THE ERROR "column 'email' does not exist" ORIGINATES FROM THE `authenticateToken`
+// FUNCTION IN './middleware/authMiddleware.js' DUE TO AN INCORRECT DATABASE QUERY.
+// THIS `server.js` FILE IS CORRECTLY *USING* THE MIDDLEWARE; THE MIDDLEWARE ITSELF IS FLAWED.
+app.use('/api', authenticateToken);
+
+// --- Mount Protected Routers ---
+// These routes are now protected by the global `authenticateToken` above.
+// `authorizeRole` can be used for more granular, role-based access control.
+
+// Users route: Example - only GLOBAL_ADMIN can access user management.
+app.use('/api/users', authorizeRole(ROLES.GLOBAL_ADMIN), createUsersRouter(knex, authorizeRole, ROLES));
+
+// Employees route: Example - GLOBAL_ADMIN or STORE_ADMIN can manage employees.
+app.use('/api/employees', authorizeRole([ROLES.GLOBAL_ADMIN, ROLES.STORE_ADMIN]), createEmployeesRouter(knex, authorizeRole, ROLES));
+
+// Other protected routers:
+app.use('/api/stores', createStoresRouter(knex, authorizeRole, ROLES));
+app.use('/api/products', createProductsRouter(knex, authorizeRole, ROLES));
+// For /api/categories, the global `authenticateToken` runs.
+// The createCategoriesRouter can then choose to make specific sub-routes (like GET /) public
+// or use `authorizeRole` for POST, PUT, DELETE.
+app.use('/api/categories', createCategoriesRouter(knex, authorizeRole, ROLES));
+app.use('/api/sub-categories', createSubCategoriesRouter(knex, authorizeRole, ROLES));
+app.use('/api/brands', createBrandsRouter(knex, authorizeRole, ROLES));
+app.use('/api/units', createUnitsRouter(knex, authorizeRole, ROLES));
+app.use('/api/suppliers', createSuppliersRouter(knex, authorizeRole, ROLES));
+app.use('/api/tax-types', createTaxTypesRouter(knex, authorizeRole, ROLES));
+app.use('/api/taxes', createTaxesRouter(knex, authorizeRole, ROLES));
+app.use('/api/manufacturers', createManufacturersRouter(knex, authorizeRole, ROLES));
+app.use('/api/warranties', createWarrantiesRouter(knex, authorizeRole, ROLES));
+app.use('/api/barcode-symbologies', createBarcodeSymbologiesRouter(knex, authorizeRole, ROLES));
+app.use('/api/discount-types', createDiscountTypesRouter(knex, authorizeRole, ROLES));
+app.use('/api/special-categories', createSpecialCategoriesRouter(knex, authorizeRole, ROLES));
+app.use('/api/inventory', createInventoryRouter(knex, authorizeRole, ROLES));
+app.use('/api/sales', createSalesRouter(knex, authorizeRole, ROLES));
 
 
-// --- API Root Route ---
-// A simple endpoint to check if the API is alive and responding
-app.get('/api', (req, res) => {
-  res.status(200).json({ message: 'Welcome to the Wholesale Retail API! Status: OK' });
-});
+// --- 404 Handler (Not Found) ---
+app.use(notFoundHandler);
 
-// --- Mount Application Routers ---
-// Define the base path for each router and pass the knex instance
-// Order generally doesn't matter unless routes overlap significantly
-app.use('/api/products', createProductsRouter(knex));
-app.use('/api/categories', createCategoriesRouter(knex));
-app.use('/api/sub-categories', createSubCategoriesRouter(knex));
-app.use('/api/brands', createBrandsRouter(knex));
-app.use('/api/units', createUnitsRouter(knex)); // Manages unit names
-app.use('/api/product-units', createProductUnitsRouter(knex)); // Manages product-specific conversions
-app.use('/api/suppliers', createSuppliersRouter(knex));
-app.use('/api/taxes', createTaxesRouter(knex));
-app.use('/api/manufacturers', createManufacturersRouter(knex));
-app.use('/api/warranties', createWarrantiesRouter(knex));
-app.use('/api/discount-types', createDiscountTypesRouter(knex)); // <-- Mount
-app.use('/api/stores', createStoresRouter(knex)); 
-app.use('/api/tax-types', createTaxTypesRouter(knex))
-app.use('/api/barcode-symbologies', createBarcodeSymbologiesRouter(knex));
-app.use('/api/special-categories', createSpecialCategoriesRouter(knex));
-// Mount other routers here as needed...
-// e.g., app.use('/api/users', createUserRouter(knex));
-
-
-// --- API 404 Handler ---
-// This middleware runs only if no preceding '/api/...' route matched the request
-app.use('/api', (req, res, next) => {
-    // Respond with a 404 for any unmatched API routes
-    res.status(404).json({ message: 'API endpoint not found.' });
-});
-
-
-// --- Global Error Handling Middleware ---
-// Express identifies this as an error handler by its four arguments (err, req, res, next)
-// It catches errors thrown synchronously or passed via next(err) in route handlers
-// NOTE: Must be defined *last*, after all other app.use() and route calls
-app.use((err, req, res, next) => {
-    // Log the error stack trace to the console for debugging
-    console.error("Unhandled Error:", err.stack || err);
-
-    // Send a generic error response to the client
-    // Avoid leaking sensitive error details (like stack traces) in production environments
-    res.status(err.status || 500).json({ // Use error status if available, otherwise default to 500
-        message: err.message || 'An unexpected server error occurred. Please try again later.',
-        // Optionally include more details only during development
-        ...(process.env.NODE_ENV === 'development' && { error_type: err.name, details: err.toString() }),
-    });
-});
-
+// --- Global Error Handler ---
+app.use(errorHandler);
 
 // --- Start Server ---
-// Begin listening for incoming connections on the specified port
+const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
-  console.log(`Backend server is running and listening on http://localhost:${PORT}`);
-  console.log(`Current Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`Server running in ${environment} mode on port ${PORT}`);
+    knex.raw('SELECT 1 AS result')
+        .then(() => console.log('Database connection successful.'))
+        .catch(dbError => {
+            console.error('Database connection failed:', dbError.message); // Log only message for brevity
+        });
 });

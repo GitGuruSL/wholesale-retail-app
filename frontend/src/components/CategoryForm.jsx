@@ -16,68 +16,120 @@ function CategoryForm() {
     // State variables
     const [name, setName] = useState(''); // Category name input
     const [description, setDescription] = useState(''); // Category description input
+    const [parentCategoryId, setParentCategoryId] = useState(''); // For parent category selection
+    const [allCategories, setAllCategories] = useState([]); // For parent category dropdown
     const [loading, setLoading] = useState(false); // Tracks loading state (for API calls)
-    const [error, setError] = useState(null); // Stores error messages
+    const [formError, setFormError] = useState(null); // Stores error messages, renamed from 'error'
 
-    // useEffect hook to fetch category data when editing
+    // useEffect hook to fetch category data when editing and all categories for dropdown
     useEffect(() => {
-        // Only run if in editing mode (categoryId is present)
+        const token = localStorage.getItem('token');
+        if (!token && (isEditing || !allCategories.length)) { // Check token if we need to make a call
+            setFormError('Authentication token not found. Please log in.');
+            setLoading(false);
+            // navigate('/login'); // Optionally redirect
+            return;
+        }
+        const config = { headers: { Authorization: `Bearer ${token}` } };
+
+        const fetchAllCategoriesForDropdown = async () => {
+            try {
+                const response = await axios.get(`${API_BASE_URL}/categories`, config); // Added config
+                setAllCategories(response.data);
+            } catch (err) {
+                console.error("Error fetching all categories for dropdown:", err);
+                if (err.response?.status === 401 || err.response?.status === 403) {
+                     setFormError('Unauthorized: Could not load parent categories. Please log in again.');
+                } else {
+                    setFormError('Failed to load list of parent categories.');
+                }
+            }
+        };
+
+        fetchAllCategoriesForDropdown();
+
         if (isEditing) {
             setLoading(true); // Start loading indicator
-            setError(null); // Clear previous errors
-            axios.get(`${API_BASE_URL}/categories/${categoryId}`)
+            setFormError(null); // Clear previous errors
+            axios.get(`${API_BASE_URL}/categories/${categoryId}`, config) // Added config
                 .then(response => {
                     // Populate form fields with fetched data
                     setName(response.data.name);
                     setDescription(response.data.description || ''); // Handle null description from DB
+                    setParentCategoryId(response.data.parent_category_id ? String(response.data.parent_category_id) : '');
                     setLoading(false); // Stop loading indicator
                 })
                 .catch(err => {
                     console.error("Error fetching category details:", err);
-                    setError('Failed to load category data. It might not exist or the API is down.');
+                    const errorMsg = err.response?.data?.message || 'Failed to load category data.';
+                    if (err.response?.status === 401 || err.response?.status === 403) {
+                        setFormError('Unauthorized: Could not fetch category details. Please log in again.');
+                    } else {
+                        setFormError(errorMsg);
+                    }
                     setLoading(false); // Stop loading indicator even on error
                 });
         } else {
             // If creating a new category, ensure form is reset
             setName('');
             setDescription('');
-            setError(null);
+            setParentCategoryId('');
+            setFormError(null);
         }
-    }, [categoryId, isEditing]); // Dependency array: re-run effect if categoryId or isEditing changes
+    }, [categoryId, isEditing, navigate]); // Added navigate to dependency array
 
     // Handler for form submission
     const handleSubmit = async (e) => {
         e.preventDefault(); // Prevent default browser form submission
         setLoading(true); // Start loading indicator
-        setError(null); // Clear previous errors
+        setFormError(null); // Clear previous errors
 
         // Prepare data payload for the API
         const categoryData = {
             name: name.trim(), // Trim whitespace from name
-            // Send null for description if it's empty after trimming, otherwise send trimmed value
             description: description.trim() === '' ? null : description.trim(),
+            parent_category_id: parentCategoryId ? parseInt(parentCategoryId, 10) : null,
         };
 
-        // Basic validation (already handled by 'required' on input, but good practice)
         if (!categoryData.name) {
-             setError("Category name cannot be empty.");
+             setFormError("Category name cannot be empty.");
              setLoading(false);
              return;
         }
-
+        // Prevent setting category as its own parent
+        if (isEditing && categoryData.parent_category_id === parseInt(categoryId, 10)) {
+            setFormError("A category cannot be its own parent.");
+            setLoading(false);
+            return;
+        }
 
         try {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                setFormError('Authentication token not found. Please log in.');
+                setLoading(false);
+                // navigate('/login'); // Optionally redirect
+                return;
+            }
+            const config = {
+                headers: { Authorization: `Bearer ${token}` }
+            };
+
             // Choose API endpoint and method based on whether we are editing or creating
             if (isEditing) {
-                await axios.put(`${API_BASE_URL}/categories/${categoryId}`, categoryData);
+                await axios.put(`${API_BASE_URL}/categories/${categoryId}`, categoryData, config); // Added config
             } else {
-                await axios.post(`${API_BASE_URL}/categories`, categoryData);
+                await axios.post(`${API_BASE_URL}/categories`, categoryData, config); // Added config
             }
             navigate('/categories'); // Navigate back to the category list on success
         } catch (err) {
             console.error("Error saving category:", err);
-            // Set error message based on backend response or provide a default
-            setError(err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} category.`);
+            const errorMsg = err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} category.`;
+            if (err.response?.status === 401 || err.response?.status === 403) {
+                setFormError('Unauthorized: Could not save category. Please log in again.');
+            } else {
+                setFormError(errorMsg);
+            }
         } finally {
             setLoading(false); // Stop loading indicator regardless of success/failure
         }
@@ -85,8 +137,13 @@ function CategoryForm() {
 
     // --- Render Logic ---
 
-    // Display loading message while fetching data for editing
-    if (loading && isEditing) return <p>Loading category details...</p>;
+    // Display loading message while fetching data for editing or initial parent categories
+    if (loading && (isEditing || !allCategories.length)) return <p style={styles.centeredMessage}>Loading category details...</p>;
+
+    // Filter out the current category from the parent options when editing
+    const parentCategoryOptions = isEditing
+        ? allCategories.filter(cat => cat.id !== parseInt(categoryId, 10))
+        : allCategories;
 
     // Render the form
     return (
@@ -94,7 +151,7 @@ function CategoryForm() {
             <h2 style={styles.title}>{isEditing ? 'Edit Category' : 'Add New Category'}</h2>
 
             {/* Display error message if any */}
-            {error && <p style={styles.errorBox}>Error: {error}</p>}
+            {formError && <p style={styles.errorBox}>Error: {formError}</p>}
 
             <form onSubmit={handleSubmit}>
                 {/* Category Name Input */}
@@ -110,6 +167,27 @@ function CategoryForm() {
                         disabled={loading} // Disable input while loading
                     />
                 </div>
+
+                {/* Parent Category Dropdown */}
+                <div style={styles.formGroup}>
+                    <label htmlFor="parentCategory" style={styles.label}>Parent Category:</label>
+                    <select
+                        id="parentCategory"
+                        value={parentCategoryId}
+                        onChange={(e) => setParentCategoryId(e.target.value)}
+                        style={styles.input}
+                        disabled={loading || !allCategories.length}
+                    >
+                        <option value="">-- None (Top Level) --</option>
+                        {parentCategoryOptions.map(cat => (
+                            <option key={cat.id} value={cat.id}>
+                                {cat.name} (ID: {cat.id})
+                            </option>
+                        ))}
+                    </select>
+                    {!allCategories.length && !loading && !formError && <p style={{fontSize: '0.9em', color: 'grey'}}>Loading parent categories...</p>}
+                </div>
+
 
                 {/* Category Description Input */}
                 <div style={styles.formGroup}>
@@ -150,18 +228,17 @@ function CategoryForm() {
 
 // --- Basic Inline Styles ---
 const styles = {
-    container: { padding: '20px', maxWidth: '600px', margin: '0 auto', fontFamily: 'Arial, sans-serif' },
-    title: { marginBottom: '20px', color: '#333' },
-    errorBox: { color: 'red', border: '1px solid red', padding: '10px', marginBottom: '15px', borderRadius: '4px', backgroundColor: '#ffe6e6' },
+    container: { padding: '20px', maxWidth: '600px', margin: '40px auto', fontFamily: 'Arial, sans-serif', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', borderRadius: '8px', backgroundColor: '#fff' },
+    title: { marginBottom: '25px', color: '#333', textAlign: 'center', borderBottom: '1px solid #eee', paddingBottom: '15px' },
+    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
+    errorBox: { color: '#D8000C', border: '1px solid #FFBABA', padding: '10px 15px', marginBottom: '20px', borderRadius: '4px', backgroundColor: '#FFD2D2' },
     formGroup: { marginBottom: '20px' },
     label: { display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#555' },
-    input: { width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px' },
-    textarea: { width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', minHeight: '80px' },
-    buttonGroup: { marginTop: '25px' },
-    buttonPrimary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', marginRight: '10px', opacity: 1 },
-    buttonSecondary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px' },
-    // Add disabled styles directly (or use CSS classes)
-    // buttonPrimary:disabled, buttonSecondary:disabled { cursor: 'wait', opacity: 0.6 }
+    input: { width: '100%', padding: '12px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1em' },
+    textarea: { width: '100%', padding: '12px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', minHeight: '80px', fontSize: '1em' },
+    buttonGroup: { marginTop: '30px', display: 'flex', justifyContent: 'flex-end', gap: '10px' },
+    buttonPrimary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
+    buttonSecondary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
 };
 
 

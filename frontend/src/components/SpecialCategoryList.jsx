@@ -1,66 +1,80 @@
-// frontend/src/components/SpecialCategoryList.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
 
-// Configuration
-const API_BASE_URL = 'http://localhost:5001/api'; // Use environment variables for production
+const API_BASE_URL = 'http://localhost:5001/api';
 
-// Component to display and manage Special Categories
 function SpecialCategoryList() {
-    // State variables
     const [specialCategories, setSpecialCategories] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [feedback, setFeedback] = useState({ message: null, type: null }); // For user feedback (e.g., after delete)
-    const navigate = useNavigate(); // Hook for programmatic navigation
+    const [feedback, setFeedback] = useState({ message: null, type: null });
+    const navigate = useNavigate();
 
-    // Function to fetch special categories from the API
     const fetchSpecialCategories = useCallback(async () => {
-        setLoading(true); // Start loading indicator
-        setError(null); // Clear previous errors
-        setFeedback({ message: null, type: null }); // Clear previous feedback
+        setLoading(true);
+        setError(null);
+        setFeedback({ message: null, type: null });
         try {
-            const response = await axios.get(`${API_BASE_URL}/special-categories`);
-            setSpecialCategories(response.data || []); // Ensure it's an array
+            const token = localStorage.getItem('token');
+            if (!token) {
+                setError('Authentication token not found. Please log in.');
+                setLoading(false);
+                // navigate('/login'); // Optionally redirect
+                return;
+            }
+            const config = {
+                headers: { Authorization: `Bearer ${token}` }
+            };
+            const response = await axios.get(`${API_BASE_URL}/special-categories`, config);
+            setSpecialCategories(response.data || []);
         } catch (err) {
             console.error("Error fetching special categories:", err);
-            const errorMsg = err.response?.data?.message || 'Failed to fetch special categories. Please check API connection.';
-            setError(errorMsg); // Set error message state
+            const errorMsg = err.response?.data?.message || 'Failed to fetch special categories.';
+            if (err.response?.status === 401 || err.response?.status === 403) {
+                setError('Unauthorized: Could not fetch special categories. Please log in again.');
+            } else {
+                setError(errorMsg);
+            }
         } finally {
-            setLoading(false); // Stop loading indicator
+            setLoading(false);
         }
-    }, []); // Empty dependency array means this function reference is stable
+    }, [navigate]); // Added navigate
 
-    // useEffect hook to call fetchSpecialCategories when the component mounts
     useEffect(() => {
         fetchSpecialCategories();
-    }, [fetchSpecialCategories]); // Dependency array includes fetchSpecialCategories
+    }, [fetchSpecialCategories]);
 
-    // Function to handle deleting a special category
     const handleDelete = async (categoryId, categoryName) => {
-        // Confirmation dialog
         if (!window.confirm(`Are you sure you want to delete special category: "${categoryName}" (ID: ${categoryId})?\nThis might fail if it's linked to products.`)) {
-            return; // Stop if user cancels
+            return;
         }
-        setError(null); // Clear previous errors
+        setError(null);
         try {
-            await axios.delete(`${API_BASE_URL}/special-categories/${categoryId}`);
+            const token = localStorage.getItem('token');
+            if (!token) {
+                setFeedback({ message: 'Authentication token not found. Please log in.', type: 'error' });
+                return;
+            }
+            const config = {
+                headers: { Authorization: `Bearer ${token}` }
+            };
+            await axios.delete(`${API_BASE_URL}/special-categories/${categoryId}`, config);
             setFeedback({ message: `Special category "${categoryName}" deleted successfully.`, type: 'success' });
-            // Refresh list by removing the item locally
             setSpecialCategories(prev => prev.filter(sc => sc.id !== categoryId));
         } catch (err) {
             console.error(`Error deleting special category ${categoryId}:`, err);
             const errorMsg = err.response?.data?.message || 'Failed to delete special category.';
-            setFeedback({ message: errorMsg, type: 'error' });
-            setError(errorMsg); // Also set general error state
+            if (err.response?.status === 401 || err.response?.status === 403) {
+                setFeedback({ message: 'Unauthorized: Could not delete special category. Please log in again.', type: 'error' });
+            } else {
+                setFeedback({ message: errorMsg, type: 'error' });
+            }
+            // setError(errorMsg); // Optionally set general error if feedback is not enough
         } finally {
-            // Clear feedback message after a delay
-             setTimeout(() => setFeedback({ message: null, type: null }), 5000);
+            setTimeout(() => setFeedback({ message: null, type: null }), 5000);
         }
     };
-
-    // --- Render Logic ---
 
     if (loading) return <div style={styles.centeredMessage}>Loading special categories...</div>;
     if (error && specialCategories.length === 0) return <div style={{ ...styles.centeredMessage, ...styles.errorText }}>Error: {error}</div>;
@@ -69,7 +83,6 @@ function SpecialCategoryList() {
         <div style={styles.container}>
             <h2 style={styles.title}>Manage Special Categories</h2>
 
-            {/* Feedback Area */}
             {feedback.message && (
                 <div style={{
                    ...styles.feedbackBox,
@@ -78,18 +91,17 @@ function SpecialCategoryList() {
                     {feedback.message}
                 </div>
             )}
-            {/* Display General Error if fetch failed but list might have old data */}
-            {error && specialCategories.length > 0 && (
-                 <p style={styles.errorText}>Warning: Could not refresh list. Error: {error}</p>
+            {error && specialCategories.length > 0 && !feedback.message && (
+                 <p style={{...styles.errorText, textAlign: 'center', marginBottom: '10px'}}>
+                    Warning: An operation failed. Error: {error}
+                 </p>
             )}
 
-            {/* Add New Button */}
             <Link to="/special-categories/new" style={styles.addButtonLink}>
-                <button style={styles.button}>Add New Special Category</button>
+                <button style={{...styles.button, ...styles.buttonAdd}}>Add New Special Category</button>
             </Link>
 
-            {/* Table or No Data Message */}
-            {specialCategories.length === 0 && !loading ? (
+            {specialCategories.length === 0 && !loading && !error ? (
                 <p>No special categories found.</p>
             ) : (
                 <table style={styles.table}>
@@ -132,22 +144,23 @@ function SpecialCategoryList() {
     );
 }
 
-// --- Basic Inline Styles ---
+// Consistent List Styles
 const styles = {
     container: { padding: '20px', fontFamily: 'Arial, sans-serif' },
-    title: { marginBottom: '20px', color: '#333' },
+    title: { marginBottom: '20px', color: '#333', textAlign: 'center' },
     centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
     errorText: { color: '#D8000C', fontWeight: 'bold' },
     feedbackBox: { padding: '10px 15px', marginBottom: '15px', borderRadius: '4px', textAlign: 'center', border: '1px solid' },
     feedbackSuccess: { borderColor: 'green', color: 'green', backgroundColor: '#e6ffed' },
     feedbackError: { borderColor: 'red', color: 'red', backgroundColor: '#ffe6e6' },
-    addButtonLink: { textDecoration: 'none', marginBottom: '15px', display: 'inline-block' },
-    button: { padding: '8px 12px', margin: '0 5px 5px 0', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9em', backgroundColor: '#007bff', color:'white' },
-    buttonEdit: { backgroundColor: '#ffc107', color: '#000' }, // Yellow
-    buttonDelete: { backgroundColor: '#dc3545', color: 'white' }, // Red
-    table: { width: '100%', borderCollapse: 'collapse', marginTop: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
+    addButtonLink: { textDecoration: 'none', display: 'inline-block', marginBottom: '15px' },
+    button: { padding: '8px 12px', margin: '0 5px 0 0', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9em' },
+    buttonAdd: { backgroundColor: '#28a745', color: 'white'},
+    buttonEdit: { backgroundColor: '#ffc107', color: '#000' },
+    buttonDelete: { backgroundColor: '#dc3545', color: 'white' },
+    table: { width: '100%', borderCollapse: 'collapse', marginTop: '0px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
     tableHeader: { backgroundColor: '#e9ecef' },
-    tableCell: { padding: '10px 8px', textAlign: 'left', verticalAlign: 'top', borderBottom: '1px solid #dee2e6', borderRight: '1px solid #eee' },
+    tableCell: { padding: '12px 10px', textAlign: 'left', verticalAlign: 'top', borderBottom: '1px solid #dee2e6' },
     actionsCell: { whiteSpace: 'nowrap' },
     tableRowOdd: { backgroundColor: '#fff' },
     tableRowEven: { backgroundColor: '#f8f9fa' }

@@ -1,4 +1,3 @@
-// frontend/src/components/StoreForm.jsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -6,44 +5,55 @@ import { useParams, useNavigate } from 'react-router-dom';
 const API_BASE_URL = 'http://localhost:5001/api';
 
 function StoreForm() {
-    const { storeId } = useParams(); // Get ID from URL if editing
+    const { storeId } = useParams();
     const navigate = useNavigate();
     const isEditing = Boolean(storeId);
 
-    // State variables for form fields
     const [name, setName] = useState('');
     const [address, setAddress] = useState('');
     const [contactInfo, setContactInfo] = useState('');
-
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
-    // Fetch existing store data if editing
     useEffect(() => {
         if (isEditing) {
             setLoading(true);
             setError(null);
-            axios.get(`${API_BASE_URL}/stores/${storeId}`)
+            const token = localStorage.getItem('token');
+            if (!token) {
+                setError('Authentication token not found. Please log in.');
+                setLoading(false);
+                // navigate('/login'); // Optionally redirect
+                return;
+            }
+            const config = {
+                headers: { Authorization: `Bearer ${token}` }
+            };
+            axios.get(`${API_BASE_URL}/stores/${storeId}`, config)
                 .then(response => {
                     const data = response.data;
                     setName(data.name);
-                    setAddress(data.address || ''); // Handle nulls
-                    setContactInfo(data.contact_info || ''); // Handle nulls
+                    setAddress(data.address || '');
+                    setContactInfo(data.contact_info || '');
                     setLoading(false);
                 })
                 .catch(err => {
                     console.error("Error fetching store details:", err);
-                    setError('Failed to load store data. It might not exist.');
+                    const errorMsg = err.response?.data?.message || 'Failed to load store data.';
+                    if (err.response?.status === 401 || err.response?.status === 403) {
+                        setError('Unauthorized: Could not fetch store. Please log in again.');
+                    } else {
+                        setError(errorMsg);
+                    }
                     setLoading(false);
                 });
         } else {
-            // Reset form for 'new' mode
             setName('');
             setAddress('');
             setContactInfo('');
             setError(null);
         }
-    }, [storeId, isEditing]);
+    }, [storeId, isEditing, navigate]); // Added navigate
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -57,35 +67,49 @@ function StoreForm() {
         };
 
         if (!storeData.name) {
-             setError("Store name cannot be empty.");
-             setLoading(false);
-             return;
+            setError("Store name cannot be empty.");
+            setLoading(false);
+            return;
         }
 
         try {
-            if (isEditing) {
-                await axios.put(`${API_BASE_URL}/stores/${storeId}`, storeData);
-            } else {
-                await axios.post(`${API_BASE_URL}/stores`, storeData);
+            const token = localStorage.getItem('token');
+            if (!token) {
+                setError('Authentication token not found. Please log in.');
+                setLoading(false);
+                // navigate('/login'); // Optionally redirect
+                return;
             }
-            navigate('/stores'); // Go back to list on success
+            const config = {
+                headers: { Authorization: `Bearer ${token}` }
+            };
+
+            if (isEditing) {
+                await axios.put(`${API_BASE_URL}/stores/${storeId}`, storeData, config);
+            } else {
+                await axios.post(`${API_BASE_URL}/stores`, storeData, config);
+            }
+            navigate('/stores');
         } catch (err) {
             console.error("Error saving store:", err);
-            setError(err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} store.`);
+            const errorMsg = err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} store.`;
+            if (err.response?.status === 401 || err.response?.status === 403) {
+                setError('Unauthorized: Could not save store. Please log in again.');
+            } else {
+                setError(errorMsg);
+            }
         } finally {
             setLoading(false);
         }
     };
 
-    if (loading && isEditing) return <p>Loading store details...</p>;
+    if (loading && isEditing) return <p style={styles.centeredMessage}>Loading store details...</p>;
 
     return (
-        <div>
-            <h2>{isEditing ? 'Edit Store' : 'Add New Store'}</h2>
+        <div style={styles.container}>
+            <h2 style={styles.title}>{isEditing ? 'Edit Store' : 'Add New Store'}</h2>
             {error && <p style={styles.errorBox}>Error: {error}</p>}
-
             <form onSubmit={handleSubmit}>
-                {/* Store Name Input */}
                 <div style={styles.formGroup}>
                     <label htmlFor="storeName" style={styles.label}>Store Name: *</label>
                     <input
@@ -96,10 +120,9 @@ function StoreForm() {
                         required
                         style={styles.input}
                         disabled={loading}
+                        placeholder="e.g., Main Branch, Downtown Outlet"
                     />
                 </div>
-
-                {/* Store Address Input */}
                 <div style={styles.formGroup}>
                     <label htmlFor="storeAddress" style={styles.label}>Address:</label>
                     <textarea
@@ -109,11 +132,10 @@ function StoreForm() {
                         rows="3"
                         style={styles.textarea}
                         disabled={loading}
+                        placeholder="e.g., 123 Main St, Anytown, USA"
                     />
                 </div>
-
-                 {/* Store Contact Info Input */}
-                 <div style={styles.formGroup}>
+                <div style={styles.formGroup}>
                     <label htmlFor="storeContact" style={styles.label}>Contact Info:</label>
                     <input
                         type="text"
@@ -122,12 +144,9 @@ function StoreForm() {
                         onChange={(e) => setContactInfo(e.target.value)}
                         style={styles.input}
                         disabled={loading}
-                        placeholder="e.g., Phone number, Email"
+                        placeholder="e.g., (555) 123-4567, manager@example.com"
                     />
                 </div>
-
-
-                {/* Action Buttons */}
                 <div style={styles.buttonGroup}>
                     <button type="submit" disabled={loading} style={styles.buttonPrimary}>
                         {loading ? 'Saving...' : (isEditing ? 'Update Store' : 'Create Store')}
@@ -141,18 +160,19 @@ function StoreForm() {
     );
 }
 
-// Basic Inline Styles
+// Consistent Form Styles
 const styles = {
-    container: { padding: '20px', maxWidth: '600px', margin: '0 auto', fontFamily: 'Arial, sans-serif' },
-    title: { marginBottom: '20px', color: '#333' },
-    errorBox: { color: 'red', border: '1px solid red', padding: '10px', marginBottom: '15px', borderRadius: '4px', backgroundColor: '#ffe6e6' },
+    container: { padding: '20px', maxWidth: '600px', margin: '40px auto', fontFamily: 'Arial, sans-serif', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', borderRadius: '8px', backgroundColor: '#fff' },
+    title: { marginBottom: '25px', color: '#333', textAlign: 'center', borderBottom: '1px solid #eee', paddingBottom: '15px' },
+    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
+    errorBox: { color: '#D8000C', border: '1px solid #FFBABA', padding: '10px 15px', marginBottom: '20px', borderRadius: '4px', backgroundColor: '#FFD2D2' },
     formGroup: { marginBottom: '20px' },
     label: { display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#555' },
-    input: { width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px' },
-    textarea: { width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', minHeight: '60px' },
-    buttonGroup: { marginTop: '25px' },
-    buttonPrimary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', marginRight: '10px', opacity: 1 },
-    buttonSecondary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px' },
+    input: { width: '100%', padding: '12px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1em' },
+    textarea: { width: '100%', padding: '12px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', minHeight: '80px', fontSize: '1em' },
+    buttonGroup: { marginTop: '30px', display: 'flex', justifyContent: 'flex-end', gap: '10px' },
+    buttonPrimary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
+    buttonSecondary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
 };
 
 export default StoreForm;

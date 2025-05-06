@@ -1,9 +1,6 @@
-// frontend/src/components/UnitList.jsx
 import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
-
-const API_BASE_URL = 'http://localhost:5001/api';
+import { useAuth } from '../context/AuthContext';
 
 function UnitList() {
     const [units, setUnits] = useState([]);
@@ -11,108 +8,108 @@ function UnitList() {
     const [error, setError] = useState(null);
     const [feedback, setFeedback] = useState({ message: null, type: null });
     const navigate = useNavigate();
+    const { api } = useAuth();
 
     const fetchUnits = useCallback(async () => {
         setLoading(true);
         setError(null);
         setFeedback({ message: null, type: null });
         try {
-            // Fetch units (backend route includes base unit name)
-            const response = await axios.get(`${API_BASE_URL}/units`);
-            setUnits(response.data);
+            const response = await api.get('/units');
+            setUnits(response.data || []);
         } catch (err) {
             console.error("Error fetching units:", err);
-            setError(err.response?.data?.message || 'Failed to fetch units.');
+            const errorMsg = err.response?.data?.message || 'Failed to fetch units.';
+            if (err.response?.status === 401 || err.response?.status === 403) {
+                setError('Unauthorized: Could not fetch units. Please log in again.');
+            } else {
+                setError(errorMsg);
+            }
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [api]);
 
     useEffect(() => {
         fetchUnits();
     }, [fetchUnits]);
 
     const handleDelete = async (unitId, unitName) => {
-        if (!window.confirm(`Are you sure you want to delete unit: "${unitName}" (ID: ${unitId})?\nThis might fail if it's linked to products, stock, or orders.`)) {
+        if (!window.confirm(`Are you sure you want to delete unit: "${unitName}" (ID: ${unitId})?\nThis might fail if it's linked to products.`)) {
             return;
         }
-
         setError(null);
         try {
-            await axios.delete(`${API_BASE_URL}/units/${unitId}`);
+            await api.delete(`/units/${unitId}`);
             setFeedback({ message: `Unit "${unitName}" deleted successfully.`, type: 'success' });
-            setUnits(prev => prev.filter(u => u.id !== unitId));
+            setUnits(prevUnits => prevUnits.filter(unit => unit.id !== unitId));
         } catch (err) {
             console.error(`Error deleting unit ${unitId}:`, err);
             const errorMsg = err.response?.data?.message || 'Failed to delete unit.';
-            setFeedback({ message: errorMsg, type: 'error' });
-            setError(errorMsg);
+            if (err.response?.status === 401 || err.response?.status === 403) {
+                setFeedback({ message: 'Unauthorized: Could not delete unit. Please log in again.', type: 'error' });
+            } else {
+                setFeedback({ message: errorMsg, type: 'error' });
+            }
         } finally {
-             setTimeout(() => setFeedback({ message: null, type: null }), 5000);
+            setTimeout(() => setFeedback({ message: null, type: null }), 5000);
         }
     };
 
-    // Helper to display boolean values nicely
-    const renderBoolean = (value) => (
-        value ? <span style={{ color: 'green' }}>Yes</span> : <span style={{ color: 'grey' }}>No</span>
-    );
-
-
-    if (loading) return <p>Loading units...</p>;
-    if (error && units.length === 0) return <p style={{ color: 'red' }}>Error: {error}</p>;
+    if (loading) return <div style={styles.centeredMessage}>Loading units...</div>;
+    if (error && units.length === 0) return <div style={{ ...styles.centeredMessage, ...styles.errorText }}>Error: {error}</div>;
 
     return (
-        <div>
-            <h2>Manage Units</h2>
+        <div style={styles.container}>
+            <h2 style={styles.title}>Manage Units</h2>
 
-            {/* Feedback Area */}
             {feedback.message && (
-                <div style={{ padding: '10px', marginBottom: '15px', border: '1px solid', borderRadius: '4px', borderColor: feedback.type === 'success' ? 'green' : 'red', color: feedback.type === 'success' ? 'green' : 'red', backgroundColor: feedback.type === 'success' ? '#e6ffed' : '#ffe6e6' }}>
+                <div style={{
+                   ...styles.feedbackBox,
+                   ...(feedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError)
+                }}>
                     {feedback.message}
                 </div>
             )}
-            {error && units.length > 0 && (<p style={{ color: 'red' }}>Warning: Could not refresh list. Error: {error}</p>)}
+             {error && units.length > 0 && !feedback.message && ( // Show general error if list is present but an op failed
+                 <p style={{...styles.errorText, textAlign: 'center', marginBottom: '10px'}}>
+                    Warning: An operation failed. Error: {error}
+                 </p>
+            )}
 
-
-            <Link to="/units/new">
-                <button style={{ marginBottom: '15px', padding: '8px 12px' }}>Add New Unit</button>
+            <Link to="/units/new" style={styles.addButtonLink}>
+                <button style={{...styles.button, ...styles.buttonAdd}}>Add New Unit</button>
             </Link>
 
-            {units.length === 0 && !loading ? (
+            {units.length === 0 && !loading && !error ? (
                 <p>No units found.</p>
             ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                        <tr style={{ borderBottom: '2px solid #ccc', backgroundColor: '#f8f8f8' }}>
-                            <th style={tableCellStyle}>ID</th>
-                            <th style={tableCellStyle}>Unit Name</th>
-                            <th style={tableCellStyle}>Base Unit</th>
-                            <th style={tableCellStyle}>Factor</th>
-                            <th style={tableCellStyle}>Sellable?</th>
-                            <th style={tableCellStyle}>Purchaseable?</th>
-                            <th style={tableCellStyle}>Actions</th>
+                <table style={styles.table}>
+                    <thead style={styles.tableHeader}>
+                        <tr>
+                            <th style={styles.tableCell}>ID</th>
+                            <th style={styles.tableCell}>Name</th>
+                            <th style={styles.tableCell}>Abbreviation</th>
+                            <th style={styles.tableCell}>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {units.map((unit, index) => (
-                            <tr key={unit.id} style={{ borderBottom: '1px solid #eee', backgroundColor: index % 2 === 0 ? '#fff' : '#f9f9f9' }}>
-                                <td style={tableCellStyle}>{unit.id}</td>
-                                <td style={tableCellStyle}>{unit.name}</td>
-                                <td style={tableCellStyle}>{unit.base_unit_name ? `${unit.base_unit_name} (ID: ${unit.base_unit_id})` : '(Is Base Unit)'}</td>
-                                <td style={tableCellStyle}>{unit.conversion_factor}</td>
-                                <td style={tableCellStyle}>{renderBoolean(unit.is_sellable)}</td>
-                                <td style={tableCellStyle}>{renderBoolean(unit.is_purchaseable)}</td>
-                                <td style={tableCellStyle}>
+                            <tr key={unit.id} style={index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd}>
+                                <td style={styles.tableCell}>{unit.id}</td>
+                                <td style={styles.tableCell}>{unit.name}</td>
+                                <td style={styles.tableCell}>{unit.abbreviation || '-'}</td>
+                                <td style={{...styles.tableCell, ...styles.actionsCell}}>
                                     <button
                                         onClick={() => navigate(`/units/edit/${unit.id}`)}
-                                        style={{ marginRight: '5px', padding: '5px 8px', cursor:'pointer' }}
+                                        style={{...styles.button, ...styles.buttonEdit}}
                                         title="Edit Unit"
                                     >
                                         Edit
                                     </button>
                                     <button
                                         onClick={() => handleDelete(unit.id, unit.name)}
-                                        style={{ padding: '5px 8px', cursor:'pointer', backgroundColor: '#f44336', color: 'white', border:'none', borderRadius:'3px'}}
+                                        style={{...styles.button, ...styles.buttonDelete}}
                                         title="Delete Unit"
                                     >
                                         Delete
@@ -127,11 +124,26 @@ function UnitList() {
     );
 }
 
-// Basic styles
-const tableCellStyle = {
-    padding: '10px 8px',
-    textAlign: 'left',
-    verticalAlign: 'top',
+// Consistent List Styles
+const styles = {
+    container: { padding: '20px', fontFamily: 'Arial, sans-serif' },
+    title: { marginBottom: '20px', color: '#333', textAlign: 'center' },
+    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
+    errorText: { color: '#D8000C', fontWeight: 'bold' },
+    feedbackBox: { padding: '10px 15px', marginBottom: '15px', borderRadius: '4px', textAlign: 'center', border: '1px solid' },
+    feedbackSuccess: { borderColor: 'green', color: 'green', backgroundColor: '#e6ffed' },
+    feedbackError: { borderColor: 'red', color: 'red', backgroundColor: '#ffe6e6' },
+    addButtonLink: { textDecoration: 'none', display: 'inline-block', marginBottom: '15px' },
+    button: { padding: '8px 12px', margin: '0 5px 0 0', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9em' },
+    buttonAdd: { backgroundColor: '#28a745', color: 'white'},
+    buttonEdit: { backgroundColor: '#ffc107', color: '#000' },
+    buttonDelete: { backgroundColor: '#dc3545', color: 'white' },
+    table: { width: '100%', borderCollapse: 'collapse', marginTop: '0px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
+    tableHeader: { backgroundColor: '#e9ecef' },
+    tableCell: { padding: '12px 10px', textAlign: 'left', verticalAlign: 'top', borderBottom: '1px solid #dee2e6' },
+    actionsCell: { whiteSpace: 'nowrap' },
+    tableRowOdd: { backgroundColor: '#fff' },
+    tableRowEven: { backgroundColor: '#f8f9fa' }
 };
 
 export default UnitList;
