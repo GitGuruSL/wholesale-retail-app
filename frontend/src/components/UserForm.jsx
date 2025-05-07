@@ -1,240 +1,308 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-// import { ROLES_OPTIONS } from '../utils/roles'; // No longer needed, get from AuthContext
+// import { useStoreContext } from '../context/StoreContext'; // If you have a store context for available stores
 
-const UserForm = () => {
-    const { userId } = useParams();
+const styles = {
+    container: { padding: '20px', maxWidth: '700px', margin: '40px auto', fontFamily: 'Arial, sans-serif', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', borderRadius: '8px', backgroundColor: '#fff' },
+    title: { marginBottom: '25px', color: '#333', textAlign: 'center', borderBottom: '1px solid #eee', paddingBottom: '15px' },
+    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
+    errorBox: { color: '#D8000C', border: '1px solid #FFBABA', padding: '10px 15px', marginBottom: '20px', borderRadius: '4px', backgroundColor: '#FFD2D2', textAlign: 'center' },
+    formSpecificErrorText: { color: 'red', fontSize: '0.9em', marginTop: '5px'},
+    formGroup: { marginBottom: '20px' },
+    label: { display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#555' },
+    input: { width: '100%', padding: '12px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1em' },
+    select: { width: '100%', padding: '12px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1em', backgroundColor: 'white' },
+    checkboxLabel: { marginLeft: '8px', fontWeight: 'normal', color: '#555' },
+    buttonGroup: { marginTop: '30px', display: 'flex', justifyContent: 'flex-end', gap: '10px' },
+    buttonPrimary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
+    buttonSecondary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
+};
+
+function UserForm() {
+    const { userId } = useParams(); // Matches :userId in App.jsx route
     const navigate = useNavigate();
-    const { api, ROLES_OPTIONS } = useAuth(); // Get ROLES_OPTIONS from AuthContext
+    const { apiInstance, isAuthenticated, isLoading: authLoading, ROLES_OPTIONS } = useAuth();
+    // const { stores, isLoading: storesLoading } = useStoreContext(); // Example for stores
+
     const isEditing = Boolean(userId);
 
+    // Form state based on your users table schema
     const [username, setUsername] = useState('');
+    const [firstName, setFirstName] = useState('');
+    const [lastName, setLastName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
-    // Initialize role state after ROLES_OPTIONS is available from context
-    const [role, setRole] = useState('');
-    const [storeId, setStoreId] = useState('');
-    const [availableStores, setAvailableStores] = useState([]);
+    const [roleId, setRoleId] = useState(''); // Store role_id
+    const [isActive, setIsActive] = useState(true);
+    const [employeeId, setEmployeeId] = useState('');
+    // const [assignedStoreIds, setAssignedStoreIds] = useState([]); // For multi-store assignment
 
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
-    const [successMessage, setSuccessMessage] = useState(null);
-    const [loadingStoresError, setLoadingStoresError] = useState(null);
+    const [availableRoles, setAvailableRoles] = useState([]);
+    // const [availableStores, setAvailableStores] = useState([]);
 
+
+    const [isLoading, setIsLoading] = useState(false); // Form-specific loading
+    const [pageError, setPageError] = useState(null);
+    const [formError, setFormError] = useState(''); // For field-specific errors or general form error
+
+    // Fetch roles (example, adapt if ROLES_OPTIONS from context is sufficient or you have an API)
     useEffect(() => {
-        // Set initial role once ROLES_OPTIONS is loaded from context
-        if (ROLES_OPTIONS && ROLES_OPTIONS.length > 0) {
-            if (!isEditing || !role) { // Only set default if not editing or role isn't already set
-                 setRole(ROLES_OPTIONS[0].value);
+        if (ROLES_OPTIONS) {
+            setAvailableRoles(ROLES_OPTIONS);
+            if (!isEditing && ROLES_OPTIONS.length > 0) {
+                 // Set a default role for new users if desired, e.g., Sales Person
+                const defaultRole = ROLES_OPTIONS.find(r => r.label === 'Sales Person');
+                if (defaultRole) setRoleId(defaultRole.value);
             }
         }
-    }, [ROLES_OPTIONS, isEditing, role]);
+        // else if (apiInstance) { /* Fetch roles from API if not in context */ }
+    }, [ROLES_OPTIONS, apiInstance, isEditing]);
 
-
+    // Fetch user data if editing
     const fetchUserData = useCallback(async () => {
-        if (!isEditing || !api) return;
-        setLoading(true);
-        setError(null);
+        if (!isEditing || !apiInstance || !isAuthenticated || !userId) {
+            console.warn("[UserForm fetchUserData] Pre-conditions not met.");
+            return;
+        }
+        console.log(`[UserForm] Fetching user data for ID: ${userId}`);
+        setIsLoading(true);
+        setPageError(null);
         try {
-            const response = await api.get(`/users/${userId}`);
+            const response = await apiInstance.get(`/users/${userId}`); // API uses the ID from the URL
             const userData = response.data;
-            setUsername(userData.username);
+            setUsername(userData.username || '');
+            setFirstName(userData.first_name || '');
+            setLastName(userData.last_name || '');
             setEmail(userData.email || '');
-            setRole(userData.role); // This will be the role value e.g., "store_admin"
-            setStoreId(userData.store_id?.toString() || '');
+            setRoleId(userData.role_id || ''); // Assuming API returns role_id
+            setIsActive(userData.is_active !== undefined ? userData.is_active : true);
+            setEmployeeId(userData.employee_id || '');
+            // setAssignedStoreIds(userData.stores?.map(s => s.id) || []); // Example for assigned stores
+            console.log("[UserForm] User data fetched:", userData);
         } catch (err) {
-            console.error("Error fetching user details:", err);
-            const errorMsg = err.response?.data?.message || 'Failed to load user data.';
-            if (err.response?.status === 401 || err.response?.status === 403) {
-                setError('Unauthorized: Could not fetch user. Please log in again.');
-            } else {
-                setError(errorMsg);
-            }
+            console.error("[UserForm] Failed to fetch user data:", err);
+            setPageError(err.response?.data?.message || "Failed to load user data. User may not exist or an error occurred.");
         } finally {
-            setLoading(false);
+            setIsLoading(false);
         }
-    }, [userId, isEditing, api]);
-
-    const fetchAvailableStores = useCallback(async () => {
-        if (!api) return;
-        setLoadingStoresError(null);
-        try {
-            const response = await api.get('/stores');
-            setAvailableStores(response.data || []);
-        } catch (err) {
-            console.error("Failed to fetch stores", err);
-            const errorMsg = err.response?.data?.message || 'Failed to load stores for assignment.';
-             if (err.response?.status === 401 || err.response?.status === 403) {
-                setLoadingStoresError('Unauthorized: Could not fetch stores. Please log in again.');
-            } else {
-                setLoadingStoresError(errorMsg);
-            }
-        }
-    }, [api]);
+    }, [userId, apiInstance, isAuthenticated, isEditing]);
 
     useEffect(() => {
-        fetchAvailableStores();
+        if (ROLES_OPTIONS) {
+            setAvailableRoles(ROLES_OPTIONS);
+            if (!isEditing && ROLES_OPTIONS.length > 0) {
+                const defaultRole = ROLES_OPTIONS.find(r => r.label === 'Sales Person');
+                if (defaultRole) {
+                    setRoleId(defaultRole.value);
+                } else if (ROLES_OPTIONS.length > 0) { // Fallback if 'Sales Person' not found
+                    setRoleId(ROLES_OPTIONS[0].value);
+                }
+            } else if (!isEditing && ROLES_OPTIONS.length === 0) {
+                setRoleId(''); // Explicitly clear if no roles
+            }
+        } else {
+            // ROLES_OPTIONS is null or undefined
+            setAvailableRoles([]);
+            if (!isEditing) {
+                setRoleId('');
+            }
+        }
+    }, [ROLES_OPTIONS, isEditing]); // Effect for handling ROLES_OPTIONS
+
+    useEffect(() => {
+        if (authLoading) return; 
+
+        if (!isAuthenticated) {
+            setPageError("Authentication required.");
+            return;
+        }
         if (isEditing) {
             fetchUserData();
         } else {
-            // Reset form for new entry
+            // Reset form for "Add New" mode
             setUsername('');
+            setFirstName('');
+            setLastName('');
             setEmail('');
             setPassword('');
             setConfirmPassword('');
-            // Role is set by the other useEffect based on ROLES_OPTIONS
-            setStoreId('');
-            setError(null);
-            setSuccessMessage(null);
+            // This part ensures roleId is set based on availableRoles when creating a new user
+            if (availableRoles.length > 0) {
+                const defaultRole = availableRoles.find(r => r.label === 'Sales Person');
+                if (defaultRole) {
+                    setRoleId(defaultRole.value);
+                } else {
+                    setRoleId(availableRoles[0].value); // Fallback to first role
+                }
+            } else {
+                setRoleId(''); // If no roles available (yet)
+            }
+            setIsActive(true);
+            setEmployeeId('');
+            setPageError(null);
+            setFormError('');
         }
-    }, [isEditing, fetchUserData, fetchAvailableStores]);
+    }, [isEditing, fetchUserData, authLoading, isAuthenticated, availableRoles]);
 
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setError(null);
-        setSuccessMessage(null);
-        setLoading(true);
+        setFormError('');
+        setPageError(null);
 
-        if (!username.trim()) { setError("Username is required."); setLoading(false); return; }
-        if (!email.trim()) { setError("Email is required."); setLoading(false); return; }
-        if (!/\S+@\S+\.\S+/.test(email.trim())) { setError("Please enter a valid email address."); setLoading(false); return; }
-        if (!role) { setError("Role is required."); setLoading(false); return; }
-
-        if (!isEditing) {
-            if (!password) { setError("Password is required for new users."); setLoading(false); return; }
-            if (password !== confirmPassword) { setError("Passwords do not match."); setLoading(false); return; }
-        } else {
-            if (password && confirmPassword && password !== confirmPassword) {
-                setError("Passwords do not match.");
-                setLoading(false);
-                return;
-            }
+        if (!username.trim()) {
+            setFormError("Username is required.");
+            return;
+        }
+        if (!email.trim() || !/\S+@\S+\.\S+/.test(email.trim())) {
+            setFormError("A valid email is required.");
+            return;
+        }
+        if (!isEditing && !password) { // Password required for new users
+            setFormError("Password is required for new users.");
+            return;
+        }
+        if (password && password !== confirmPassword) {
+            setFormError("Passwords do not match.");
+            return;
+        }
+        if (!roleId) {
+            setFormError("Role is required.");
+            return;
         }
 
-        const userData = {
+        setIsLoading(true);
+
+        const userDataPayload = {
             username: username.trim(),
+            first_name: firstName.trim() || null,
+            last_name: lastName.trim() || null,
             email: email.trim(),
-            role,
-            store_id: (role === 'store_admin' || role === 'sales_person') && storeId ? parseInt(storeId) : null,
+            role_id: parseInt(roleId, 10), // Ensure role_id is an integer
+            is_active: isActive,
+            employee_id: employeeId.trim() || null,
+            // store_ids: assignedStoreIds, // Example for store assignment
         };
 
         if (password) { // Only include password if it's being set/changed
-            userData.password = password;
+            userDataPayload.password = password;
         }
+
+        console.log("[UserForm] Submitting data:", userDataPayload);
 
         try {
             if (isEditing) {
-                await api.put(`/users/${userId}`, userData);
-                setSuccessMessage('User updated successfully!');
+                await apiInstance.put(`/users/${userId}`, userDataPayload);
             } else {
-                await api.post('/users', userData);
-                setSuccessMessage('User created successfully!');
+                await apiInstance.post('/users', userDataPayload);
             }
-            setTimeout(() => {
-                navigate('/users');
-            }, 1500);
+            navigate('/dashboard/users', {
+                state: {
+                    message: `User "${userDataPayload.username}" ${isEditing ? 'updated' : 'created'} successfully.`,
+                    type: 'success'
+                }
+            });
         } catch (err) {
-            console.error("Error saving user:", err);
-            const errorMsg = err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} user.`;
-            if (err.response?.status === 401 || err.response?.status === 403) {
-                setError('Unauthorized: Could not save user. Please log in again.');
-            } else {
-                setError(errorMsg);
-            }
+            console.error("[UserForm] Error saving user:", err.response || err);
+            const errMsg = err.response?.data?.message || `Failed to ${isEditing ? 'save' : 'create'} user.`;
+            // If backend sends specific field errors, you might want to parse them
+            // e.g., if (err.response?.data?.errors) { setFormError(Object.values(err.response.data.errors).join(', ')); }
+            setFormError(errMsg); // Display as a general form error for now
         } finally {
-            setLoading(false);
+            setIsLoading(false);
         }
     };
-    
-    if (loading && isEditing && !username && !error) return <p style={styles.centeredMessage}>Loading user data...</p>;
-    if (!ROLES_OPTIONS) return <p style={styles.centeredMessage}>Loading configuration...</p>;
+
+    if (authLoading) return <p style={styles.centeredMessage}>Authenticating...</p>;
+    // Initial loading for edit mode before data is fetched
+    if (isEditing && isLoading && !username && !pageError) return <p style={styles.centeredMessage}>Loading user details...</p>;
+    if (pageError) return <p style={styles.errorBox}>Error: {pageError}</p>;
 
 
     return (
         <div style={styles.container}>
-            <h2 style={styles.title}>{isEditing ? 'Edit User' : 'Create New User'}</h2>
-            {error && <p style={styles.errorBox}>Error: {error}</p>}
-            {successMessage && <p style={styles.successBox}>{successMessage}</p>}
-            {loadingStoresError && <p style={styles.errorBox}>Store Loading Error: {loadingStoresError}</p>}
-
+            <h2 style={styles.title}>{isEditing ? `Edit User (ID: ${userId})` : 'Add New User'}</h2>
+            {formError && <p style={{...styles.errorBox, backgroundColor: '#ffe6e6', borderColor: 'red', color: 'red'}}>{formError}</p>}
             <form onSubmit={handleSubmit}>
                 <div style={styles.formGroup}>
                     <label htmlFor="username" style={styles.label}>Username: *</label>
-                    <input type="text" id="username" value={username} onChange={e => setUsername(e.target.value)} required style={styles.input} disabled={loading} />
+                    <input type="text" id="username" value={username} onChange={(e) => setUsername(e.target.value)} required style={styles.input} disabled={isLoading} />
+                </div>
+                <div style={styles.formGroup}>
+                    <label htmlFor="firstName" style={styles.label}>First Name:</label>
+                    <input type="text" id="firstName" value={firstName} onChange={(e) => setFirstName(e.target.value)} style={styles.input} disabled={isLoading} />
+                </div>
+                <div style={styles.formGroup}>
+                    <label htmlFor="lastName" style={styles.label}>Last Name:</label>
+                    <input type="text" id="lastName" value={lastName} onChange={(e) => setLastName(e.target.value)} style={styles.input} disabled={isLoading} />
                 </div>
                 <div style={styles.formGroup}>
                     <label htmlFor="email" style={styles.label}>Email: *</label>
-                    <input type="email" id="email" value={email} onChange={e => setEmail(e.target.value)} required style={styles.input} disabled={loading} />
+                    <input type="email" id="email" value={email} onChange={(e) => setEmail(e.target.value)} required style={styles.input} disabled={isLoading} />
                 </div>
                 <div style={styles.formGroup}>
-                    <label htmlFor="password" style={styles.label}>Password: {isEditing ? '(Leave blank to keep current)' : '*'}</label>
-                    <input type="password" id="password" value={password} onChange={e => setPassword(e.target.value)} style={styles.input} disabled={loading} />
+                    <label htmlFor="password" style={styles.label}>{isEditing ? 'New Password (leave blank to keep current):' : 'Password: *'}</label>
+                    <input type="password" id="password" value={password} onChange={(e) => setPassword(e.target.value)} style={styles.input} disabled={isLoading} />
                 </div>
-                
                 <div style={styles.formGroup}>
-                    <label htmlFor="confirmPassword" style={styles.label}>Confirm Password: {isEditing && !password ? '(Only if changing password)' : (isEditing && password ? '*' : '*')}</label>
-                    <input type="password" id="confirmPassword" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} style={styles.input} disabled={loading || (isEditing && !password)} required={!isEditing || (isEditing && password)} />
+                    <label htmlFor="confirmPassword" style={styles.label}>{isEditing ? 'Confirm New Password:' : 'Confirm Password: *'}</label>
+                    <input type="password" id="confirmPassword" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} style={styles.input} disabled={isLoading} />
                 </div>
-                
-                <div style={styles.formGroup}>
-                    <label htmlFor="role" style={styles.label}>Role: *</label>
-                    <select id="role" value={role} onChange={e => setRole(e.target.value)} required style={styles.input} disabled={loading || !ROLES_OPTIONS}>
-                        {ROLES_OPTIONS && ROLES_OPTIONS.map(option => (
-                            <option key={option.value} value={option.value}>{option.label}</option>
+                 <div style={styles.formGroup}>
+                    <label htmlFor="roleId" style={styles.label}>Role: *</label>
+                    <select id="roleId" value={roleId} onChange={(e) => setRoleId(e.target.value)} required style={styles.select} disabled={isLoading || availableRoles.length === 0}>
+                        <option value="">-- Select Role --</option>
+                        {availableRoles.map(role => (
+                            <option key={role.value} value={role.value}>{role.label}</option>
                         ))}
                     </select>
                 </div>
+                <div style={styles.formGroup}>
+                    <label htmlFor="employeeId" style={styles.label}>Employee ID:</label>
+                    <input type="text" id="employeeId" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} style={styles.input} disabled={isLoading} />
+                </div>
+                <div style={styles.formGroup}>
+                    <input type="checkbox" id="isActive" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} disabled={isLoading} />
+                    <label htmlFor="isActive" style={styles.checkboxLabel}>User is Active</label>
+                </div>
 
-                {(role === 'store_admin' || role === 'sales_person') && (
-                     <div style={styles.formGroup}>
-                        <label htmlFor="storeId" style={styles.label}>Assign to Store:</label>
-                        <select 
-                            id="storeId" 
-                            value={storeId} 
-                            onChange={e => setStoreId(e.target.value)} 
-                            style={styles.input} 
-                            disabled={loading || availableStores.length === 0}
-                            required // Store assignment is required if the role needs it
-                        >
-                            <option value="">-- Select Store --</option>
-                            {availableStores.map(store => (
-                                <option key={store.id} value={store.id.toString()}>{store.name}</option>
-                            ))}
-                        </select>
-                        {availableStores.length === 0 && !loadingStoresError && <p style={styles.fieldHelperText}>No stores available for assignment.</p>}
-                    </div>
-                )}
+                {/* Placeholder for store assignment - this would require more complex UI and state */}
+                {/* <div style={styles.formGroup}>
+                    <label style={styles.label}>Assign Stores:</label>
+                    {availableStores.map(store => (
+                        <div key={store.id}>
+                            <input
+                                type="checkbox"
+                                id={`store-${store.id}`}
+                                checked={assignedStoreIds.includes(store.id)}
+                                onChange={(e) => {
+                                    const storeIdNum = parseInt(store.id, 10);
+                                    if (e.target.checked) {
+                                        setAssignedStoreIds(prev => [...prev, storeIdNum]);
+                                    } else {
+                                        setAssignedStoreIds(prev => prev.filter(id => id !== storeIdNum));
+                                    }
+                                }}
+                                disabled={isLoading}
+                            />
+                            <label htmlFor={`store-${store.id}`} style={styles.checkboxLabel}>{store.name}</label>
+                        </div>
+                    ))}
+                </div> */}
 
                 <div style={styles.buttonGroup}>
-                    <button type="submit" disabled={loading} style={styles.buttonPrimary}>
-                        {loading ? 'Saving...' : (isEditing ? 'Update User' : 'Create User')}
+                    <button type="submit" disabled={isLoading} style={styles.buttonPrimary}>
+                        {isLoading ? 'Saving...' : (isEditing ? 'Update User' : 'Create User')}
                     </button>
-                    <button type="button" onClick={() => navigate('/users')} style={styles.buttonSecondary} disabled={loading}>
+                    <button type="button" onClick={() => navigate('/dashboard/users')} style={styles.buttonSecondary} disabled={isLoading}>
                         Cancel
                     </button>
                 </div>
             </form>
         </div>
     );
-};
-
-// Consistent Form Styles
-const styles = {
-    container: { padding: '20px', maxWidth: '600px', margin: '40px auto', fontFamily: 'Arial, sans-serif', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', borderRadius: '8px', backgroundColor: '#fff' },
-    title: { marginBottom: '25px', color: '#333', textAlign: 'center', borderBottom: '1px solid #eee', paddingBottom: '15px' },
-    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
-    errorBox: { color: '#D8000C', border: '1px solid #FFBABA', padding: '10px 15px', marginBottom: '20px', borderRadius: '4px', backgroundColor: '#FFD2D2' },
-    successBox: { color: '#2F855A', border: '1px solid #C6F6D5', padding: '10px 15px', marginBottom: '20px', borderRadius: '4px', backgroundColor: '#E6FFFA' },
-    formGroup: { marginBottom: '20px' },
-    label: { display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#555' },
-    input: { width: '100%', padding: '12px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1em' },
-    fieldHelperText: { fontSize: '0.9em', color: '#666', marginTop: '5px' },
-    buttonGroup: { marginTop: '30px', display: 'flex', justifyContent: 'flex-end', gap: '10px' },
-    buttonPrimary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
-    buttonSecondary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
-};
+}
 
 export default UserForm;

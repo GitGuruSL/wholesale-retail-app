@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+// import axios from 'axios'; // REMOVE THIS
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext'; // Import useAuth
 
-const API_BASE_URL = 'http://localhost:5001/api';
+// const API_BASE_URL = 'http://localhost:5001/api'; // REMOVE THIS
 
 function TaxForm() {
     const { taxId } = useParams();
     const navigate = useNavigate();
+    const { apiInstance, isAuthenticated, isLoading: authLoading } = useAuth(); // Use AuthContext
+
     const isEditing = Boolean(taxId);
 
     const [name, setName] = useState('');
@@ -14,154 +17,146 @@ function TaxForm() {
     const [taxTypeId, setTaxTypeId] = useState('');
     const [taxTypeOptions, setTaxTypeOptions] = useState([]);
 
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
-    const [loadingError, setLoadingError] = useState(null); // For dropdown loading
+    const [isLoading, setIsLoading] = useState(false); // Component-specific loading
+    const [pageError, setPageError] = useState(null); // For general page errors
+    const [formError, setFormError] = useState(null); // For form submission/validation errors
+    const [loadingDropdownError, setLoadingDropdownError] = useState(null); // For tax type dropdown loading error
 
-    const fetchTaxTypes = useCallback(async (token) => {
-        setLoading(true);
-        setLoadingError(null);
+    const fetchTaxTypes = useCallback(async () => {
+        if (!apiInstance || !isAuthenticated) return;
+        setIsLoading(true); // Indicate loading for dropdown
+        setLoadingDropdownError(null);
         try {
-            const config = { headers: { Authorization: `Bearer ${token}` } };
-            const response = await axios.get(`${API_BASE_URL}/tax-types`, config);
+            const response = await apiInstance.get('/tax-types');
             setTaxTypeOptions(response.data || []);
-            if (!isEditing) setLoading(false); // Only stop general loading if not editing
         } catch (err) {
-            console.error("Error fetching tax types:", err);
+            console.error("[TaxForm] Error fetching tax types:", err);
             const errorMsg = err.response?.data?.message || 'Failed to load tax types.';
-            if (err.response?.status === 401 || err.response?.status === 403) {
-                setLoadingError('Unauthorized: Could not fetch tax types. Please log in again.');
-            } else {
-                setLoadingError(errorMsg);
-            }
+            setLoadingDropdownError(errorMsg);
             setTaxTypeOptions([]);
-            setLoading(false);
+        } finally {
+            if (!isEditing || (isEditing && !taxId)) { // Only stop general loading if not editing or no taxId yet
+                 setIsLoading(false);
+            }
         }
-    }, [isEditing]);
+    }, [apiInstance, isAuthenticated, isEditing, taxId]);
 
-    const fetchTaxData = useCallback(async (token) => {
-        if (!isEditing) return;
-        setLoading(true);
-        setError(null);
+    const fetchTaxData = useCallback(async () => {
+        if (!isEditing || !taxId || !apiInstance || !isAuthenticated) return;
+        setIsLoading(true); // Indicate loading for tax data
+        setPageError(null);
         try {
-            const config = { headers: { Authorization: `Bearer ${token}` } };
-            const response = await axios.get(`${API_BASE_URL}/taxes/${taxId}`, config);
+            const response = await apiInstance.get(`/taxes/${taxId}`);
             const data = response.data;
             setName(data.name);
             setRate(data.rate.toString());
-            setTaxTypeId(data.tax_type_id.toString()); // Ensure it's a string for select
-            setLoading(false);
+            setTaxTypeId(data.tax_type_id.toString());
         } catch (err) {
-            console.error("Error fetching tax details:", err);
+            console.error("[TaxForm] Error fetching tax details:", err);
             const errorMsg = err.response?.data?.message || 'Failed to load tax data.';
-            if (err.response?.status === 401 || err.response?.status === 403) {
-                setError('Unauthorized: Could not fetch tax. Please log in again.');
-            } else {
-                setError(errorMsg);
-            }
-            setLoading(false);
+            setPageError(errorMsg);
+        } finally {
+            setIsLoading(false);
         }
-    }, [isEditing, taxId]);
+    }, [isEditing, taxId, apiInstance, isAuthenticated]);
 
     useEffect(() => {
-        const token = localStorage.getItem('token');
-        if (!token) {
-            setError('Authentication token not found. Please log in.');
-            setLoading(false);
-            // navigate('/login'); // Optionally redirect
-            return;
+        if (!authLoading && isAuthenticated && apiInstance) {
+            fetchTaxTypes().then(() => { // Fetch tax types first
+                if (isEditing && taxId) {
+                    fetchTaxData(); // Then fetch tax data if editing
+                } else if (!isEditing) {
+                    // Reset form for new tax
+                    setName('');
+                    setRate('');
+                    setTaxTypeId('');
+                    setPageError(null);
+                    setFormError(null);
+                }
+            });
+        } else if (!authLoading && !isAuthenticated) {
+            setPageError('Authentication required. Please log in.');
+            setIsLoading(false);
         }
-        fetchTaxTypes(token);
-    }, [fetchTaxTypes, navigate]);
+    }, [authLoading, isAuthenticated, apiInstance, isEditing, taxId, fetchTaxTypes, fetchTaxData]);
 
-    useEffect(() => {
-        const token = localStorage.getItem('token');
-        if (!token && isEditing) {
-            setError('Authentication token not found. Please log in.');
-            setLoading(false);
-            return;
-        }
-        if (isEditing && (taxTypeOptions.length > 0 || loadingError === null)) { // Proceed if types loaded or no error yet
-            fetchTaxData(token);
-        } else if (!isEditing) {
-            setName('');
-            setRate('');
-            setTaxTypeId('');
-            setError(null);
-        }
-    }, [isEditing, taxTypeOptions.length, loadingError, fetchTaxData, navigate]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setLoading(true);
-        setError(null);
+        if (!apiInstance || !isAuthenticated) {
+            setFormError("Authentication error. Please log in again.");
+            return;
+        }
+        setIsLoading(true);
+        setPageError(null);
+        setFormError(null);
 
         const parsedRate = parseFloat(rate);
         const parsedTypeId = parseInt(taxTypeId, 10);
 
-        if (!name.trim()) { setError("Tax name is required."); setLoading(false); return; }
-        if (isNaN(parsedRate) || parsedRate < 0) { setError("A valid non-negative numeric rate is required."); setLoading(false); return; }
-        if (!taxTypeId || isNaN(parsedTypeId)) { setError("A valid tax type must be selected."); setLoading(false); return; }
+        if (!name.trim()) { setFormError("Tax name is required."); setIsLoading(false); return; }
+        if (isNaN(parsedRate) || parsedRate < 0) { setFormError("A valid non-negative numeric rate is required."); setIsLoading(false); return; }
+        if (!taxTypeId || isNaN(parsedTypeId)) { setFormError("A valid tax type must be selected."); setIsLoading(false); return; }
 
         const taxData = { name: name.trim(), rate: parsedRate, tax_type_id: parsedTypeId };
 
         try {
-            const token = localStorage.getItem('token');
-            if (!token) {
-                setError('Authentication token not found. Please log in.');
-                setLoading(false);
-                // navigate('/login'); // Optionally redirect
-                return;
-            }
-            const config = { headers: { Authorization: `Bearer ${token}` } };
-
             if (isEditing) {
-                await axios.put(`${API_BASE_URL}/taxes/${taxId}`, taxData, config);
+                await apiInstance.put(`/taxes/${taxId}`, taxData);
             } else {
-                await axios.post(`${API_BASE_URL}/taxes`, taxData, config);
+                await apiInstance.post('/taxes', taxData);
             }
-            navigate('/taxes');
+            // Ensure path matches App.jsx, e.g., /dashboard/taxes
+            navigate('/dashboard/taxes', {
+                state: {
+                    message: `Tax "${taxData.name}" ${isEditing ? 'updated' : 'created'} successfully.`,
+                    type: 'success'
+                }
+            });
         } catch (err) {
-            console.error("Error saving tax:", err);
-            const errorMsg = err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} tax.`;
-            if (err.response?.status === 401 || err.response?.status === 403) {
-                setError('Unauthorized: Could not save tax. Please log in again.');
-            } else {
-                setError(errorMsg);
+            console.error("[TaxForm] Error saving tax:", err);
+            const errMsg = err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} tax.`;
+            setFormError(errMsg);
+            if (err.response?.data?.errors) { // For backend field-specific errors
+                setFormError(Object.values(err.response.data.errors).join(', '));
             }
         } finally {
-            setLoading(false);
+            setIsLoading(false);
         }
     };
 
-    if (loadingError) return <p style={styles.errorBox}>Error: {loadingError}</p>;
-    if (loading && (!isEditing || !name)) return <p style={styles.centeredMessage}>Loading...</p>;
+    if (authLoading) return <p style={styles.centeredMessage}>Authenticating...</p>;
+    if (loadingDropdownError) return <p style={styles.errorBox}>Error loading dependencies: {loadingDropdownError}</p>;
+    // Show general loading if component is loading and not yet editing, or if editing but name isn't populated
+    if (isLoading && ((isEditing && !name) || !isEditing)) return <p style={styles.centeredMessage}>Loading form...</p>;
 
 
     return (
         <div style={styles.container}>
-            <h2 style={styles.title}>{isEditing ? 'Edit Tax' : 'Add New Tax'}</h2>
-            {error && <p style={styles.errorBox}>Error: {error}</p>}
+            <h2 style={styles.title}>{isEditing ? `Edit Tax (ID: ${taxId})` : 'Add New Tax'}</h2>
+            {pageError && <p style={styles.errorBox}>Page Error: {pageError}</p>}
+            {formError && <p style={{...styles.errorBox, backgroundColor: '#ffe6e6', borderColor: 'red', color: 'red'}}>Form Error: {formError}</p>}
             <form onSubmit={handleSubmit}>
                 <div style={styles.formGroup}>
                     <label htmlFor="taxName" style={styles.label}>Tax Name: *</label>
-                    <input type="text" id="taxName" value={name} onChange={(e) => setName(e.target.value)} required style={styles.input} disabled={loading} placeholder="e.g., VAT 5%, GST 10%"/>
+                    <input type="text" id="taxName" value={name} onChange={(e) => setName(e.target.value)} required style={styles.input} disabled={isLoading} placeholder="e.g., VAT 5%, GST 10%"/>
                 </div>
                 <div style={styles.formGroup}>
-                    <label htmlFor="taxRate" style={styles.label}>Rate: *</label>
-                    <input type="number" id="taxRate" value={rate} onChange={(e) => setRate(e.target.value)} required style={styles.input} disabled={loading} step="any" min="0" placeholder="e.g., 5 or 10.5"/>
+                    <label htmlFor="taxRate" style={styles.label}>Rate (%): *</label>
+                    <input type="number" id="taxRate" value={rate} onChange={(e) => setRate(e.target.value)} required style={styles.input} disabled={isLoading} step="any" min="0" placeholder="e.g., 5 or 10.5"/>
                 </div>
                  <div style={styles.formGroup}>
                     <label htmlFor="taxType" style={styles.label}>Tax Type: *</label>
-                    <select id="taxType" value={taxTypeId} onChange={(e) => setTaxTypeId(e.target.value)} required style={styles.input} disabled={loading || taxTypeOptions.length === 0}>
+                    <select id="taxType" value={taxTypeId} onChange={(e) => setTaxTypeId(e.target.value)} required style={styles.input} disabled={isLoading || taxTypeOptions.length === 0}>
                         <option value="">-- Select Type --</option>
                         {taxTypeOptions.map(type => <option key={type.id} value={type.id.toString()}>{type.name}</option>)}
                     </select>
-                    {taxTypeOptions.length === 0 && !loading && !loadingError && <p style={styles.fieldHelperText}>No tax types available. Please add tax types first.</p>}
+                    {taxTypeOptions.length === 0 && !isLoading && !loadingDropdownError && <p style={styles.fieldHelperText}>No tax types available. Please add tax types first.</p>}
                 </div>
                 <div style={styles.buttonGroup}>
-                    <button type="submit" disabled={loading} style={styles.buttonPrimary}> {loading ? 'Saving...' : (isEditing ? 'Update Tax' : 'Create Tax')} </button>
-                    <button type="button" onClick={() => navigate('/taxes')} style={styles.buttonSecondary} disabled={loading}> Cancel </button>
+                    <button type="submit" disabled={isLoading} style={styles.buttonPrimary}> {isLoading ? 'Saving...' : (isEditing ? 'Update Tax' : 'Create Tax')} </button>
+                    {/* Ensure path matches App.jsx, e.g., /dashboard/taxes */}
+                    <button type="button" onClick={() => navigate('/dashboard/taxes')} style={styles.buttonSecondary} disabled={isLoading}> Cancel </button>
                 </div>
             </form>
         </div>
@@ -173,7 +168,7 @@ const styles = {
     container: { padding: '20px', maxWidth: '600px', margin: '40px auto', fontFamily: 'Arial, sans-serif', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', borderRadius: '8px', backgroundColor: '#fff' },
     title: { marginBottom: '25px', color: '#333', textAlign: 'center', borderBottom: '1px solid #eee', paddingBottom: '15px' },
     centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
-    errorBox: { color: '#D8000C', border: '1px solid #FFBABA', padding: '10px 15px', marginBottom: '20px', borderRadius: '4px', backgroundColor: '#FFD2D2' },
+    errorBox: { color: '#D8000C', border: '1px solid #FFBABA', padding: '10px 15px', marginBottom: '20px', borderRadius: '4px', backgroundColor: '#FFD2D2', textAlign: 'center' },
     formGroup: { marginBottom: '20px' },
     label: { display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#555' },
     input: { width: '100%', padding: '12px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1em' },

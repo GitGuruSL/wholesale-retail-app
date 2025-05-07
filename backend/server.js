@@ -1,128 +1,123 @@
-require('dotenv').config(); // Load environment variables at the very top
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const morgan = require('morgan'); // For HTTP request logging
+const knex = require('./db/knex');
+const { authenticateToken } = require('./middleware/authMiddleware'); // Import authenticateToken
 
-// --- Knex Database Setup ---
-const knexConfig = require('./knexfile');
-const environment = process.env.NODE_ENV || 'development';
-const knex = require('knex')(knexConfig[environment]);
-
-// --- Middleware Imports ---
-// ####################################################################################
-// #                                                                                  #
-// #  >>>>> CRITICAL ERROR LOCATION <<<<<                                             #
-// #                                                                                  #
-// # The error "column 'email' does not exist" originates from the                    #
-// # 'authenticateToken' function in the file:                                        #
-// #                                                                                  #
-// #          >>>   ./middleware/authMiddleware.js   <<<                             #
-// #                                                                                  #
-// # You MUST modify the Knex database query inside that 'authenticateToken' function #
-// # to select only columns that actually exist in your 'users' table.                #
-// # For example, remove 'email' and 'store_id' from its SELECT statement if they     #
-// # are not in the 'users' table.                                                    #
-// #                                                                                  #
-// ####################################################################################
-const { authenticateToken, authorizeRole } = require('./middleware/authMiddleware');
-const errorHandler = require('./middleware/errorHandler');
-const notFoundHandler = require('./middleware/notFoundHandler');
-
-// --- Role Constants Import ---
-const ROLES = require('./utils/roles');
-
-// --- Router Imports (Creator Functions) ---
+// --- Import Router Creation Functions ---
 const createAuthRouter = require('./routes/auth');
-const createUsersRouter = require('./routes/users');
-const createStoresRouter = require('./routes/stores');
-const createEmployeesRouter = require('./routes/employees');
-const createProductsRouter = require('./routes/products');
-const createCategoriesRouter = require('./routes/categories');
-const createSubCategoriesRouter = require('./routes/sub_categories');
+const createBarcodeSymbologiesRouter = require('./routes/barcode_symbologies');
 const createBrandsRouter = require('./routes/brands');
-const createUnitsRouter = require('./routes/units');
+const createCategoriesRouter = require('./routes/categories');
+const createDiscountTypesRouter = require('./routes/discount_types');
+const createEmployeesRouter = require('./routes/employees');
+const createInventoryRouter = require('./routes/inventory');
+const createManufacturersRouter = require('./routes/manufacturers');
+const createProductUnitsRouter = require('./routes/product_units');
+const createProductsRouter = require('./routes/products');
+const createSalesRouter = require('./routes/sales');
+const createSpecialCategoriesRouter = require('./routes/special_categories');
+const createStoresRouter = require('./routes/stores');
+const createSubCategoriesRouter = require('./routes/sub_categories');
 const createSuppliersRouter = require('./routes/suppliers');
 const createTaxTypesRouter = require('./routes/tax_types');
 const createTaxesRouter = require('./routes/taxes');
-const createManufacturersRouter = require('./routes/manufacturers');
+const createUnitsRouter = require('./routes/units');
+const createUsersRouter = require('./routes/users');
 const createWarrantiesRouter = require('./routes/warranties');
-const createBarcodeSymbologiesRouter = require('./routes/barcode_symbologies');
-const createDiscountTypesRouter = require('./routes/discount_types');
-const createSpecialCategoriesRouter = require('./routes/special_categories');
-const createInventoryRouter = require('./routes/inventory');
-const createSalesRouter = require('./routes/sales');
-// Add other router imports as needed
 
-// --- Express App Setup ---
 const app = express();
 
-// --- Basic Global Middleware ---
+// --- Core Middleware ---
 app.use(cors({
     origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-    credentials: true,
+    credentials: true
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(morgan(environment === 'development' ? 'dev' : 'common'));
 
-// --- Mount Public Routers ---
-// Authentication routes (login, etc.) are public and do not require prior token authentication.
-app.use('/api/auth', createAuthRouter(knex)); // `authenticateToken` is NOT applied here
+// --- Request Logging Middleware ---
+app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.originalUrl} - User: ${req.user ? req.user.id : 'Guest'}`);
+    next();
+});
 
-// --- Apply Global Authentication for Protected API Routes ---
-// All routes defined under '/api' AFTER this line will first pass through `authenticateToken`
-// from './middleware/authMiddleware.js'.
-// If the token is valid, `req.user` should be populated.
-// THE ERROR "column 'email' does not exist" ORIGINATES FROM THE `authenticateToken`
-// FUNCTION IN './middleware/authMiddleware.js' DUE TO AN INCORRECT DATABASE QUERY.
-// THIS `server.js` FILE IS CORRECTLY *USING* THE MIDDLEWARE; THE MIDDLEWARE ITSELF IS FLAWED.
-app.use('/api', authenticateToken);
+// --- Mount Routers ---
+// Helper to mount routers, allowing for prepended middleware (like authenticateToken)
+const mountRouter = (path, routerCreator, ...middlewares) => {
+    if (typeof routerCreator !== 'function') {
+        console.warn(`Router creator for ${path} is not a function or is undefined. Skipping mount.`);
+        return;
+    }
+    try {
+        const router = routerCreator(knex); // Pass knex instance
+        if (middlewares.length > 0) {
+            app.use(path, ...middlewares, router);
+            console.log(`Mounted ${path} with ${middlewares.map(m => m.name || 'middleware').join(', ')}`);
+        } else {
+            app.use(path, router);
+            console.log(`Mounted ${path}`);
+        }
+    } catch (error) {
+        console.error(`Error creating or mounting router for ${path}:`, error);
+    }
+};
 
-// --- Mount Protected Routers ---
-// These routes are now protected by the global `authenticateToken` above.
-// `authorizeRole` can be used for more granular, role-based access control.
+// Public routes (or routes with their own internal auth)
+mountRouter('/api/auth', createAuthRouter);
 
-// Users route: Example - only GLOBAL_ADMIN can access user management.
-app.use('/api/users', authorizeRole(ROLES.GLOBAL_ADMIN), createUsersRouter(knex, authorizeRole, ROLES));
+// Protected routes - apply authenticateToken before these routers
+mountRouter('/api/barcode-symbologies', createBarcodeSymbologiesRouter, authenticateToken);
+mountRouter('/api/brands', createBrandsRouter, authenticateToken);
+mountRouter('/api/categories', createCategoriesRouter, authenticateToken);
+mountRouter('/api/discount-types', createDiscountTypesRouter, authenticateToken);
+mountRouter('/api/employees', createEmployeesRouter, authenticateToken);
+mountRouter('/api/inventory', createInventoryRouter, authenticateToken);
+mountRouter('/api/manufacturers', createManufacturersRouter, authenticateToken);
+mountRouter('/api/product-units', createProductUnitsRouter, authenticateToken);
+mountRouter('/api/products', createProductsRouter, authenticateToken);
+mountRouter('/api/sales', createSalesRouter, authenticateToken);
+mountRouter('/api/special-categories', createSpecialCategoriesRouter, authenticateToken);
+mountRouter('/api/stores', createStoresRouter, authenticateToken); // Getting store list might need auth
+mountRouter('/api/sub-categories', createSubCategoriesRouter, authenticateToken);
+mountRouter('/api/suppliers', createSuppliersRouter, authenticateToken);
+mountRouter('/api/tax-types', createTaxTypesRouter, authenticateToken);
+mountRouter('/api/taxes', createTaxesRouter, authenticateToken);
+mountRouter('/api/units', createUnitsRouter, authenticateToken);
+mountRouter('/api/users', createUsersRouter, authenticateToken);
+mountRouter('/api/warranties', createWarrantiesRouter, authenticateToken);
 
-// Employees route: Example - GLOBAL_ADMIN or STORE_ADMIN can manage employees.
-app.use('/api/employees', authorizeRole([ROLES.GLOBAL_ADMIN, ROLES.STORE_ADMIN]), createEmployeesRouter(knex, authorizeRole, ROLES));
-
-// Other protected routers:
-app.use('/api/stores', createStoresRouter(knex, authorizeRole, ROLES));
-app.use('/api/products', createProductsRouter(knex, authorizeRole, ROLES));
-// For /api/categories, the global `authenticateToken` runs.
-// The createCategoriesRouter can then choose to make specific sub-routes (like GET /) public
-// or use `authorizeRole` for POST, PUT, DELETE.
-app.use('/api/categories', createCategoriesRouter(knex, authorizeRole, ROLES));
-app.use('/api/sub-categories', createSubCategoriesRouter(knex, authorizeRole, ROLES));
-app.use('/api/brands', createBrandsRouter(knex, authorizeRole, ROLES));
-app.use('/api/units', createUnitsRouter(knex, authorizeRole, ROLES));
-app.use('/api/suppliers', createSuppliersRouter(knex, authorizeRole, ROLES));
-app.use('/api/tax-types', createTaxTypesRouter(knex, authorizeRole, ROLES));
-app.use('/api/taxes', createTaxesRouter(knex, authorizeRole, ROLES));
-app.use('/api/manufacturers', createManufacturersRouter(knex, authorizeRole, ROLES));
-app.use('/api/warranties', createWarrantiesRouter(knex, authorizeRole, ROLES));
-app.use('/api/barcode-symbologies', createBarcodeSymbologiesRouter(knex, authorizeRole, ROLES));
-app.use('/api/discount-types', createDiscountTypesRouter(knex, authorizeRole, ROLES));
-app.use('/api/special-categories', createSpecialCategoriesRouter(knex, authorizeRole, ROLES));
-app.use('/api/inventory', createInventoryRouter(knex, authorizeRole, ROLES));
-app.use('/api/sales', createSalesRouter(knex, authorizeRole, ROLES));
-
-
-// --- 404 Handler (Not Found) ---
-app.use(notFoundHandler);
 
 // --- Global Error Handler ---
-app.use(errorHandler);
+app.use((err, req, res, next) => {
+    console.error("Global Error Handler Caught:", err.message, err.stack || '');
+    let statusCode = err.statusCode || 500;
+    let message = err.message || 'An unexpected error occurred on the server.';
+
+    if (err.name === 'UnauthorizedError') { // Example for express-jwt, adjust if using different
+        statusCode = 401;
+        message = 'Invalid or expired token.';
+    }
+    // Add more specific error type handling if needed
+    // e.g., if (err instanceof MyCustomError) { ... }
+
+    res.status(statusCode).json({
+        status: 'error',
+        statusCode,
+        message,
+        ...(process.env.NODE_ENV === 'development' && { errorDetails: err.stack }),
+    });
+});
 
 // --- Start Server ---
 const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
-    console.log(`Server running in ${environment} mode on port ${PORT}`);
-    knex.raw('SELECT 1 AS result')
-        .then(() => console.log('Database connection successful.'))
-        .catch(dbError => {
-            console.error('Database connection failed:', dbError.message); // Log only message for brevity
-        });
+    console.log(`Backend server running on port ${PORT}`);
+    console.log(`CORS configured for frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:5173'}`);
+    if (!process.env.JWT_SECRET) {
+        console.warn('SECURITY WARNING: JWT_SECRET is not defined in .env file. Authentication will not work correctly.');
+    }
+    if (!process.env.DATABASE_URL && (!process.env.DB_HOST || !process.env.DB_USER || !process.env.DB_DATABASE)) {
+        console.warn('DATABASE WARNING: Database connection details are not fully set in .env file.');
+    }
 });

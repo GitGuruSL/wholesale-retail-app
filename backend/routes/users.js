@@ -1,29 +1,34 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
-const ROLES = require('../utils/roles'); // Adjust path if needed
-const authorizeRoles = require('../middleware/authorizeRoles'); // Adjust path if needed
+const { PERMISSIONS } = require('../utils/roles'); // Your permissions constants
+const { authenticateToken, checkPermission } = require('../middleware/authMiddleware');
 
 function createUsersRouter(knex) {
     const router = express.Router();
-    const saltRounds = 10; // Cost factor for hashing
+    const saltRounds = 10;
 
     // --- GET /api/users --- List all users
-    // Requires GLOBAL_ADMIN role
-    router.get('/', authorizeRoles(ROLES.GLOBAL_ADMIN), async (req, res, next) => {
+    router.get('/', authenticateToken, checkPermission(PERMISSIONS.USER_READ_ALL), async (req, res, next) => {
         try {
             const users = await knex('users')
                 .leftJoin('employees', 'users.employee_id', 'employees.id')
+                .leftJoin('roles', 'users.role_id', 'roles.id')
                 .select(
-                    'users.id as user_id', // Alias to avoid confusion if employees also had an 'id' selected
+                    'users.id as user_id',
                     'users.username',
-                    'users.role',
+                    'users.role_id',
+                    'roles.name as role_name',
                     'users.employee_id',
-                    'users.created_at',
-                    'users.updated_at',
-                    'employees.first_name',
-                    'employees.last_name',
+                    'users.is_active',
+                    'users.created_at as user_created_at', // Alias to avoid conflict if joining other tables with timestamps
+                    'users.updated_at as user_updated_at', // Alias
+                    'employees.first_name as emp_first_name', // Alias for clarity
+                    'employees.last_name as emp_last_name',   // Alias
                     'employees.employee_code',
-                    'employees.email as employee_email' // Alias to distinguish from a potential future user email
+                    'employees.email as emp_email',           // Alias
+                    'users.first_name as user_first_name',
+                    'users.last_name as user_last_name',
+                    'users.email as user_email'
                 );
             res.json(users);
         } catch (err) {
@@ -33,38 +38,32 @@ function createUsersRouter(knex) {
     });
 
     // --- POST /api/users --- Create a new user
-    // Requires GLOBAL_ADMIN role
-    router.post('/', authorizeRoles(ROLES.GLOBAL_ADMIN), async (req, res, next) => {
-        const { username, password, role, employee_id } = req.body;
+    router.post('/', authenticateToken, checkPermission(PERMISSIONS.USER_CREATE), async (req, res, next) => {
+        const {
+            username, password, role_id, employee_id,
+            is_active = true, first_name, last_name, email
+        } = req.body;
 
-        // Basic Validation
-        if (!username || !password || !role) {
-            return res.status(400).json({ message: 'Username, password, and role are required.' });
+        if (!username || !password || role_id === undefined) {
+            return res.status(400).json({ message: 'Username, password, and role_id are required.' });
         }
         if (password.length < 6) {
             return res.status(400).json({ message: 'Password must be at least 6 characters long.' });
         }
-        // Ensure role is valid and not trying to create another GLOBAL_ADMIN directly (if that's a rule)
-        if (!Object.values(ROLES).includes(role)) {
-            return res.status(400).json({ message: 'Invalid role specified.' });
-        }
-        // Optional: Prevent direct creation of GLOBAL_ADMIN if desired
-        // if (role === ROLES.GLOBAL_ADMIN && req.user.role !== ROLES.GLOBAL_ADMIN) { // Or some other check
-        //     return res.status(403).json({ message: 'Forbidden to create Global Admin.' });
-        // }
-
-        if (employee_id && isNaN(parseInt(employee_id, 10))) {
-            return res.status(400).json({ message: 'Employee ID must be a number.' });
-        }
 
         try {
-            // If employee_id is provided, validate it
+            const roleExists = await knex('roles').where({ id: role_id }).first();
+            if (!roleExists) {
+                return res.status(400).json({ message: `Invalid role_id: ${role_id}. Role does not exist.` });
+            }
+
             if (employee_id) {
                 const employee = await knex('employees').where({ id: employee_id }).first();
                 if (!employee) {
                     return res.status(404).json({ message: `Employee with ID ${employee_id} not found.` });
                 }
-                // Check if this employee is already linked to a user
+                // Check if employee_id is already linked, only if users.employee_id has a unique constraint
+                // If users.employee_id is nullable and not unique, this check might be too strict or handled differently
                 const existingUserLink = await knex('users').where({ employee_id: employee_id }).first();
                 if (existingUserLink) {
                     return res.status(409).json({ message: `Employee ID ${employee_id} is already assigned to another user.` });
@@ -72,52 +71,41 @@ function createUsersRouter(knex) {
             }
 
             const hashedPassword = await bcrypt.hash(password, saltRounds);
+            const userData = {
+                username,
+                password_hash: hashedPassword,
+                role_id: parseInt(role_id, 10),
+                employee_id: employee_id ? parseInt(employee_id, 10) : null,
+                is_active: typeof is_active === 'boolean' ? is_active : true,
+                first_name: first_name || null,
+                last_name: last_name || null,
+                email: email || null
+            };
 
-            const [newUserObject] = await knex('users')
-                .insert({
-                    username,
-                    password_hash: hashedPassword,
-                    role,
-                    employee_id: employee_id ? parseInt(employee_id, 10) : null,
-                })
-                .returning(['id', 'username', 'role', 'employee_id', 'created_at', 'updated_at']);
+            const [newUserObject] = await knex('users').insert(userData).returning(['id', 'username']); // Return minimal necessary fields
 
-            if (!newUserObject) { // Should not happen if insert is successful
-                throw new Error('User creation failed after insert.');
-            }
-            
-            // Fetch complete new user details including employee info for the response
-            const newUserDetails = await knex('users')
+            const createdUser = await knex('users')
+                .leftJoin('roles', 'users.role_id', 'roles.id')
                 .leftJoin('employees', 'users.employee_id', 'employees.id')
                 .select(
-                    'users.id as user_id',
-                    'users.username',
-                    'users.role',
-                    'users.employee_id',
-                    'users.created_at',
-                    'users.updated_at',
-                    'employees.first_name',
-                    'employees.last_name',
-                    'employees.employee_code',
-                    'employees.email as employee_email'
+                    'users.id as user_id', 'users.username', 'users.role_id', 'roles.name as role_name',
+                    'users.employee_id', 'users.is_active', 'users.created_at as user_created_at', 'users.updated_at as user_updated_at',
+                    'employees.first_name as emp_first_name', 'employees.last_name as emp_last_name', 'employees.employee_code', 'employees.email as emp_email',
+                    'users.first_name as user_first_name', 'users.last_name as user_last_name', 'users.email as user_email'
                 )
                 .where('users.id', newUserObject.id)
                 .first();
 
-
-            console.log(`User created: ${newUserDetails.username} (ID: ${newUserDetails.user_id})`);
-            res.status(201).json(newUserDetails);
-
+            res.status(201).json(createdUser);
         } catch (err) {
-            if (err.code === '23505') { // Unique constraint violation
+            if (err.code === '23505') { // Unique constraint violation (PostgreSQL)
                 if (err.constraint && err.constraint.includes('users_username_unique')) {
-                    console.error(`Error creating user: Username already exists.`);
                     return res.status(409).json({ message: 'Username is already in use.' });
                 }
-                if (err.constraint && err.constraint.includes('users_employee_id_unique')) { // If you added a unique constraint on employee_id
-                    console.error(`Error creating user: Employee ID already linked.`);
+                if (err.constraint && err.constraint.includes('users_employee_id_unique')) { // Assuming you have this constraint
                     return res.status(409).json({ message: 'This employee is already linked to a user account.' });
                 }
+                 return res.status(409).json({ message: 'A unique field conflict occurred.' }); // Generic unique conflict
             }
             console.error("Error creating user:", err);
             next(err);
@@ -125,27 +113,27 @@ function createUsersRouter(knex) {
     });
 
     // --- GET /api/users/:id --- Fetch a single user by ID
-    // Requires GLOBAL_ADMIN role
-    router.get('/:id', authorizeRoles(ROLES.GLOBAL_ADMIN), async (req, res, next) => {
+    router.get('/:id', authenticateToken, async (req, res, next) => {
         const userId = parseInt(req.params.id, 10);
         if (isNaN(userId)) {
             return res.status(400).json({ message: 'User ID must be a number.' });
         }
 
+        // Authorization: User can read their own profile OR must have USER_READ_ALL permission
+        if (req.user.id !== userId && !req.user.permissions.includes(PERMISSIONS.USER_READ_ALL)) {
+            return res.status(403).json({ message: 'Forbidden: You do not have permission to view this user.' });
+        }
+        // If only USER_READ_ALL is allowed, the above check simplifies to just checkPermission(PERMISSIONS.USER_READ_ALL) in the route definition
+
         try {
             const user = await knex('users')
                 .leftJoin('employees', 'users.employee_id', 'employees.id')
+                .leftJoin('roles', 'users.role_id', 'roles.id')
                 .select(
-                    'users.id as user_id',
-                    'users.username',
-                    'users.role',
-                    'users.employee_id',
-                    'users.created_at',
-                    'users.updated_at',
-                    'employees.first_name',
-                    'employees.last_name',
-                    'employees.employee_code',
-                    'employees.email as employee_email'
+                    'users.id as user_id', 'users.username', 'users.role_id', 'roles.name as role_name',
+                    'users.employee_id', 'users.is_active', 'users.created_at as user_created_at', 'users.updated_at as user_updated_at',
+                    'employees.first_name as emp_first_name', 'employees.last_name as emp_last_name', 'employees.employee_code', 'employees.email as emp_email',
+                    'users.first_name as user_first_name', 'users.last_name as user_last_name', 'users.email as user_email'
                 )
                 .where({ 'users.id': userId })
                 .first();
@@ -154,32 +142,27 @@ function createUsersRouter(knex) {
                 return res.status(404).json({ message: 'User not found.' });
             }
             res.json(user);
-
         } catch (err) {
             console.error(`Error fetching user ${userId}:`, err);
             next(err);
         }
     });
 
-    // --- PUT /api/users/:id --- Update user details (username, role, employee_id)
-    // Requires GLOBAL_ADMIN role
-    router.put('/:id', authorizeRoles(ROLES.GLOBAL_ADMIN), async (req, res, next) => {
+    // --- PUT /api/users/:id --- Update user details
+    router.put('/:id', authenticateToken, async (req, res, next) => {
         const userId = parseInt(req.params.id, 10);
-        const { username, role, employee_id } = req.body; // Password is not updated here
+        const { username, role_id, employee_id, is_active, first_name, last_name, email } = req.body;
 
         if (isNaN(userId)) {
             return res.status(400).json({ message: 'User ID must be a number.' });
         }
 
-        // Basic validation for presence of fields being updated
-        if (username === undefined && role === undefined && employee_id === undefined) {
-            return res.status(400).json({ message: 'No update data provided.' });
-        }
-        if (role && !Object.values(ROLES).includes(role)) {
-            return res.status(400).json({ message: 'Invalid role specified.' });
-        }
-        if (employee_id !== undefined && employee_id !== null && isNaN(parseInt(employee_id, 10))) {
-            return res.status(400).json({ message: 'Employee ID must be a number or null.' });
+        // Authorization: User can update their own profile OR must have USER_UPDATE_ALL permission
+        const canUpdateSelf = req.user.id === userId && req.user.permissions.includes(PERMISSIONS.USER_UPDATE_SELF);
+        const canUpdateAll = req.user.permissions.includes(PERMISSIONS.USER_UPDATE_ALL);
+
+        if (!canUpdateSelf && !canUpdateAll) {
+            return res.status(403).json({ message: 'Forbidden: You do not have permission to update this user.' });
         }
 
         try {
@@ -190,25 +173,41 @@ function createUsersRouter(knex) {
 
             const updatedUserData = {};
             if (username !== undefined) updatedUserData.username = username;
-            if (role !== undefined) updatedUserData.role = role;
-            
-            if (employee_id !== undefined) { // Allows setting to null or a new ID
+            if (role_id !== undefined) {
+                // Only allow role_id change if user has USER_ASSIGN_ROLES permission
+                if (!req.user.permissions.includes(PERMISSIONS.USER_ASSIGN_ROLES) && currentUser.role_id !== parseInt(role_id, 10)) {
+                     return res.status(403).json({ message: 'Forbidden: You do not have permission to change user roles.' });
+                }
+                const roleExists = await knex('roles').where({ id: role_id }).first();
+                if (!roleExists) return res.status(400).json({ message: `Invalid role_id: ${role_id}. Role does not exist.` });
+                updatedUserData.role_id = parseInt(role_id, 10);
+            }
+            if (is_active !== undefined) {
+                // Potentially restrict who can deactivate/activate users
+                if (!canUpdateAll && currentUser.is_active !== is_active) { // Example: only admin can change active status
+                    return res.status(403).json({ message: 'Forbidden: You do not have permission to change user active status.' });
+                }
+                updatedUserData.is_active = is_active;
+            }
+
+            if (first_name !== undefined) updatedUserData.first_name = first_name;
+            if (last_name !== undefined) updatedUserData.last_name = last_name;
+            if (email !== undefined) updatedUserData.email = email;
+
+            if (employee_id !== undefined) {
+                // Only allow employee_id change if user has appropriate permission (e.g., USER_UPDATE_ALL or a specific one)
+                if (!canUpdateAll && currentUser.employee_id !== (employee_id ? parseInt(employee_id, 10) : null) ) {
+                    return res.status(403).json({ message: 'Forbidden: You do not have permission to change employee linkage.' });
+                }
                 if (employee_id === null) {
                     updatedUserData.employee_id = null;
                 } else {
                     const empIdNum = parseInt(employee_id, 10);
                     const employee = await knex('employees').where({ id: empIdNum }).first();
-                    if (!employee) {
-                        return res.status(404).json({ message: `Employee with ID ${empIdNum} not found.` });
-                    }
-                    // Check if this employee is already linked to another user (excluding the current user)
-                    const existingUserLink = await knex('users')
-                        .where({ employee_id: empIdNum })
-                        .andWhereNot({ id: userId })
-                        .first();
-                    if (existingUserLink) {
-                        return res.status(409).json({ message: `Employee ID ${empIdNum} is already assigned to another user.` });
-                    }
+                    if (!employee) return res.status(404).json({ message: `Employee with ID ${empIdNum} not found.` });
+
+                    const existingUserLink = await knex('users').where({ employee_id: empIdNum }).andWhereNot({ id: userId }).first();
+                    if (existingUserLink) return res.status(409).json({ message: `Employee ID ${empIdNum} is already assigned to another user.` });
                     updatedUserData.employee_id = empIdNum;
                 }
             }
@@ -218,46 +217,30 @@ function createUsersRouter(knex) {
             }
             updatedUserData.updated_at = knex.fn.now();
 
+            await knex('users').where({ id: userId }).update(updatedUserData);
 
-            const [resultObject] = await knex('users')
-                .where({ id: userId })
-                .update(updatedUserData)
-                .returning(['id', 'username', 'role', 'employee_id', 'created_at', 'updated_at']);
-            
-            if (!resultObject) { // Should not happen if user was found earlier
-                 return res.status(404).json({ message: 'User not found during update.' });
-            }
-
-            const updatedUserDetails = await knex('users')
+            const updatedUser = await knex('users')
+                .leftJoin('roles', 'users.role_id', 'roles.id')
                 .leftJoin('employees', 'users.employee_id', 'employees.id')
                 .select(
-                    'users.id as user_id',
-                    'users.username',
-                    'users.role',
-                    'users.employee_id',
-                    'users.created_at',
-                    'users.updated_at',
-                    'employees.first_name',
-                    'employees.last_name',
-                    'employees.employee_code',
-                    'employees.email as employee_email'
+                    'users.id as user_id', 'users.username', 'users.role_id', 'roles.name as role_name',
+                    'users.employee_id', 'users.is_active', 'users.created_at as user_created_at', 'users.updated_at as user_updated_at',
+                    'employees.first_name as emp_first_name', 'employees.last_name as emp_last_name', 'employees.employee_code', 'employees.email as emp_email',
+                    'users.first_name as user_first_name', 'users.last_name as user_last_name', 'users.email as user_email'
                 )
-                .where('users.id', resultObject.id)
+                .where('users.id', userId)
                 .first();
 
-            console.log(`User updated: ID ${userId}`);
-            res.json(updatedUserDetails);
-
+            res.json(updatedUser);
         } catch (err) {
-            if (err.code === '23505') { // Unique constraint violation
-                if (err.constraint && err.constraint.includes('users_username_unique')) {
-                    console.error(`Error updating user ${userId}: Username already exists.`);
+            if (err.code === '23505') {
+                 if (err.constraint && err.constraint.includes('users_username_unique')) {
                     return res.status(409).json({ message: 'Username is already in use by another account.' });
                 }
                  if (err.constraint && err.constraint.includes('users_employee_id_unique')) {
-                    console.error(`Error updating user ${userId}: Employee ID already linked.`);
                     return res.status(409).json({ message: 'This employee is already linked to another user account.' });
                 }
+                 return res.status(409).json({ message: 'A unique field conflict occurred.' });
             }
             console.error(`Error updating user ${userId}:`, err);
             next(err);
@@ -265,37 +248,29 @@ function createUsersRouter(knex) {
     });
 
     // --- DELETE /api/users/:id --- Delete a user
-    // Requires GLOBAL_ADMIN role
-    router.delete('/:id', authorizeRoles(ROLES.GLOBAL_ADMIN), async (req, res, next) => {
+    router.delete('/:id', authenticateToken, checkPermission(PERMISSIONS.USER_DELETE), async (req, res, next) => {
         const userId = parseInt(req.params.id, 10);
         if (isNaN(userId)) {
             return res.status(400).json({ message: 'User ID must be a number.' });
         }
 
+        if (req.user.id === userId) {
+            return res.status(403).json({ message: "You cannot delete your own account through this endpoint." });
+        }
+
         try {
-            // Check if the user is trying to delete themselves (optional, but often good practice)
-            // if (req.user && req.user.userId === userId) {
-            //     return res.status(403).json({ message: "You cannot delete your own account." });
-            // }
-
+            // Check if user is linked to critical data before deleting, or rely on DB constraints / soft delete
             const deletedCount = await knex.transaction(async (trx) => {
-                // If you have user_stores or other related tables with foreign keys to users.id,
-                // ensure ON DELETE CASCADE is set on those foreign keys in your migrations.
-                // Otherwise, you'd need to delete from child tables first:
-                // await trx('user_stores').where({ user_id: userId }).del();
-                // await trx('other_related_table').where({ user_id: userId }).del();
-
+                await trx('user_stores').where({ user_id: userId }).del(); // Assuming ON DELETE CASCADE is on user_stores.user_id
+                // Add deletions from other related tables if necessary and not handled by CASCADE
                 const count = await trx('users').where({ id: userId }).del();
                 return count;
             });
 
             if (deletedCount === 0) {
-                return res.status(404).json({ message: 'User not found.' });
+                return res.status(404).json({ message: 'User not found or already deleted.' });
             }
-
-            console.log(`User deleted: ID ${userId}`);
             res.status(200).json({ message: `User ID ${userId} deleted successfully.` });
-
         } catch (err) {
             console.error(`Error deleting user ${userId}:`, err);
             next(err);
@@ -303,8 +278,7 @@ function createUsersRouter(knex) {
     });
 
     // --- PUT /api/users/:id/reset-password --- Reset user password (Admin action)
-    // Requires GLOBAL_ADMIN role
-    router.put('/:id/reset-password', authorizeRoles(ROLES.GLOBAL_ADMIN), async (req, res, next) => {
+    router.put('/:id/reset-password', authenticateToken, checkPermission(PERMISSIONS.USER_UPDATE_ALL), async (req, res, next) => {
         const userId = parseInt(req.params.id, 10);
         const { newPassword } = req.body;
 
@@ -316,22 +290,20 @@ function createUsersRouter(knex) {
         }
 
         try {
-            const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+            const userExists = await knex('users').where({id: userId}).first();
+            if (!userExists) {
+                return res.status(404).json({ message: 'User not found.' });
+            }
 
-            const updatedCount = await knex('users')
+            const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+            await knex('users')
                 .where({ id: userId })
                 .update({
                     password_hash: hashedPassword,
                     updated_at: knex.fn.now()
                 });
 
-            if (updatedCount === 0) {
-                 return res.status(404).json({ message: 'User not found.' });
-            }
-
-            console.log(`Password reset for user ID: ${userId}`);
             res.json({ message: `Password for user ID ${userId} has been reset successfully.` });
-
         } catch (err) {
             console.error(`Error resetting password for user ${userId}:`, err);
             next(err);
@@ -339,58 +311,62 @@ function createUsersRouter(knex) {
     });
 
     // --- User-Store Assignment Routes ---
-    // These routes should be fine as they operate on user_id and store_id
-    router.get('/:userId/stores', authorizeRoles(ROLES.GLOBAL_ADMIN), async (req, res, next) => {
+    // GET assigned stores for a user
+    router.get('/:userId/stores', authenticateToken, checkPermission(PERMISSIONS.USER_ASSIGN_STORES), async (req, res, next) => {
         const userId = parseInt(req.params.userId, 10);
         if (isNaN(userId)) { return res.status(400).json({ message: 'User ID must be a number.' }); }
         try {
             const userExists = await knex('users').where({ id: userId }).first();
             if (!userExists) { return res.status(404).json({ message: 'User not found.' }); }
 
-            const assignedStoreIds = await knex('user_stores').where({ user_id: userId }).pluck('store_id');
-            res.json(assignedStoreIds);
+            const assignedStores = await knex('user_stores')
+                .join('stores', 'user_stores.store_id', 'stores.id')
+                .where({ 'user_stores.user_id': userId })
+                // Select only columns that exist in your 'stores' table
+                .select('stores.id', 'stores.name'); // Assuming 'stores' has 'id' and 'name'
+            res.json(assignedStores);
         } catch (err) {
             console.error(`Error fetching stores for user ${userId}:`, err);
             next(err);
         }
     });
 
-    router.put('/:userId/stores', authorizeRoles(ROLES.GLOBAL_ADMIN), async (req, res, next) => {
+    // PUT (update/replace) assigned stores for a user
+    router.put('/:userId/stores', authenticateToken, checkPermission(PERMISSIONS.USER_ASSIGN_STORES), async (req, res, next) => {
         const userId = parseInt(req.params.userId, 10);
         const { storeIds } = req.body; // Expect an array of store IDs
 
         if (isNaN(userId)) { return res.status(400).json({ message: 'User ID must be a number.' }); }
-        if (!Array.isArray(storeIds)) { return res.status(400).json({ message: 'storeIds must be an array.' }); }
+        if (!Array.isArray(storeIds) || !storeIds.every(id => Number.isInteger(id))) {
+            return res.status(400).json({ message: 'storeIds must be an array of integers.' });
+        }
 
         try {
             const userExists = await knex('users').where({ id: userId }).first();
             if (!userExists) { return res.status(404).json({ message: 'User not found.' }); }
 
-            // Validate store IDs (optional, but good practice)
             if (storeIds.length > 0) {
-                const validStoreIds = await knex('stores').whereIn('id', storeIds).pluck('id');
-                if (validStoreIds.length !== storeIds.length) {
-                    return res.status(400).json({ message: 'One or more invalid store IDs provided.' });
+                const validStores = await knex('stores').whereIn('id', storeIds).pluck('id');
+                if (validStores.length !== storeIds.length) {
+                    const invalidProvidedIds = storeIds.filter(id => !validStores.includes(id));
+                    return res.status(400).json({ message: `One or more invalid store IDs provided: ${invalidProvidedIds.join(', ')}.` });
                 }
             }
 
             await knex.transaction(async (trx) => {
-                await trx('user_stores').where({ user_id: userId }).del(); // Clear existing assignments
-
+                await trx('user_stores').where({ user_id: userId }).del();
                 if (storeIds.length > 0) {
-                    const newAssignments = storeIds
-                        .map(id => parseInt(id, 10))
-                        .filter(id => !isNaN(id)) // Ensure they are numbers
-                        .map(storeId => ({ user_id: userId, store_id: storeId }));
-                    
-                    if (newAssignments.length > 0) {
-                        await trx('user_stores').insert(newAssignments);
-                    }
+                    const newAssignments = storeIds.map(storeId => ({ user_id: userId, store_id: storeId }));
+                    await trx('user_stores').insert(newAssignments);
                 }
             });
 
-            const updatedAssignedStoreIds = await knex('user_stores').where({ user_id: userId }).pluck('store_id');
-            res.json(updatedAssignedStoreIds);
+            const updatedAssignedStores = await knex('user_stores')
+                .join('stores', 'user_stores.store_id', 'stores.id')
+                .where({ 'user_stores.user_id': userId })
+                // Select only columns that exist in your 'stores' table
+                .select('stores.id', 'stores.name'); // Assuming 'stores' has 'id' and 'name'
+            res.json(updatedAssignedStores);
         } catch (err) {
             console.error(`Error updating stores for user ${userId}:`, err);
             next(err);

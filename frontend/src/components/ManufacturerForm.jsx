@@ -1,227 +1,265 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-
-const API_BASE_URL = 'http://localhost:5001/api';
+import { useAuth } from '../context/AuthContext';
 
 function ManufacturerForm() {
-    const { manufacturerId } = useParams();
+    const { manufacturerId } = useParams(); // This is already correct
     const navigate = useNavigate();
+    const { apiInstance, isAuthenticated, isLoading: authLoading } = useAuth();
     const isEditing = Boolean(manufacturerId);
 
-    const [formData, setFormData] = useState({
-        name: '', address: '', city: '',
-        contact_person: '', telephone: '', fax: '', email: '',
-        relationship_start_date: '', tax_details: '',
-        // contact_info: '', // Assuming this might be deprecated or merged
-    });
+    console.log(`[ManufacturerForm] Initializing. Is Editing: ${isEditing}, Manufacturer ID: ${manufacturerId}`);
 
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
+    const [name, setName] = useState('');
+    const [contactInfo, setContactInfo] = useState('');
+    const [address, setAddress] = useState('');
+    const [city, setCity] = useState('');
+    const [contactPerson, setContactPerson] = useState('');
+    const [telephone, setTelephone] = useState('');
+    const [fax, setFax] = useState('');
+    const [email, setEmail] = useState('');
+    const [relationshipStartDate, setRelationshipStartDate] = useState('');
+    const [taxDetails, setTaxDetails] = useState('');
+    const [notes, setNotes] = useState('');
 
-    useEffect(() => {
-        if (isEditing) {
-            setLoading(true);
-            setError(null);
-            const token = localStorage.getItem('token');
-            if (!token) {
-                setError('Authentication token not found. Please log in.');
-                setLoading(false);
-                // navigate('/login'); // Optionally redirect
-                return;
-            }
-            const config = {
-                headers: { Authorization: `Bearer ${token}` }
-            };
-            axios.get(`${API_BASE_URL}/manufacturers/${manufacturerId}`, config)
-                .then(response => {
-                    const data = response.data;
-                    const relationshipDateFormatted = data.relationship_start_date ? data.relationship_start_date.split('T')[0] : '';
-                    setFormData({
-                        name: data.name || '',
-                        address: data.address || '',
-                        city: data.city || '',
-                        contact_person: data.contact_person || '',
-                        telephone: data.telephone || '',
-                        fax: data.fax || '',
-                        email: data.email || '',
-                        relationship_start_date: relationshipDateFormatted,
-                        tax_details: data.tax_details || '',
-                        // contact_info: data.contact_info || '',
-                    });
-                    setLoading(false);
-                })
-                .catch(err => {
-                    console.error("Error fetching manufacturer details:", err);
-                    const errorMsg = err.response?.data?.message || 'Failed to load manufacturer data.';
-                    if (err.response?.status === 401 || err.response?.status === 403) {
-                        setError('Unauthorized: Could not fetch manufacturer. Please log in again.');
-                    } else {
-                        setError(errorMsg);
-                    }
-                    setLoading(false);
-                });
-        } else {
-            setFormData({
-                name: '', address: '', city: '',
-                contact_person: '', telephone: '', fax: '', email: '',
-                relationship_start_date: '', tax_details: '',
-                // contact_info: '',
-            });
-            setError(null);
+    const [isLoading, setIsLoading] = useState(false); // Form-specific loading
+    const [pageError, setPageError] = useState(null);
+    const [formError, setFormError] = useState(null);
+
+    const formatDateForInput = (dateString) => {
+        if (!dateString) return '';
+        try {
+            const date = new Date(dateString);
+            const year = date.getFullYear();
+            const month = (date.getMonth() + 1).toString().padStart(2, '0');
+            const day = date.getDate().toString().padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        } catch (e) {
+            console.error("[ManufacturerForm] Error formatting date:", dateString, e);
+            return '';
         }
-    }, [manufacturerId, isEditing, navigate]); // Added navigate
-
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            [name]: value
-        }));
     };
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setLoading(true);
-        setError(null);
-
-        const manufacturerData = { ...formData };
-        Object.keys(manufacturerData).forEach(key => {
-            if (typeof manufacturerData[key] === 'string') {
-                manufacturerData[key] = manufacturerData[key].trim();
-            }
-            if (manufacturerData[key] === '') { // Convert empty strings to null for optional fields
-                if (key !== 'name') { // Assuming name is required
-                    manufacturerData[key] = null;
-                }
-            }
-        });
-        if (manufacturerData.relationship_start_date === '') {
-            manufacturerData.relationship_start_date = null;
+    const fetchManufacturerData = useCallback(async () => {
+        console.log(`[ManufacturerForm fetchManufacturerData] Called. isEditing: ${isEditing}, manufacturerId: ${manufacturerId}, apiInstance: ${!!apiInstance}, isAuthenticated: ${isAuthenticated}`);
+        if (!isEditing || !manufacturerId || !apiInstance || !isAuthenticated) {
+            console.warn("[ManufacturerForm fetchManufacturerData] Pre-conditions not met for fetching.");
+            if (!isEditing) console.warn(" - Not in edit mode.");
+            if (!manufacturerId) console.warn(" - No manufacturerId.");
+            if (!apiInstance) console.warn(" - apiInstance not available.");
+            if (!isAuthenticated) console.warn(" - Not authenticated.");
+            setIsLoading(false); // Ensure loading is stopped if we bail early
+            return;
         }
+        console.log(`[ManufacturerForm fetchManufacturerData] Attempting to fetch details for ID: ${manufacturerId}`);
+        setIsLoading(true);
+        setPageError(null);
+        setFormError(null);
+        try {
+            const response = await apiInstance.get(`/manufacturers/${manufacturerId}`);
+            const data = response.data;
+            console.log("[ManufacturerForm fetchManufacturerData] Raw data received:", data);
 
+            setName(data.name || '');
+            setContactInfo(data.contact_info || '');
+            setAddress(data.address || '');
+            setCity(data.city || '');
+            setContactPerson(data.contact_person || '');
+            setTelephone(data.telephone || '');
+            setFax(data.fax || '');
+            setEmail(data.email || '');
+            setRelationshipStartDate(formatDateForInput(data.relationship_start_date));
+            setTaxDetails(data.tax_details || '');
+            setNotes(data.notes || '');
+            console.log("[ManufacturerForm fetchManufacturerData] State updated with fetched data.");
+        } catch (err) {
+            console.error("[ManufacturerForm fetchManufacturerData] Error fetching manufacturer details:", err.response || err.message || err);
+            const errorMsg = err.response?.data?.message || 'Failed to load manufacturer data.';
+            setPageError(errorMsg);
+        } finally {
+            setIsLoading(false);
+            console.log("[ManufacturerForm fetchManufacturerData] Fetch attempt finished.");
+        }
+    }, [manufacturerId, isEditing, apiInstance, isAuthenticated]); // Dependencies for useCallback
 
-        if (!manufacturerData.name) {
-            setError("Manufacturer name cannot be empty.");
-            setLoading(false);
+    useEffect(() => {
+        console.log(`[ManufacturerForm useEffect] Running. AuthLoading: ${authLoading}, IsAuthenticated: ${isAuthenticated}, IsEditing: ${isEditing}, ManufacturerID: ${manufacturerId}, apiInstance: ${!!apiInstance}`);
+        if (authLoading) {
+            console.log("[ManufacturerForm useEffect] Auth is loading, returning.");
+            return;
+        }
+        if (!isAuthenticated) {
+            console.log("[ManufacturerForm useEffect] Not authenticated. Setting page error.");
+            setPageError("Authentication required. Please log in.");
+            setIsLoading(false); // Ensure loading is stopped
             return;
         }
 
-        try {
-            const token = localStorage.getItem('token');
-            if (!token) {
-                setError('Authentication token not found. Please log in.');
-                setLoading(false);
-                // navigate('/login'); // Optionally redirect
-                return;
+        if (isEditing) {
+            console.log("[ManufacturerForm useEffect] Edit mode. Checking if apiInstance exists.");
+            if (apiInstance && manufacturerId) { // Ensure manufacturerId is also present
+                console.log("[ManufacturerForm useEffect] apiInstance exists and manufacturerId present. Calling fetchManufacturerData.");
+                fetchManufacturerData();
+            } else if (!apiInstance) {
+                console.warn("[ManufacturerForm useEffect] apiInstance not available in edit mode (after auth check).");
+                setPageError("API client not available. Cannot fetch data.");
+                setIsLoading(false);
+            } else if (!manufacturerId) {
+                console.warn("[ManufacturerForm useEffect] manufacturerId not available in edit mode (after auth check).");
+                setPageError("Manufacturer ID missing. Cannot fetch data.");
+                setIsLoading(false);
             }
-            const config = {
-                headers: { Authorization: `Bearer ${token}` }
-            };
+        } else { // Create mode
+            console.log("[ManufacturerForm useEffect] Create mode. Resetting form fields.");
+            setName('');
+            setContactInfo('');
+            setAddress('');
+            setCity('');
+            setContactPerson('');
+            setTelephone('');
+            setFax('');
+            setEmail('');
+            setRelationshipStartDate('');
+            setTaxDetails('');
+            setNotes('');
+            setPageError(null);
+            setFormError(null);
+            setIsLoading(false); // Ensure loading is false for create mode
+        }
+    }, [isEditing, manufacturerId, authLoading, isAuthenticated, apiInstance, fetchManufacturerData]); // Added fetchManufacturerData
 
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        console.log("[ManufacturerForm handleSubmit] Form submitted.");
+        if (!apiInstance || !isAuthenticated) {
+            setFormError("Authentication error or API not available. Please log in again.");
+            return;
+        }
+        if (!name.trim()) {
+            setFormError("Manufacturer name cannot be empty.");
+            return; // Don't set isLoading(false) here, let finally block handle it
+        }
+        if (email.trim() && !/\S+@\S+\.\S+/.test(email.trim())) {
+            setFormError("Please enter a valid email address or leave it blank.");
+            return;
+        }
+
+        setIsLoading(true);
+        setPageError(null);
+        setFormError(null);
+
+        const manufacturerData = {
+            name: name.trim(),
+            contact_info: contactInfo.trim() === '' ? null : contactInfo.trim(),
+            address: address.trim() === '' ? null : address.trim(),
+            city: city.trim() === '' ? null : city.trim(),
+            contact_person: contactPerson.trim() === '' ? null : contactPerson.trim(),
+            telephone: telephone.trim() === '' ? null : telephone.trim(),
+            fax: fax.trim() === '' ? null : fax.trim(),
+            email: email.trim() === '' ? null : email.trim(),
+            relationship_start_date: relationshipStartDate.trim() === '' ? null : relationshipStartDate,
+            tax_details: taxDetails.trim() === '' ? null : taxDetails.trim(),
+            // notes: notes.trim() === '' ? null : notes.trim(), // REMOVE THIS LINE
+        };
+        console.log("[ManufacturerForm handleSubmit] Data to be sent:", manufacturerData);
+
+        try {
             if (isEditing) {
-                await axios.put(`${API_BASE_URL}/manufacturers/${manufacturerId}`, manufacturerData, config);
+                console.log(`[ManufacturerForm handleSubmit] Updating manufacturer ID: ${manufacturerId}`);
+                await apiInstance.put(`/manufacturers/${manufacturerId}`, manufacturerData);
             } else {
-                await axios.post(`${API_BASE_URL}/manufacturers`, manufacturerData, config);
+                console.log("[ManufacturerForm handleSubmit] Creating new manufacturer.");
+                await apiInstance.post('/manufacturers', manufacturerData);
             }
-            navigate('/manufacturers');
+            navigate('/dashboard/manufacturers', {
+                state: {
+                    message: `Manufacturer "${manufacturerData.name}" ${isEditing ? 'updated' : 'created'} successfully.`,
+                    type: 'success'
+                }
+            });
         } catch (err) {
-            console.error("Error saving manufacturer:", err);
+            console.error("[ManufacturerForm handleSubmit] Error saving manufacturer:", err.response || err.message || err);
             const errorMsg = err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} manufacturer.`;
-            if (err.response?.status === 401 || err.response?.status === 403) {
-                setError('Unauthorized: Could not save manufacturer. Please log in again.');
-            } else {
-                setError(errorMsg);
-            }
+            setFormError(errorMsg);
         } finally {
-            setLoading(false);
+            setIsLoading(false);
+            console.log("[ManufacturerForm handleSubmit] Submit attempt finished.");
         }
     };
 
-    if (loading && isEditing) return <p style={styles.centeredMessage}>Loading manufacturer details...</p>;
+    if (authLoading) return <p style={styles.centeredMessage}>Authenticating...</p>;
+    // Adjusted loading message conditions
+    if (isLoading && isEditing && !name && !pageError) return <p style={styles.centeredMessage}>Loading manufacturer details...</p>;
+    if (isLoading && !isEditing && !pageError) return <p style={styles.centeredMessage}>Preparing form...</p>;
+
 
     return (
         <div style={styles.container}>
-            <h2 style={styles.title}>{isEditing ? 'Edit Manufacturer' : 'Add New Manufacturer'}</h2>
-            {error && <p style={styles.errorBox}>Error: {error}</p>}
+            <h2 style={styles.title}>{isEditing ? `Edit Manufacturer (ID: ${manufacturerId})` : 'Add New Manufacturer'}</h2>
+            {pageError && <p style={styles.errorBox}>Page Error: {pageError}</p>}
+            {formError && <p style={{...styles.errorBox, backgroundColor: '#ffe6e6', borderColor: 'red', color: 'red'}}>Form Error: {formError}</p>}
             <form onSubmit={handleSubmit}>
-                <fieldset style={styles.fieldset}>
-                    <legend style={styles.legend}>Basic Information</legend>
-                    <div style={styles.formGroup}>
-                        <label htmlFor="name" style={styles.label}>Name: *</label>
-                        <input type="text" id="name" name="name" value={formData.name} onChange={handleChange} required style={styles.input} disabled={loading} />
-                    </div>
-                    <div style={styles.formGroup}>
-                        <label htmlFor="address" style={styles.label}>Address:</label>
-                        <textarea id="address" name="address" value={formData.address} onChange={handleChange} rows="3" style={styles.textarea} disabled={loading} />
-                    </div>
-                    <div style={styles.formGroup}>
-                        <label htmlFor="city" style={styles.label}>City:</label>
-                        <input type="text" id="city" name="city" value={formData.city} onChange={handleChange} style={styles.input} disabled={loading} />
-                    </div>
-                </fieldset>
-
-                <fieldset style={styles.fieldset}>
-                    <legend style={styles.legend}>Contact Information</legend>
-                    <div style={styles.formGroup}>
-                        <label htmlFor="contact_person" style={styles.label}>Contact Person:</label>
-                        <input type="text" id="contact_person" name="contact_person" value={formData.contact_person} onChange={handleChange} style={styles.input} disabled={loading} />
-                    </div>
-                    <div style={styles.formRow}>
-                        <div style={styles.formGroup}>
-                            <label htmlFor="telephone" style={styles.label}>Telephone No.:</label>
-                            <input type="tel" id="telephone" name="telephone" value={formData.telephone} onChange={handleChange} style={styles.input} disabled={loading} />
-                        </div>
-                        <div style={styles.formGroup}>
-                            <label htmlFor="fax" style={styles.label}>Fax:</label>
-                            <input type="tel" id="fax" name="fax" value={formData.fax} onChange={handleChange} style={styles.input} disabled={loading} />
-                        </div>
-                    </div>
-                    <div style={styles.formGroup}>
-                        <label htmlFor="email" style={styles.label}>Email:</label>
-                        <input type="email" id="email" name="email" value={formData.email} onChange={handleChange} style={styles.input} disabled={loading} />
-                    </div>
-                </fieldset>
-
-                <fieldset style={styles.fieldset}>
-                    <legend style={styles.legend}>Additional Details</legend>
-                    <div style={styles.formRow}>
-                        <div style={styles.formGroup}>
-                            <label htmlFor="relationship_start_date" style={styles.label}>Relationship Since:</label>
-                            <input type="date" id="relationship_start_date" name="relationship_start_date" value={formData.relationship_start_date} onChange={handleChange} style={styles.input} disabled={loading} />
-                        </div>
-                    </div>
-                    <div style={styles.formGroup}>
-                        <label htmlFor="tax_details" style={styles.label}>Tax / Registration Details:</label>
-                        <input type="text" id="tax_details" name="tax_details" value={formData.tax_details} onChange={handleChange} style={styles.input} disabled={loading} />
-                    </div>
-                </fieldset>
-
+                <div style={styles.formGroup}>
+                    <label htmlFor="manufacturerName" style={styles.label}>Manufacturer Name: *</label>
+                    <input type="text" id="manufacturerName" value={name} onChange={(e) => setName(e.target.value)} required style={styles.input} disabled={isLoading} placeholder="e.g., Sony, Samsung, Generic Corp"/>
+                </div>
+                <div style={styles.formGroup}>
+                    <label htmlFor="contactPerson" style={styles.label}>Contact Person:</label>
+                    <input type="text" id="contactPerson" value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} style={styles.input} disabled={isLoading} placeholder="e.g., John Doe"/>
+                </div>
+                <div style={styles.formGroup}>
+                    <label htmlFor="email" style={styles.label}>Email:</label>
+                    <input type="email" id="email" value={email} onChange={(e) => setEmail(e.target.value)} style={styles.input} disabled={isLoading} placeholder="e.g., contact@example.com"/>
+                </div>
+                <div style={styles.formGroup}>
+                    <label htmlFor="telephone" style={styles.label}>Telephone:</label>
+                    <input type="tel" id="telephone" value={telephone} onChange={(e) => setTelephone(e.target.value)} style={styles.input} disabled={isLoading} placeholder="e.g., +1-555-123-4567"/>
+                </div>
+                <div style={styles.formGroup}>
+                    <label htmlFor="fax" style={styles.label}>Fax:</label>
+                    <input type="tel" id="fax" value={fax} onChange={(e) => setFax(e.target.value)} style={styles.input} disabled={isLoading} placeholder="e.g., +1-555-765-4321"/>
+                </div>
+                <div style={styles.formGroup}>
+                    <label htmlFor="address" style={styles.label}>Address:</label>
+                    <textarea id="address" value={address} onChange={(e) => setAddress(e.target.value)} rows="3" style={styles.textarea} disabled={isLoading} placeholder="e.g., 123 Main St"/>
+                </div>
+                <div style={styles.formGroup}>
+                    <label htmlFor="city" style={styles.label}>City:</label>
+                    <input type="text" id="city" value={city} onChange={(e) => setCity(e.target.value)} style={styles.input} disabled={isLoading} placeholder="e.g., Anytown"/>
+                </div>
+                <div style={styles.formGroup}>
+                    <label htmlFor="relationshipStartDate" style={styles.label}>Relationship Start Date:</label>
+                    <input type="date" id="relationshipStartDate" value={relationshipStartDate} onChange={(e) => setRelationshipStartDate(e.target.value)} style={styles.input} disabled={isLoading}/>
+                </div>
+                <div style={styles.formGroup}>
+                    <label htmlFor="taxDetails" style={styles.label}>Tax Details:</label>
+                    <input type="text" id="taxDetails" value={taxDetails} onChange={(e) => setTaxDetails(e.target.value)} style={styles.input} disabled={isLoading} placeholder="e.g., VAT ID, Tax Reg No."/>
+                </div>
+                <div style={styles.formGroup}>
+                    <label htmlFor="contactInfo" style={styles.label}>General Contact Info/Internal Notes:</label>
+                    <textarea id="contactInfo" value={contactInfo} onChange={(e) => setContactInfo(e.target.value)} rows="3" style={styles.textarea} disabled={isLoading} placeholder="Additional contact details or internal notes..."/>
+                </div>
+                 <div style={styles.formGroup}>
+                    <label htmlFor="notes" style={styles.label}>Specific Notes (if different from above):</label>
+                    <textarea id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows="3" style={styles.textarea} disabled={isLoading} placeholder="Specific remarks or details..."/>
+                </div>
                 <div style={styles.buttonGroup}>
-                    <button type="submit" disabled={loading} style={styles.buttonPrimary}>
-                        {loading ? 'Saving...' : (isEditing ? 'Update Manufacturer' : 'Create Manufacturer')}
-                    </button>
-                    <button type="button" onClick={() => navigate('/manufacturers')} style={styles.buttonSecondary} disabled={loading}>
-                        Cancel
-                    </button>
+                    <button type="submit" disabled={isLoading} style={styles.buttonPrimary}> {isLoading ? 'Saving...' : (isEditing ? 'Update Manufacturer' : 'Create Manufacturer')} </button>
+                    <button type="button" onClick={() => navigate('/dashboard/manufacturers')} style={styles.buttonSecondary} disabled={isLoading}> Cancel </button>
                 </div>
             </form>
         </div>
     );
 }
 
-// Consistent Form Styles
 const styles = {
-    container: { padding: '20px', maxWidth: '750px', margin: '40px auto', fontFamily: 'Arial, sans-serif', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', borderRadius: '8px', backgroundColor: '#fff' },
+    container: { padding: '20px', maxWidth: '700px', margin: '40px auto', fontFamily: 'Arial, sans-serif', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', borderRadius: '8px', backgroundColor: '#fff' },
     title: { marginBottom: '25px', color: '#333', textAlign: 'center', borderBottom: '1px solid #eee', paddingBottom: '15px' },
     centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
-    errorBox: { color: '#D8000C', border: '1px solid #FFBABA', padding: '10px 15px', marginBottom: '20px', borderRadius: '4px', backgroundColor: '#FFD2D2' },
-    fieldset: { border: '1px solid #ddd', padding: '15px 20px 20px 20px', borderRadius: '5px', marginBottom: '25px' },
-    legend: { fontWeight: 'bold', padding: '0 10px', marginLeft: '5px', color: '#333', fontSize: '1.1em' },
-    formRow: { display: 'flex', flexWrap: 'wrap', gap: '20px', marginBottom: '15px' },
-    formGroup: { display: 'flex', flexDirection: 'column', flex: '1 1 calc(50% - 10px)', minWidth: '250px', marginBottom: '15px' }, // Ensure items can shrink and grow
-    label: { marginBottom: '8px', fontWeight: 'bold', color: '#555', fontSize: '0.9em' },
-    input: { width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1em' },
+    errorBox: { color: '#D8000C', border: '1px solid #FFBABA', padding: '10px 15px', marginBottom: '20px', borderRadius: '4px', backgroundColor: '#FFD2D2', textAlign: 'center' },
+    formGroup: { marginBottom: '20px' },
+    label: { display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#555' },
+    input: { width: '100%', padding: '12px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1em' },
     textarea: { width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', minHeight: '80px', fontSize: '1em' },
     buttonGroup: { marginTop: '30px', display: 'flex', justifyContent: 'flex-end', gap: '10px' },
     buttonPrimary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },

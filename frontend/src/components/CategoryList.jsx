@@ -1,111 +1,100 @@
-// frontend/src/components/CategoryList.jsx
 import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
-// Configuration
-const API_BASE_URL = 'http://localhost:5001/api'; // Use environment variables for production
+// Re-using styles from UnitList for consistency, or define new ones
+const styles = {
+    container: { padding: '20px', fontFamily: 'Arial, sans-serif', maxWidth: '1000px', margin: '0 auto' },
+    title: { marginBottom: '20px', color: '#333', textAlign: 'center' },
+    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
+    errorText: { color: '#D8000C', fontWeight: 'bold' },
+    feedbackBox: { padding: '10px 15px', marginBottom: '15px', borderRadius: '4px', textAlign: 'center', border: '1px solid' },
+    feedbackSuccess: { borderColor: 'green', color: 'green', backgroundColor: '#e6ffed' },
+    feedbackError: { borderColor: 'red', color: 'red', backgroundColor: '#ffe6e6' },
+    addButtonLink: { textDecoration: 'none', display: 'block', textAlign: 'right', marginBottom: '15px' },
+    button: { padding: '8px 12px', margin: '0 5px 0 0', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9em' },
+    buttonAdd: { backgroundColor: '#28a745', color: 'white'},
+    buttonEdit: { backgroundColor: '#ffc107', color: '#000' },
+    buttonDelete: { backgroundColor: '#dc3545', color: 'white' },
+    table: { width: '100%', borderCollapse: 'collapse', marginTop: '0px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
+    tableHeader: { backgroundColor: '#e9ecef' },
+    tableCell: { padding: '12px 10px', textAlign: 'left', verticalAlign: 'middle', borderBottom: '1px solid #dee2e6' },
+    actionsCell: { whiteSpace: 'nowrap' },
+    tableRowOdd: { backgroundColor: '#fff' },
+    tableRowEven: { backgroundColor: '#f8f9fa' }
+};
 
-// Component to display and manage categories
 function CategoryList() {
-    // State variables
-    const [categories, setCategories] = useState([]); // Holds the list of categories
-    const [loading, setLoading] = useState(true); // Tracks loading state
-    const [error, setError] = useState(null); // Stores any error message during fetch/delete
-    const [feedback, setFeedback] = useState({ message: null, type: null }); // For user feedback after actions (delete)
+    const [categories, setCategories] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [feedback, setFeedback] = useState({ message: null, type: null });
+    const navigate = useNavigate();
+    const { apiInstance, isAuthenticated, isLoading: authLoading } = useAuth();
 
-    const navigate = useNavigate(); // Hook for programmatic navigation
-
-    // Function to fetch categories from the API
     const fetchCategories = useCallback(async () => {
-        setLoading(true); // Start loading indicator
-        setError(null); // Clear previous errors
-        setFeedback({ message: null, type: null }); // Clear previous feedback
+        if (!isAuthenticated || !apiInstance) {
+            setError("User not authenticated or API client not available.");
+            setLoading(false);
+            return;
+        }
+        setLoading(true);
+        setError(null);
+        setFeedback({ message: null, type: null });
         try {
-            const token = localStorage.getItem('token');
-            if (!token) {
-                setError('Authentication token not found. Please log in.');
-                setLoading(false);
-                // navigate('/login'); // Optionally redirect
-                return;
-            }
-            const config = {
-                headers: { Authorization: `Bearer ${token}` }
-            };
-            const response = await axios.get(`${API_BASE_URL}/categories`, config); // Added config
-            setCategories(response.data); // Update state with fetched data
+            const response = await apiInstance.get('/categories');
+            setCategories(response.data || []);
         } catch (err) {
             console.error("Error fetching categories:", err);
-            const errorMsg = err.response?.data?.message || 'Failed to fetch categories. Please check the API connection.';
-            if (err.response?.status === 401 || err.response?.status === 403) {
-                setError('Unauthorized: Could not fetch categories. Please log in again.');
-            } else {
-                setError(errorMsg); // Set error message state
-            }
+            const errorMsg = err.response?.data?.message || err.message || 'Failed to fetch categories.';
+            setError(errorMsg);
         } finally {
-            setLoading(false); // Stop loading indicator regardless of success/failure
+            setLoading(false);
         }
-    }, [navigate]); // Added navigate to dependency array
+    }, [apiInstance, isAuthenticated]);
 
-    // useEffect hook to call fetchCategories when the component mounts
     useEffect(() => {
-        fetchCategories();
-    }, [fetchCategories]); // Dependency array includes fetchCategories
-
-    // Function to handle category deletion
-    const handleDelete = async (categoryId, categoryName) => {
-        // Show confirmation dialog to the user
-        if (!window.confirm(`Are you sure you want to delete category: "${categoryName}" (ID: ${categoryId})?\nThis might fail if it's linked to products or sub-categories.`)) {
-            return; // Abort if user cancels
+        if (!authLoading && isAuthenticated && apiInstance) {
+            fetchCategories();
+        } else if (!authLoading && !isAuthenticated) {
+            setError("Please log in to view categories.");
+            setLoading(false);
+        } else if (!authLoading && !apiInstance) {
+            setError("API client not available. Cannot fetch categories.");
+            setLoading(false);
         }
+    }, [authLoading, isAuthenticated, apiInstance, fetchCategories]);
 
-        setError(null); // Clear previous general errors before attempting delete
+    const handleDelete = async (categoryId, categoryName) => {
+        if (!apiInstance) {
+            setFeedback({ message: "API client not available.", type: 'error' });
+            return;
+        }
+        if (!window.confirm(`Are you sure you want to delete category: "${categoryName}" (ID: ${categoryId})?\nThis might fail if it's linked to products.`)) {
+            return;
+        }
+        setError(null);
         try {
-            const token = localStorage.getItem('token');
-            if (!token) {
-                setFeedback({ message: 'Authentication token not found. Please log in.', type: 'error' });
-                return;
-            }
-            const config = {
-                headers: { Authorization: `Bearer ${token}` }
-            };
-            // Send DELETE request to the backend API
-            await axios.delete(`${API_BASE_URL}/categories/${categoryId}`, config); // Added config
-            setFeedback({ message: `Category "${categoryName}" deleted successfully.`, type: 'success' }); // Set success feedback
-            // Update the local state to remove the deleted category immediately from the UI
-            setCategories(prevCategories => prevCategories.filter(cat => cat.id !== categoryId));
+            await apiInstance.delete(`/categories/${categoryId}`);
+            setFeedback({ message: `Category "${categoryName}" deleted successfully.`, type: 'success' });
+            setCategories(prevCategories => prevCategories.filter(category => category.id !== categoryId));
         } catch (err) {
             console.error(`Error deleting category ${categoryId}:`, err);
-            // Extract error message from backend response or provide a default
-            const errorMsg = err.response?.data?.message || 'Failed to delete category. It might be in use.';
-            if (err.response?.status === 401 || err.response?.status === 403) {
-                setFeedback({ message: 'Unauthorized: Could not delete category. Please log in again.', type: 'error' });
-            } else {
-                setFeedback({ message: errorMsg, type: 'error' }); // Set error feedback
-            }
-            // setError(errorMsg); // Optionally set the general error state as well
+            const errorMsg = err.response?.data?.message || err.message || 'Failed to delete category.';
+            setFeedback({ message: errorMsg, type: 'error' });
         } finally {
-            // Clear the feedback message after 5 seconds
-             setTimeout(() => setFeedback({ message: null, type: null }), 5000);
+            setTimeout(() => setFeedback({ message: null, type: null }), 5000);
         }
     };
 
-    // --- Render Logic ---
-
-    // Display loading message
+    if (authLoading) return <div style={styles.centeredMessage}>Authenticating...</div>;
     if (loading) return <div style={styles.centeredMessage}>Loading categories...</div>;
+    if (error && categories.length === 0) return <div style={{ ...styles.centeredMessage, ...styles.errorText }}>Error: {error}</div>;
 
-    // Display error message if loading failed and no categories are loaded
-    if (error && categories.length === 0) {
-        return <div style={{ ...styles.centeredMessage, ...styles.errorText }}>Error: {error}</div>;
-    }
-
-    // Render the main component UI
     return (
         <div style={styles.container}>
             <h2 style={styles.title}>Manage Categories</h2>
 
-            {/* Feedback Area for delete success/error */}
             {feedback.message && (
                 <div style={{
                    ...styles.feedbackBox,
@@ -114,51 +103,41 @@ function CategoryList() {
                     {feedback.message}
                 </div>
             )}
-
-            {/* Display general error if an operation failed but list might have old data */}
-            {error && categories.length > 0 && !feedback.message && (
+             {error && categories.length > 0 && !feedback.message && (
                  <p style={{...styles.errorText, textAlign: 'center', marginBottom: '10px'}}>
                     Warning: An operation failed. Error: {error}
                  </p>
             )}
 
-            {/* Button to navigate to the 'Add New Category' form */}
-            <Link to="/categories/new" style={styles.addButtonLink}>
+            <Link to="/dashboard/categories/new" style={styles.addButtonLink}>
                 <button style={{...styles.button, ...styles.buttonAdd}}>Add New Category</button>
             </Link>
 
-            {/* Display table or 'No categories' message */}
             {categories.length === 0 && !loading && !error ? (
-                <p>No categories found.</p>
+                <p style={styles.centeredMessage}>No categories found. Click "Add New Category" to create one.</p>
             ) : (
                 <table style={styles.table}>
                     <thead style={styles.tableHeader}>
                         <tr>
                             <th style={styles.tableCell}>ID</th>
                             <th style={styles.tableCell}>Name</th>
-                            <th style={styles.tableCell}>Description</th>
-                            {/* <th style={styles.tableCell}>Parent ID</th> */} {/* Uncomment if showing parent category */}
+                            {/* Add other columns like 'Description' if your backend provides it */}
                             <th style={styles.tableCell}>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {categories.map((category, index) => (
-                            // Alternate row background colors for readability
                             <tr key={category.id} style={index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd}>
                                 <td style={styles.tableCell}>{category.id}</td>
                                 <td style={styles.tableCell}>{category.name}</td>
-                                <td style={styles.tableCell}>{category.description || '-'}</td> {/* Show dash if description is null/empty */}
-                                {/* <td style={styles.tableCell}>{category.parent_category_id || '-'}</td> */} {/* Uncomment if showing parent category */}
                                 <td style={{...styles.tableCell, ...styles.actionsCell}}>
-                                    {/* Edit Button */}
                                     <button
-                                        onClick={() => navigate(`/categories/edit/${category.id}`)}
+                                        onClick={() => navigate(`/dashboard/categories/edit/${category.id}`)}
                                         style={{...styles.button, ...styles.buttonEdit}}
                                         title="Edit Category"
                                     >
                                         Edit
                                     </button>
-                                    {/* Delete Button */}
                                     <button
                                         onClick={() => handleDelete(category.id, category.name)}
                                         style={{...styles.button, ...styles.buttonDelete}}
@@ -175,28 +154,5 @@ function CategoryList() {
         </div>
     );
 }
-
-// --- Basic Inline Styles ---
-// Consider moving to a separate CSS file or using a UI library for larger applications
-const styles = {
-    container: { padding: '20px', fontFamily: 'Arial, sans-serif' },
-    title: { marginBottom: '20px', color: '#333' },
-    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
-    errorText: { color: '#D8000C', fontWeight: 'bold' },
-    feedbackBox: { padding: '10px 15px', marginBottom: '15px', borderRadius: '4px', textAlign: 'center', border: '1px solid' },
-    feedbackSuccess: { borderColor: 'green', color: 'green', backgroundColor: '#e6ffed' },
-    feedbackError: { borderColor: 'red', color: 'red', backgroundColor: '#ffe6e6' },
-    addButtonLink: { textDecoration: 'none', display: 'inline-block', marginBottom: '15px' },
-    button: { padding: '8px 12px', margin: '0 5px 0 0', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9em' },
-    buttonAdd: { backgroundColor: '#28a745', color: 'white'},
-    buttonEdit: { backgroundColor: '#ffc107', color: '#000' }, // Yellow
-    buttonDelete: { backgroundColor: '#dc3545', color: 'white' }, // Red
-    table: { width: '100%', borderCollapse: 'collapse', marginTop: '0px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
-    tableHeader: { backgroundColor: '#e9ecef' }, // Lighter grey header
-    tableCell: { padding: '12px 10px', textAlign: 'left', verticalAlign: 'top', borderBottom: '1px solid #dee2e6' },
-    actionsCell: { whiteSpace: 'nowrap' }, // Prevent action buttons from wrapping
-    tableRowOdd: { backgroundColor: '#fff' },
-    tableRowEven: { backgroundColor: '#f8f9fa' } // Slight grey for even rows
-};
 
 export default CategoryList;

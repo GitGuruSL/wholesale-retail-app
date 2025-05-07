@@ -1,293 +1,444 @@
 const express = require('express');
+const { ROLES } = require('../utils/roles'); // Assuming you have a roles utility
 
-// The function now accepts authorizeRole and ROLES
-function createProductsRouter(knex, authorizeRole, ROLES) {
+// It's crucial that 'authenticateToken' middleware is applied to the '/api/products' path 
+// BEFORE this router in server.js, so req.user is populated.
+
+function createProductsRouter(knex) {
     const router = express.Router();
 
-    // --- Helper Function for Data Preparation (Your existing function) ---
+    // --- Helper Function for Data Preparation ---
     const prepareProductData = (inputData) => {
         const data = { ...inputData };
-        // ... (your existing prepareProductData logic remains unchanged) ...
         const fieldsToNullifyIfEmpty = [ 'slug', 'sku', 'sub_category_id', 'special_category_id', 'brand_id', 'barcode_symbology_id', 'item_barcode', 'tax_id', 'discount_type_id', 'discount_value', 'measurement_type', 'measurement_value', 'weight', 'manufacturer_id', 'warranty_id', 'expiry_notification_days', 'supplier_id', 'store_id', 'wholesale_price', 'max_sales_qty_per_person', 'description' ];
         const numericFields = [ 'cost_price', 'retail_price', 'wholesale_price', 'discount_value', 'weight' ];
-        const integerFields = ['expiry_notification_days', 'max_sales_qty_per_person'];
+        const integerFields = ['category_id', 'sub_category_id', 'special_category_id', 'brand_id', 'base_unit_id', 'barcode_symbology_id', 'tax_id', 'discount_type_id', 'manufacturer_id', 'supplier_id', 'warranty_id', 'store_id', 'expiry_notification_days', 'max_sales_qty_per_person']; // Added FKs here for parsing
         const booleanFields = ['has_expiry', 'is_serialized'];
-        const dateFields = []; // Add date fields if you have any that need specific parsing
-        const foreignKeyFields = [ 'category_id', 'sub_category_id', 'special_category_id', 'brand_id', 'base_unit_id', 'barcode_symbology_id', 'tax_id', 'discount_type_id', 'manufacturer_id', 'supplier_id', 'warranty_id', 'store_id' ];
+        // const dateFields = []; // Not currently used for direct conversion in this function
 
         for (const key in data) {
-            if (typeof data[key] === 'string') data[key] = data[key].trim();
-            if ((fieldsToNullifyIfEmpty.includes(key) || foreignKeyFields.includes(key)) && data[key] === '') data[key] = null;
-            if (numericFields.includes(key) && data[key] !== null && data[key] !== '') { const parsed = parseFloat(data[key]); data[key] = isNaN(parsed) ? null : parsed; }
-            if (integerFields.includes(key) && data[key] !== null && data[key] !== '') { const parsed = parseInt(data[key], 10); data[key] = isNaN(parsed) ? null : parsed; }
-            if (booleanFields.includes(key)) data[key] = Boolean(data[key]); // Handles true, "true", 1, false, "false", 0, null, undefined
-            if (dateFields.includes(key) && data[key] !== null && data[key] !== '') { const date = new Date(data[key]); data[key] = isNaN(date.getTime()) ? null : date.toISOString().split('T')[0]; }
-            if (foreignKeyFields.includes(key) && data[key] !== null && data[key] !== '') { const parsedInt = parseInt(data[key], 10); data[key] = isNaN(parsedInt) ? null : parsedInt; }
+            if (typeof data[key] === 'string') {
+                data[key] = data[key].trim();
+            }
+            if (fieldsToNullifyIfEmpty.includes(key) && data[key] === '') {
+                data[key] = null;
+            }
+
+            if (numericFields.includes(key) && data[key] !== null) {
+                const parsed = parseFloat(data[key]);
+                data[key] = isNaN(parsed) ? null : parsed;
+            }
+            // Ensure integerFields (including FKs) are parsed correctly
+            if (integerFields.includes(key) && data[key] !== null) {
+                const parsedInt = parseInt(data[key], 10);
+                data[key] = isNaN(parsedInt) ? null : parsedInt;
+            }
+            if (booleanFields.includes(key)) {
+                // Handles "true", "false", true, false, 1, 0, null, undefined
+                if (data[key] === 'true' || data[key] === 1 || data[key] === '1') data[key] = true;
+                else if (data[key] === 'false' || data[key] === 0 || data[key] === '0') data[key] = false;
+                else data[key] = Boolean(data[key]); // Fallback, though explicit is better
+            }
         }
         delete data.id; // Prevent client from setting ID
         delete data.created_at; // Prevent client from setting created_at
-        // updated_at will be set by the route handlers
+        // updated_at will be set by route handlers
         return data;
     };
 
-
     // --- API Route Definitions ---
 
-    // GET /api/products - Fetch list with joins
-    // Example: Allow multiple roles to view products
-    router.get('/', authorizeRole([ROLES.GLOBAL_ADMIN, ROLES.STORE_ADMIN, ROLES.STORE_MANAGER, ROLES.SALES_PERSON]), async (req, res, next) => {
-        console.log(`[${new Date().toISOString()}] GET /api/products - Handler started by User ID: ${req.user.id}, Role: ${req.user.role}`);
+    // GET /api/products - List products with pagination and role-based filtering
+    router.get('/', async (req, res, next) => {
+        const { page = 1, limit = 10, storeId: queryStoreId, categoryId, brandId, searchTerm, sortBy = 'products.product_name', order = 'asc' } = req.query;
+        const userId = req.user.id;
+        const userRole = req.user.role_name;
+        const userStoreId = req.user.store_id;
+
+        console.log(`[ProductRoutes] GET / - User: ${userId} (${userRole}), UserStore: ${userStoreId}, Query: ${JSON.stringify(req.query)}`);
+
+        const allowedViewRoles = [ROLES.GLOBAL_ADMIN, ROLES.STORE_ADMIN, ROLES.STORE_MANAGER, ROLES.SALES_PERSON];
+        if (!allowedViewRoles.includes(userRole)) {
+            return res.status(403).json({ message: "Forbidden: You do not have permission to view products." });
+        }
+
         try {
-            console.log(`[${new Date().toISOString()}] GET /api/products - Attempting Knex query with joins...`);
-            const products = await knex('products')
+            let query = knex('products')
                 .leftJoin('categories', 'products.category_id', 'categories.id')
                 .leftJoin('brands', 'products.brand_id', 'brands.id')
-                .leftJoin('units', 'products.base_unit_id', 'units.id')
+                .leftJoin('units as base_units', 'products.base_unit_id', 'base_units.id')
+                .leftJoin('stores', 'products.store_id', 'stores.id')
                 .select(
-                    'products.id',
-                    'products.product_name as name',
-                    'products.sku',
-                    'brands.name as brand_name',
-                    'products.retail_price as sale_price',
-                    'products.cost_price',
-                    'products.wholesale_price',
-                    'categories.name as category_name',
-                    'units.name as base_unit_name'
-                )
-                .orderBy('products.product_name').limit(100); // Consider pagination
-            console.log(`[${new Date().toISOString()}] GET /api/products - Knex query successful. Fetched ${products.length} products.`);
-            res.status(200).json(products);
-            console.log(`[${new Date().toISOString()}] GET /api/products - Response sent.`);
+                    'products.id', 'products.product_name', 'products.product_name as name',
+                    'products.sku', 'products.retail_price', 'products.cost_price', 'products.wholesale_price',
+                    'categories.name as category_name', 'brands.name as brand_name',
+                    'base_units.name as base_unit_name',
+                    'products.store_id', 'stores.name as store_name'
+                );
+
+            // Store-based filtering
+            if (userRole === ROLES.GLOBAL_ADMIN) {
+                if (queryStoreId) {
+                    if (queryStoreId.toLowerCase() === 'null' || queryStoreId === '0') {
+                        query = query.whereNull('products.store_id');
+                    } else {
+                        query = query.where('products.store_id', parseInt(queryStoreId, 10));
+                    }
+                }
+                // If no queryStoreId, Global Admin sees all (store-specific AND global products).
+            } else { // Store-level users
+                const accessibleStoreIds = req.user.associated_store_ids || [];
+                if (userStoreId && !accessibleStoreIds.includes(userStoreId)) {
+                    accessibleStoreIds.push(userStoreId);
+                }
+
+                if (queryStoreId) {
+                    if (queryStoreId.toLowerCase() === 'null' || queryStoreId === '0') {
+                        query = query.whereNull('products.store_id'); // Show only global products
+                    } else {
+                        const requestedStoreId = parseInt(queryStoreId, 10);
+                        if (!accessibleStoreIds.includes(requestedStoreId)) {
+                            return res.status(403).json({ message: "Forbidden: You can only view products for your associated stores or global products." });
+                        }
+                        // Show products for that specific store OR global products
+                        query = query.where(builder =>
+                            builder.where('products.store_id', requestedStoreId)
+                                   .orWhereNull('products.store_id')
+                        );
+                    }
+                } else { // No specific store queried by store user: show their stores' products AND global products
+                    if (accessibleStoreIds.length > 0) {
+                        query = query.where(builder =>
+                            builder.whereIn('products.store_id', accessibleStoreIds)
+                                   .orWhereNull('products.store_id')
+                        );
+                    } else {
+                        // No associated stores, show only global products
+                        query = query.whereNull('products.store_id');
+                    }
+                }
+            }
+
+            if (categoryId) query = query.where('products.category_id', parseInt(categoryId, 10));
+            if (brandId) query = query.where('products.brand_id', parseInt(brandId, 10));
+            if (searchTerm) {
+                query = query.where(builder =>
+                    builder.where('products.product_name', 'ilike', `%${searchTerm}%`)
+                           .orWhere('products.sku', 'ilike', `%${searchTerm}%`)
+                );
+            }
+            
+            const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+            const countQuery = query.clone().clearSelect().clearOrder().count('* as total');
+            
+            const productsData = await query.orderBy(sortBy, order).limit(parseInt(limit, 10)).offset(offset);
+            const { total } = await countQuery.first();
+            const totalCount = parseInt(total, 10);
+
+            res.status(200).json({
+                data: productsData,
+                pagination: { page: parseInt(page, 10), limit: parseInt(limit, 10), total: totalCount, totalPages: Math.ceil(totalCount / parseInt(limit, 10)) }
+            });
         } catch (err) {
-            console.error(`[${new Date().toISOString()}] [ERROR] GET /api/products:`, err);
+            console.error(`[ProductRoutes] [ERROR] GET /api/products: UserID ${userId}, Role ${userRole}`, err);
             next(err);
         }
     });
 
     // GET /api/products/:id - Fetch single product
-    // Example: Allow multiple roles to view a single product
-    router.get('/:id', authorizeRole([ROLES.GLOBAL_ADMIN, ROLES.STORE_ADMIN, ROLES.STORE_MANAGER, ROLES.SALES_PERSON]), async (req, res, next) => {
-        const { id } = req.params; const productId = parseInt(id);
-        if (isNaN(productId)) return res.status(400).json({ message: 'Invalid product ID.' });
-        console.log(`[DEBUG] GET /api/products/${productId} handler started by User ID: ${req.user.id}, Role: ${req.user.role}`);
-        try {
-            // ... (your existing GET by ID logic remains unchanged) ...
-            console.log(`[DEBUG] Fetching product details for ID: ${productId}`);
-            const product = await knex('products').where({ id: productId }).first();
-            if (!product) { console.log(`[DEBUG] Product ${productId} not found.`); return res.status(404).json({ message: `Product with ID ${id} not found.` }); }
-            console.log(`[DEBUG] Product details fetched: Found`);
+    router.get('/:id', async (req, res, next) => {
+        const { id } = req.params;
+        const productId = parseInt(id, 10);
+        const userId = req.user.id;
+        const userRole = req.user.role_name;
+        const userStoreId = req.user.store_id;
 
-            console.log(`[DEBUG] Fetching product units for product ID: ${productId}`);
-            const productUnits = await knex('product_units').join('units', 'product_units.unit_id', 'units.id')
+        if (isNaN(productId)) return res.status(400).json({ message: 'Invalid product ID.' });
+        console.log(`[ProductRoutes] GET /${productId} - User: ${userId} (${userRole})`);
+
+        const allowedViewRoles = [ROLES.GLOBAL_ADMIN, ROLES.STORE_ADMIN, ROLES.STORE_MANAGER, ROLES.SALES_PERSON];
+        if (!allowedViewRoles.includes(userRole)) {
+            return res.status(403).json({ message: "Forbidden: You do not have permission to view this product." });
+        }
+
+        try {
+            const product = await knex('products').where({ id: productId }).first();
+            if (!product) {
+                return res.status(404).json({ message: `Product with ID ${productId} not found.` });
+            }
+
+            if (userRole !== ROLES.GLOBAL_ADMIN) {
+                if (product.store_id !== null) { // If product is store-specific
+                    const accessibleStoreIds = req.user.associated_store_ids || [];
+                    if (userStoreId && !accessibleStoreIds.includes(userStoreId)) {
+                         accessibleStoreIds.push(userStoreId);
+                    }
+                    if (!accessibleStoreIds.includes(product.store_id)) {
+                        return res.status(403).json({ message: 'Forbidden: You do not have access to this product.' });
+                    }
+                }
+                // If product.store_id is null (global), store users can access it.
+            }
+
+            const productUnits = await knex('product_units')
+                .join('units', 'product_units.unit_id', 'units.id')
                 .select('product_units.id', 'product_units.unit_id', 'units.name as unit_name', 'product_units.conversion_factor', 'product_units.is_purchase_unit', 'product_units.is_sales_unit')
                 .where('product_units.product_id', productId).orderBy('units.name');
-            console.log(`[DEBUG] Fetched ${productUnits.length} product units.`);
-
-            const responseData = { ...product, product_units: productUnits };
-            console.log(`[DEBUG] Sending response for product ID: ${productId}`);
-            res.status(200).json(responseData);
+            
+            res.status(200).json({ ...product, product_units: productUnits });
         } catch (err) {
-            console.error(`[ERROR] Error fetching product ${id}:`, err);
+            console.error(`[ProductRoutes] [ERROR] GET /api/products/${productId}: UserID ${userId}`, err);
             next(err);
         }
     });
 
-    // POST /api/products - Create
-    // Example: Only GLOBAL_ADMIN and STORE_ADMIN can create products
-    router.post('/', authorizeRole([ROLES.GLOBAL_ADMIN, ROLES.STORE_ADMIN]), async (req, res, next) => {
-        console.log(`[DEBUG] POST /api/products handler started by User ID: ${req.user.id}, Role: ${req.user.role}`);
-        // ... (your existing POST logic, validation, and prepareProductData call remain unchanged) ...
-        const requiredFields = ['product_name', 'category_id', 'base_unit_id', 'retail_price', 'cost_price'];
-        const missingFields = requiredFields.filter(field =>!(field in req.body) || req.body[field] === '' || req.body[field] === null || req.body[field] === undefined);
-        if (missingFields.length > 0) return res.status(400).json({ message: `Missing required fields: ${missingFields.join(', ')}.` });
+    // POST /api/products - Create a new product
+    router.post('/', async (req, res, next) => {
+        const userId = req.user.id;
+        const userRole = req.user.role_name;
+        const userStoreId = req.user.store_id;
+
+        console.log(`[ProductRoutes] POST / - User: ${userId} (${userRole}), UserStore: ${userStoreId}, Body: ${JSON.stringify(req.body)}`);
+
+        const allowedCreateRoles = [ROLES.GLOBAL_ADMIN, ROLES.STORE_ADMIN]; // Define who can create
+        if (!allowedCreateRoles.includes(userRole)) {
+            return res.status(403).json({ message: "Forbidden: You do not have permission to create products." });
+        }
+
+        const baseRequiredFields = ['product_name', 'category_id', 'base_unit_id', 'retail_price', 'cost_price'];
+        const missingBaseFields = baseRequiredFields.filter(field => !(field in req.body) || req.body[field] === '' || req.body[field] === null);
+        if (missingBaseFields.length > 0) {
+            return res.status(400).json({ message: `Missing required fields: ${missingBaseFields.join(', ')}.` });
+        }
 
         let preparedData;
-        try { preparedData = prepareProductData(req.body); }
-        catch(prepError) { console.error("Error preparing product data:", prepError); return res.status(400).json({ message: 'Invalid data format submitted.' }); }
+        try { 
+            preparedData = prepareProductData(req.body); 
+        } catch (prepError) { 
+            console.error("[ProductRoutes] Error preparing product data:", prepError); 
+            return res.status(400).json({ message: 'Invalid data format submitted.' }); 
+        }
         
-        // Add store_id from authenticated user if applicable and not already set by a global admin
-        if (req.user.store_id && (preparedData.store_id === null || preparedData.store_id === undefined)) {
-            if (req.user.role === ROLES.STORE_ADMIN || req.user.role === ROLES.STORE_MANAGER) {
-                 preparedData.store_id = req.user.store_id;
-                 console.log(`[DEBUG] Auto-assigning store_id ${req.user.store_id} based on user role ${req.user.role}`);
+        let final_product_store_id = null; // Default to global product
+
+        if (userRole === ROLES.STORE_ADMIN) {
+            if (!userStoreId) { // Should not happen if role is STORE_ADMIN and system is consistent
+                return res.status(403).json({ message: "Forbidden: Store Admins must be assigned to a store." });
+            }
+            // If STORE_ADMIN provides a store_id in payload, it's used (and should be their own, or it's an issue)
+            // If STORE_ADMIN does NOT provide a store_id, it becomes global.
+            if (preparedData.store_id !== undefined && preparedData.store_id !== null) {
+                if (preparedData.store_id !== userStoreId) {
+                    console.warn(`[ProductRoutes] STORE_ADMIN ${userId} provided store_id ${preparedData.store_id} which differs from their assigned store ${userStoreId}. Using assigned store.`);
+                }
+                final_product_store_id = userStoreId; // Always assign to their own store if they specify any store
+            } else {
+                final_product_store_id = null; // Global product if store_id is omitted by STORE_ADMIN
+                console.log(`[ProductRoutes] STORE_ADMIN ${userId} creating a global product.`);
+            }
+        } else if (userRole === ROLES.GLOBAL_ADMIN) {
+            // If GLOBAL_ADMIN provides a store_id, use it. Otherwise, it's global.
+            if (preparedData.store_id !== undefined && preparedData.store_id !== null) {
+                final_product_store_id = preparedData.store_id;
+            } else {
+                final_product_store_id = null; // Global product
             }
         }
-        // If user is global_admin, they MUST provide store_id if it's a required field for products
-        if (req.user.role === ROLES.GLOBAL_ADMIN && (preparedData.store_id === null || preparedData.store_id === undefined)) {
-            // Assuming store_id is mandatory for products. Adjust if not.
-            // return res.status(400).json({ message: 'Global Admin must specify a store_id for the product.' });
-            // Or, if products can exist without a store (e.g. master product list), this check might not be needed or different.
-        }
+        // For other roles with create permission (if any added later), they would create global products by default
+        // unless specific logic is added for them.
 
+        preparedData.store_id = final_product_store_id;
 
-        const newProductData = { ...preparedData, created_at: new Date(), updated_at: new Date() };
-
-
-        // Price Validation
-        const costPrice = newProductData.cost_price; const retailPrice = newProductData.retail_price; const wholesalePrice = newProductData.wholesale_price;
-        if (costPrice === null || costPrice < 0) return res.status(400).json({ message: 'Cost Price must be a non-negative number.' });
-        if (retailPrice === null || retailPrice < 0) return res.status(400).json({ message: 'Retail Price must be a non-negative number.' });
-        if (retailPrice < costPrice) return res.status(400).json({ message: 'Retail Price cannot be less than Cost Price.' });
-        if (wholesalePrice !== null) { if (wholesalePrice < 0) return res.status(400).json({ message: 'Wholesale Price cannot be negative.' }); if (wholesalePrice < costPrice) return res.status(400).json({ message: 'Wholesale Price cannot be less than Cost Price.' }); }
+        const { cost_price, retail_price, wholesale_price } = preparedData;
+        if (cost_price === null || cost_price < 0) return res.status(400).json({ message: 'Cost Price must be a non-negative number.' });
+        if (retail_price === null || retail_price < 0) return res.status(400).json({ message: 'Retail Price must be a non-negative number.' });
+        if (retail_price < cost_price) return res.status(400).json({ message: 'Retail Price cannot be less than Cost Price.' });
+        if (wholesale_price !== null && (wholesale_price < 0 || wholesale_price < cost_price)) return res.status(400).json({ message: 'Wholesale Price cannot be negative or less than Cost Price.' });
 
         try {
-            if (newProductData.base_unit_id === null || isNaN(newProductData.base_unit_id)) return res.status(400).json({ message: 'Invalid or missing Base Unit ID.' });
-            const baseUnitExists = await knex('units').where({ id: newProductData.base_unit_id }).first();
-            if (!baseUnitExists) return res.status(400).json({ message: `Invalid reference ID provided (Base Unit ID: ${newProductData.base_unit_id} not found).` });
-
-            if (newProductData.category_id === null || isNaN(newProductData.category_id)) return res.status(400).json({ message: 'Invalid or missing Category ID.' });
-            const categoryExists = await knex('categories').where({ id: newProductData.category_id }).first();
-            if (!categoryExists) return res.status(400).json({ message: `Invalid reference ID provided (Category ID: ${newProductData.category_id} not found).` });
+            if (preparedData.base_unit_id === null || !(await knex('units').where({ id: preparedData.base_unit_id }).first())) return res.status(400).json({ message: `Invalid or missing Base Unit ID.` });
+            if (preparedData.category_id === null || !(await knex('categories').where({ id: preparedData.category_id }).first())) return res.status(400).json({ message: `Invalid or missing Category ID.` });
             
-            // Validate store_id if it's set
-            if (newProductData.store_id !== null && newProductData.store_id !== undefined) {
-                const storeExists = await knex('stores').where({ id: newProductData.store_id }).first();
-                if (!storeExists) return res.status(400).json({ message: `Invalid reference ID provided (Store ID: ${newProductData.store_id} not found).` });
+            if (preparedData.store_id !== null) { // Validate store_id only if it's not null
+                if (!(await knex('stores').where({ id: preparedData.store_id }).first())) {
+                    return res.status(400).json({ message: `Invalid Store ID: ${preparedData.store_id}. Store does not exist.` });
+                }
             }
 
+            const newProductData = { ...preparedData, created_at: new Date(), updated_at: new Date() };
+            console.log("[ProductRoutes] Final product data for insertion:", newProductData);
 
-            console.log("Attempting to insert product data:", JSON.stringify(newProductData, null, 2));
             const [insertedProduct] = await knex('products').insert(newProductData).returning('*');
-            console.log("[DEBUG] Product inserted successfully:", insertedProduct.id);
             res.status(201).json(insertedProduct);
         } catch (err) {
-            if (err.code === '23505') { // Unique constraint violation (e.g. SKU)
-                return res.status(409).json({ message: `Conflict: A product with similar unique details (e.g., SKU) already exists. ${err.detail}` });
-            }
-            if (err.code === '23503') { // Foreign key violation
-                return res.status(400).json({ message: `Invalid reference ID provided. ${err.detail}` });
-            }
-            console.error(`[ERROR] POST /api/products:`, err);
+            if (err.code === '23505') return res.status(409).json({ message: `Conflict: A product with similar unique details (e.g., SKU) already exists. ${err.detail}` });
+            if (err.code === '23503') return res.status(400).json({ message: `Invalid reference ID provided. ${err.detail}` });
+            console.error(`[ProductRoutes] [ERROR] POST /api/products: UserID ${userId}`, err);
             next(err);
         }
     });
 
-    // PUT /api/products/:id - Update
-    // Example: GLOBAL_ADMIN, STORE_ADMIN, STORE_MANAGER can update products
-    router.put('/:id', authorizeRole([ROLES.GLOBAL_ADMIN, ROLES.STORE_ADMIN, ROLES.STORE_MANAGER]), async (req, res, next) => {
-        const { id } = req.params; const productId = parseInt(id);
+    // PUT /api/products/:id - Update an existing product
+    router.put('/:id', async (req, res, next) => {
+        const { id } = req.params;
+        const productId = parseInt(id, 10);
+        const userId = req.user.id;
+        const userRole = req.user.role_name;
+        const userStoreId = req.user.store_id;
+
         if (isNaN(productId)) return res.status(400).json({ message: 'Invalid product ID.' });
         if (Object.keys(req.body).length === 0) return res.status(400).json({ message: 'No update data provided.' });
-        console.log(`[DEBUG] PUT /api/products/${productId} handler started by User ID: ${req.user.id}, Role: ${req.user.role}`);
+        console.log(`[ProductRoutes] PUT /${productId} - User: ${userId} (${userRole})`);
+
+        const allowedUpdateRoles = [ROLES.GLOBAL_ADMIN, ROLES.STORE_ADMIN, ROLES.STORE_MANAGER];
+        if (!allowedUpdateRoles.includes(userRole)) {
+            return res.status(403).json({ message: "Forbidden: You do not have permission to update products." });
+        }
 
         try {
-            // ... (your existing PUT logic, validation, and prepareProductData call remain unchanged) ...
-            let currentProduct = await knex('products').where({ id: productId }).first();
-            if (!currentProduct) { console.log(`[DEBUG] Product ${productId} not found.`); return res.status(404).json({ message: `Product with ID ${id} not found.` }); }
-            
-            // Authorization: Store admin/manager can only update products in their own store
-            if ((req.user.role === ROLES.STORE_ADMIN || req.user.role === ROLES.STORE_MANAGER) && currentProduct.store_id !== req.user.store_id) {
-                console.warn(`[AUTHZ] User ${req.user.id} (Store ID: ${req.user.store_id}) attempted to update product ${productId} in store ${currentProduct.store_id}.`);
-                return res.status(403).json({ message: 'Forbidden: You can only update products in your assigned store.' });
+            const currentProduct = await knex('products').where({ id: productId }).first();
+            if (!currentProduct) {
+                return res.status(404).json({ message: `Product with ID ${productId} not found.` });
+            }
+
+            let canUpdateThisProduct = false;
+            if (userRole === ROLES.GLOBAL_ADMIN) {
+                canUpdateThisProduct = true;
+            } else { // STORE_ADMIN, STORE_MANAGER
+                if (currentProduct.store_id === null) { // Can update global products
+                    canUpdateThisProduct = true;
+                } else { // Can update products in their associated stores
+                    const accessibleStoreIds = req.user.associated_store_ids || [];
+                    if (userStoreId && !accessibleStoreIds.includes(userStoreId)) {
+                         accessibleStoreIds.push(userStoreId);
+                    }
+                    if (accessibleStoreIds.includes(currentProduct.store_id)) {
+                        canUpdateThisProduct = true;
+                    }
+                }
+            }
+            if (!canUpdateThisProduct) {
+                return res.status(403).json({ message: 'Forbidden: You do not have permission to update this specific product.' });
             }
 
             const preparedData = prepareProductData(req.body);
             const productUpdates = { ...preparedData, updated_at: new Date() };
-            delete productUpdates.created_at; // Should not be updatable
-            delete productUpdates.id; // ID is not updatable
+            delete productUpdates.created_at;
 
-            // Price Validation
-            const finalCostPrice = productUpdates.cost_price !== undefined ? productUpdates.cost_price : currentProduct.cost_price;
-            const finalRetailPrice = productUpdates.retail_price !== undefined ? productUpdates.retail_price : currentProduct.retail_price;
-            const finalWholesalePrice = productUpdates.wholesale_price !== undefined ? productUpdates.wholesale_price : currentProduct.wholesale_price;
-            if (finalCostPrice === null || finalCostPrice < 0) return res.status(400).json({ message: 'Cost Price must be a non-negative number.' });
-            if (finalRetailPrice === null || finalRetailPrice < 0) return res.status(400).json({ message: 'Retail Price must be a non-negative number.' });
-            if (finalRetailPrice < finalCostPrice) return res.status(400).json({ message: 'Retail Price cannot be less than Cost Price.' });
-            if (finalWholesalePrice !== null) { if (finalWholesalePrice < 0) return res.status(400).json({ message: 'Wholesale Price cannot be negative.' }); if (finalWholesalePrice < finalCostPrice) return res.status(400).json({ message: 'Wholesale Price cannot be less than Cost Price.' }); }
+            // Handle store_id changes
+            if (productUpdates.hasOwnProperty('store_id') && productUpdates.store_id !== currentProduct.store_id) {
+                const newStoreId = productUpdates.store_id; // Can be an ID or null
 
-            // Reference ID Validation
-            if (productUpdates.base_unit_id !== undefined && productUpdates.base_unit_id !== null) { const baseUnitExists = await knex('units').where({ id: productUpdates.base_unit_id }).first(); if (!baseUnitExists) return res.status(400).json({ message: `Invalid Base Unit ID: ${productUpdates.base_unit_id}` }); } else if (productUpdates.base_unit_id === null && currentProduct.base_unit_id !== null) return res.status(400).json({ message: 'Base Unit ID cannot be removed once set.' });
-            if (productUpdates.category_id !== undefined && productUpdates.category_id !== null) { const categoryExists = await knex('categories').where({ id: productUpdates.category_id }).first(); if (!categoryExists) return res.status(400).json({ message: `Invalid Category ID: ${productUpdates.category_id}` }); } else if (productUpdates.category_id === null && currentProduct.category_id !== null) return res.status(400).json({ message: 'Category ID cannot be removed once set.' });
-            
-            // Validate store_id if it's being changed
-            if (productUpdates.store_id !== undefined && productUpdates.store_id !== null && productUpdates.store_id !== currentProduct.store_id) {
-                if (req.user.role !== ROLES.GLOBAL_ADMIN) {
-                    return res.status(403).json({ message: 'Forbidden: Only Global Admin can change the store assignment of a product.' });
+                if (userRole === ROLES.GLOBAL_ADMIN) {
+                    if (newStoreId !== null && !(await knex('stores').where({ id: newStoreId }).first())) {
+                        return res.status(400).json({ message: `Invalid new Store ID: ${newStoreId}. Store does not exist.` });
+                    }
+                } else { // STORE_ADMIN, STORE_MANAGER
+                    const accessibleStoreIds = req.user.associated_store_ids || [];
+                    if (userStoreId && !accessibleStoreIds.includes(userStoreId)) {
+                         accessibleStoreIds.push(userStoreId);
+                    }
+                    if (newStoreId !== null && !accessibleStoreIds.includes(newStoreId)) {
+                        return res.status(403).json({ message: 'Forbidden: You can only assign products to your associated stores or make them global.' });
+                    }
                 }
-                const storeExists = await knex('stores').where({ id: productUpdates.store_id }).first();
-                if (!storeExists) return res.status(400).json({ message: `Invalid reference ID provided (Store ID: ${productUpdates.store_id} not found).` });
-            } else if (productUpdates.store_id === null && currentProduct.store_id !== null) {
-                 if (req.user.role !== ROLES.GLOBAL_ADMIN) {
-                    return res.status(403).json({ message: 'Forbidden: Only Global Admin can remove the store assignment of a product.' });
-                }
+            } else if (!productUpdates.hasOwnProperty('store_id')) {
+                // If store_id is not in the update payload, it should not be changed.
+                // Ensure it's not accidentally set to null by prepareProductData if it was missing.
+                // So, explicitly set it back to currentProduct.store_id if not in payload.
+                productUpdates.store_id = currentProduct.store_id;
             }
 
 
-            // Prevent updates with no actual changes (comparing to currentProduct)
+            const finalCostPrice = productUpdates.cost_price !== undefined ? productUpdates.cost_price : currentProduct.cost_price;
+            const finalRetailPrice = productUpdates.retail_price !== undefined ? productUpdates.retail_price : currentProduct.retail_price;
+            const finalWholesalePrice = productUpdates.wholesale_price !== undefined ? productUpdates.wholesale_price : currentProduct.wholesale_price;
+
+            if (finalCostPrice === null || finalCostPrice < 0) return res.status(400).json({ message: 'Cost Price must be a non-negative number.' });
+            if (finalRetailPrice === null || finalRetailPrice < 0) return res.status(400).json({ message: 'Retail Price must be a non-negative number.' });
+            if (finalRetailPrice < finalCostPrice) return res.status(400).json({ message: 'Retail Price cannot be less than Cost Price.' });
+            if (finalWholesalePrice !== null && (finalWholesalePrice < 0 || finalWholesalePrice < finalCostPrice)) return res.status(400).json({ message: 'Wholesale Price cannot be negative or less than Cost Price.' });
+
+            if (productUpdates.base_unit_id !== undefined && productUpdates.base_unit_id !== null && !(await knex('units').where({ id: productUpdates.base_unit_id }).first())) return res.status(400).json({ message: `Invalid Base Unit ID: ${productUpdates.base_unit_id}` });
+            if (productUpdates.category_id !== undefined && productUpdates.category_id !== null && !(await knex('categories').where({ id: productUpdates.category_id }).first())) return res.status(400).json({ message: `Invalid Category ID: ${productUpdates.category_id}` });
+            
             let hasChanges = false;
             for (const key in productUpdates) {
-                if (key !== 'updated_at' && productUpdates[key] !== currentProduct[key]) {
-                    // Handle cases where null and undefined might be treated differently or dates
-                    if (!(productUpdates[key] === null && currentProduct[key] === undefined) &&
-                        !(productUpdates[key] === undefined && currentProduct[key] === null)) {
+                if (key === 'updated_at') continue;
+                if (productUpdates.hasOwnProperty(key)) {
+                    const updatedVal = productUpdates[key] === undefined ? null : productUpdates[key];
+                    const currentVal = currentProduct[key] === undefined ? null : currentProduct[key];
+                    if (updatedVal !== currentVal) {
                         hasChanges = true;
                         break;
                     }
                 }
             }
-            if (!hasChanges) { console.log(`[DEBUG] No actual data change detected for product ${productId}.`); return res.status(200).json(currentProduct); }
 
+            if (!hasChanges) {
+                console.log(`[ProductRoutes] No actual data change detected for product ${productId}.`);
+                return res.status(200).json(currentProduct);
+            }
 
-            const count = await knex('products').where({ id: productId }).update(productUpdates);
-            const updatedProduct = await knex('products').where({ id: productId }).first();
+            await knex('products').where({ id: productId }).update(productUpdates);
+            const updatedProduct = await knex('products').where({ id: productId }).first(); // Fetch again to get the final state
             res.status(200).json(updatedProduct);
         } catch (err) {
-            if (err.code === '23505') { // Unique constraint violation
-                return res.status(409).json({ message: `Conflict: A product with similar unique details (e.g., SKU) already exists. ${err.detail}` });
-            }
-            if (err.code === '23503') { // Foreign key violation
-                return res.status(400).json({ message: `Invalid reference ID provided. ${err.detail}` });
-            }
-            console.error(`[ERROR] PUT /api/products/${id}:`, err);
+            if (err.code === '23505') return res.status(409).json({ message: `Conflict: Product with similar unique details already exists. ${err.detail}` });
+            if (err.code === '23503') return res.status(400).json({ message: `Invalid reference ID. ${err.detail}` });
+            console.error(`[ProductRoutes] [ERROR] PUT /api/products/${productId}: UserID ${userId}`, err);
             next(err);
         }
     });
 
-    // DELETE /api/products/:id - Delete
-    // Example: Only GLOBAL_ADMIN and STORE_ADMIN can delete products
-    router.delete('/:id', authorizeRole([ROLES.GLOBAL_ADMIN, ROLES.STORE_ADMIN]), async (req, res, next) => {
+    // DELETE /api/products/:id - Delete a product
+    router.delete('/:id', async (req, res, next) => {
         const { id } = req.params;
         const productId = parseInt(id, 10);
-        if (isNaN(productId)) {
-            return res.status(400).json({ message: 'Invalid product ID.' });
+        const userId = req.user.id;
+        const userRole = req.user.role_name;
+        const userStoreId = req.user.store_id;
+
+        if (isNaN(productId)) return res.status(400).json({ message: 'Invalid product ID.' });
+        console.log(`[ProductRoutes] DELETE /${productId} - User: ${userId} (${userRole})`);
+
+        const allowedDeleteRoles = [ROLES.GLOBAL_ADMIN, ROLES.STORE_ADMIN];
+        if (!allowedDeleteRoles.includes(userRole)) {
+            return res.status(403).json({ message: "Forbidden: You do not have permission to delete products." });
         }
-        console.log(`[DEBUG] DELETE /api/products/${productId} handler started by User ID: ${req.user.id}, Role: ${req.user.role}`);
+        
         try {
             const product = await knex('products').where({ id: productId }).first();
             if (!product) {
-                console.log(`[DEBUG] Product ${productId} not found for deletion.`);
-                return res.status(404).json({ message: `Product with ID ${id} not found.` });
+                return res.status(404).json({ message: `Product with ID ${productId} not found.` });
             }
 
-            // Authorization: Store admin can only delete products in their own store
-            if (req.user.role === ROLES.STORE_ADMIN && product.store_id !== req.user.store_id) {
-                console.warn(`[AUTHZ] User ${req.user.id} (Store ID: ${req.user.store_id}) attempted to delete product ${productId} in store ${product.store_id}.`);
-                return res.status(403).json({ message: 'Forbidden: You can only delete products in your assigned store.' });
+            if (userRole === ROLES.STORE_ADMIN) {
+                if (product.store_id !== null) { // If product is store-specific
+                    const accessibleStoreIds = req.user.associated_store_ids || [];
+                    if (userStoreId && !accessibleStoreIds.includes(userStoreId)) {
+                         accessibleStoreIds.push(userStoreId);
+                    }
+                    if (!accessibleStoreIds.includes(product.store_id)) {
+                        return res.status(403).json({ message: 'Forbidden: You can only delete products in your associated stores or global products.' });
+                    }
+                }
+                // If product.store_id is null (global), store admin can delete it.
             }
-
-            // Add checks for dependencies (e.g., if product is in sales orders, inventory items) before deletion
-            // For example:
-            // const isInSale = await knex('sale_items').where({ product_id: productId }).first();
-            // if (isInSale) {
-            //    return res.status(409).json({ message: 'Conflict: Product cannot be deleted as it is part of existing sales records.' });
-            // }
+            // Global admin can delete any product.
 
             const deletedCount = await knex('products').where({ id: productId }).del();
             if (deletedCount > 0) {
-                console.log(`[DEBUG] Product ${productId} deleted successfully.`);
-                return res.status(200).json({ message: `Product ${productId} deleted successfully.` }); // Or res.status(204).send();
+                res.status(200).json({ message: `Product ${productId} deleted successfully.` });
             } else {
-                // This case should ideally be caught by the check above, but as a fallback:
-                console.log(`[DEBUG] No rows deleted for product ${productId}, though it was found.`);
-                return res.status(404).json({ message: `Product with ID ${id} found but could not be deleted.` });
+                res.status(404).json({ message: `Product ${productId} not found or already deleted.` });
             }
         } catch (err) {
-            // Handle specific DB errors like foreign key constraints if product deletion is restricted
-            if (err.code === '23503') { // PostgreSQL foreign key violation
-                 return res.status(409).json({ message: 'Conflict: This product cannot be deleted because it is referenced by other records (e.g., sales, inventory).', detail: err.detail });
+            if (err.code === '23503') {
+                return res.status(409).json({ message: 'Conflict: This product cannot be deleted as it is referenced by other records (e.g., sales, inventory).', detail: err.detail });
             }
-            console.error(`[ERROR] DELETE /api/products/${productId} failed:`, err);
-            next(err); // Pass to global error handler
+            console.error(`[ProductRoutes] [ERROR] DELETE /api/products/${productId}: UserID ${userId}`, err);
+            next(err);
         }
     });
 

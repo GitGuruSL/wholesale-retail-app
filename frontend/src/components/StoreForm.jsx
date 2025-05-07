@@ -1,64 +1,66 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import React, { useState, useEffect, useCallback } from 'react';
+// import axios from 'axios'; // REMOVE THIS
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext'; // Import useAuth
 
-const API_BASE_URL = 'http://localhost:5001/api';
+// const API_BASE_URL = 'http://localhost:5001/api'; // REMOVE THIS
 
 function StoreForm() {
     const { storeId } = useParams();
     const navigate = useNavigate();
+    const { apiInstance, isAuthenticated, isLoading: authLoading } = useAuth(); // Use AuthContext
+
     const isEditing = Boolean(storeId);
 
     const [name, setName] = useState('');
     const [address, setAddress] = useState('');
     const [contactInfo, setContactInfo] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
+    const [isLoading, setIsLoading] = useState(false); // Renamed from 'loading'
+    const [pageError, setPageError] = useState(null);   // Renamed from 'error'
+    const [formError, setFormError] = useState('');     // For specific field validation errors
+
+    const fetchStoreDetails = useCallback(async () => {
+        if (!isEditing || !apiInstance || !isAuthenticated) return;
+
+        console.log(`[StoreForm] Fetching details for ID: ${storeId}`);
+        setIsLoading(true);
+        setPageError(null);
+        try {
+            const response = await apiInstance.get(`/stores/${storeId}`);
+            const data = response.data;
+            setName(data.name);
+            setAddress(data.address || '');
+            setContactInfo(data.contact_info || '');
+            console.log("[StoreForm] Data fetched:", data);
+        } catch (err) {
+            console.error("[StoreForm] Failed to fetch store:", err);
+            setPageError(err.response?.data?.message || "Failed to load store data.");
+        } finally {
+            setIsLoading(false);
+        }
+    }, [storeId, apiInstance, isAuthenticated, isEditing]);
 
     useEffect(() => {
-        if (isEditing) {
-            setLoading(true);
-            setError(null);
-            const token = localStorage.getItem('token');
-            if (!token) {
-                setError('Authentication token not found. Please log in.');
-                setLoading(false);
-                // navigate('/login'); // Optionally redirect
-                return;
-            }
-            const config = {
-                headers: { Authorization: `Bearer ${token}` }
-            };
-            axios.get(`${API_BASE_URL}/stores/${storeId}`, config)
-                .then(response => {
-                    const data = response.data;
-                    setName(data.name);
-                    setAddress(data.address || '');
-                    setContactInfo(data.contact_info || '');
-                    setLoading(false);
-                })
-                .catch(err => {
-                    console.error("Error fetching store details:", err);
-                    const errorMsg = err.response?.data?.message || 'Failed to load store data.';
-                    if (err.response?.status === 401 || err.response?.status === 403) {
-                        setError('Unauthorized: Could not fetch store. Please log in again.');
-                    } else {
-                        setError(errorMsg);
-                    }
-                    setLoading(false);
-                });
-        } else {
+        if (isEditing && !authLoading && isAuthenticated && apiInstance) {
+            fetchStoreDetails();
+        } else if (isEditing && !authLoading && !isAuthenticated) {
+            setPageError("Please log in to edit stores.");
+        } else if (!isEditing) {
+            // Reset form for new store
             setName('');
             setAddress('');
             setContactInfo('');
-            setError(null);
+            setPageError(null);
+            setFormError('');
         }
-    }, [storeId, isEditing, navigate]); // Added navigate
+    }, [isEditing, fetchStoreDetails, authLoading, isAuthenticated, apiInstance]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setLoading(true);
-        setError(null);
+        if (!apiInstance || !isAuthenticated) {
+            setPageError("Authentication error. Please log in again.");
+            return;
+        }
 
         const storeData = {
             name: name.trim(),
@@ -67,48 +69,49 @@ function StoreForm() {
         };
 
         if (!storeData.name) {
-            setError("Store name cannot be empty.");
-            setLoading(false);
+            setFormError("Store name cannot be empty.");
+            setPageError(''); // Clear page error if it was a submission error
             return;
         }
+        setFormError('');
+        setIsLoading(true);
+        setPageError(null);
+        console.log("[StoreForm] Submitting data:", storeData);
 
         try {
-            const token = localStorage.getItem('token');
-            if (!token) {
-                setError('Authentication token not found. Please log in.');
-                setLoading(false);
-                // navigate('/login'); // Optionally redirect
-                return;
-            }
-            const config = {
-                headers: { Authorization: `Bearer ${token}` }
-            };
-
             if (isEditing) {
-                await axios.put(`${API_BASE_URL}/stores/${storeId}`, storeData, config);
+                await apiInstance.put(`/stores/${storeId}`, storeData);
             } else {
-                await axios.post(`${API_BASE_URL}/stores`, storeData, config);
+                await apiInstance.post('/stores', storeData);
             }
-            navigate('/stores');
+            // Ensure path matches App.jsx, e.g., /dashboard/stores
+            navigate('/dashboard/stores', {
+                state: {
+                    message: `Store "${storeData.name}" ${isEditing ? 'updated' : 'created'} successfully.`,
+                    type: 'success'
+                }
+            });
         } catch (err) {
-            console.error("Error saving store:", err);
-            const errorMsg = err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} store.`;
-            if (err.response?.status === 401 || err.response?.status === 403) {
-                setError('Unauthorized: Could not save store. Please log in again.');
-            } else {
-                setError(errorMsg);
+            console.error("[StoreForm] Error saving store:", err);
+            const errMsg = err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} store.`;
+            setPageError(errMsg);
+            if (err.response?.data?.errors) { // For backend field-specific errors
+                setFormError(Object.values(err.response.data.errors).join(', '));
             }
         } finally {
-            setLoading(false);
+            setIsLoading(false);
         }
     };
 
-    if (loading && isEditing) return <p style={styles.centeredMessage}>Loading store details...</p>;
+    if (authLoading) return <p style={styles.centeredMessage}>Authenticating...</p>;
+    // Show loading for edit mode only if data isn't fetched yet
+    if (isLoading && isEditing && !name) return <p style={styles.centeredMessage}>Loading store details...</p>;
+
 
     return (
         <div style={styles.container}>
             <h2 style={styles.title}>{isEditing ? 'Edit Store' : 'Add New Store'}</h2>
-            {error && <p style={styles.errorBox}>Error: {error}</p>}
+            {pageError && <p style={styles.errorBox}>{pageError}</p>}
             <form onSubmit={handleSubmit}>
                 <div style={styles.formGroup}>
                     <label htmlFor="storeName" style={styles.label}>Store Name: *</label>
@@ -119,9 +122,10 @@ function StoreForm() {
                         onChange={(e) => setName(e.target.value)}
                         required
                         style={styles.input}
-                        disabled={loading}
+                        disabled={isLoading}
                         placeholder="e.g., Main Branch, Downtown Outlet"
                     />
+                    {formError && <p style={styles.formSpecificErrorText}>{formError}</p>}
                 </div>
                 <div style={styles.formGroup}>
                     <label htmlFor="storeAddress" style={styles.label}>Address:</label>
@@ -131,7 +135,7 @@ function StoreForm() {
                         onChange={(e) => setAddress(e.target.value)}
                         rows="3"
                         style={styles.textarea}
-                        disabled={loading}
+                        disabled={isLoading}
                         placeholder="e.g., 123 Main St, Anytown, USA"
                     />
                 </div>
@@ -143,15 +147,16 @@ function StoreForm() {
                         value={contactInfo}
                         onChange={(e) => setContactInfo(e.target.value)}
                         style={styles.input}
-                        disabled={loading}
+                        disabled={isLoading}
                         placeholder="e.g., (555) 123-4567, manager@example.com"
                     />
                 </div>
                 <div style={styles.buttonGroup}>
-                    <button type="submit" disabled={loading} style={styles.buttonPrimary}>
-                        {loading ? 'Saving...' : (isEditing ? 'Update Store' : 'Create Store')}
+                    <button type="submit" disabled={isLoading} style={styles.buttonPrimary}>
+                        {isLoading ? 'Saving...' : (isEditing ? 'Update Store' : 'Create Store')}
                     </button>
-                    <button type="button" onClick={() => navigate('/stores')} style={styles.buttonSecondary} disabled={loading}>
+                    {/* Ensure path matches App.jsx, e.g., /dashboard/stores */}
+                    <button type="button" onClick={() => navigate('/dashboard/stores')} style={styles.buttonSecondary} disabled={isLoading}>
                         Cancel
                     </button>
                 </div>
@@ -165,7 +170,8 @@ const styles = {
     container: { padding: '20px', maxWidth: '600px', margin: '40px auto', fontFamily: 'Arial, sans-serif', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', borderRadius: '8px', backgroundColor: '#fff' },
     title: { marginBottom: '25px', color: '#333', textAlign: 'center', borderBottom: '1px solid #eee', paddingBottom: '15px' },
     centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
-    errorBox: { color: '#D8000C', border: '1px solid #FFBABA', padding: '10px 15px', marginBottom: '20px', borderRadius: '4px', backgroundColor: '#FFD2D2' },
+    errorBox: { color: '#D8000C', border: '1px solid #FFBABA', padding: '10px 15px', marginBottom: '20px', borderRadius: '4px', backgroundColor: '#FFD2D2', textAlign: 'center' },
+    formSpecificErrorText: { color: 'red', fontSize: '0.9em', marginTop: '5px'},
     formGroup: { marginBottom: '20px' },
     label: { display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#555' },
     input: { width: '100%', padding: '12px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1em' },

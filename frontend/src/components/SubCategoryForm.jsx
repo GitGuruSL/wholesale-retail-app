@@ -1,212 +1,159 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
-const API_BASE_URL = 'http://localhost:5001/api';
+// Re-using styles or define new ones
+const styles = {
+    formContainer: { padding: '20px', maxWidth: '600px', margin: '20px auto', boxShadow: '0 0 10px rgba(0,0,0,0.1)', borderRadius: '8px' },
+    formGroup: { marginBottom: '15px' },
+    label: { display: 'block', marginBottom: '5px', fontWeight: 'bold' },
+    input: { width: '100%', padding: '10px', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' },
+    select: { width: '100%', padding: '10px', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' },
+    buttonContainer: { marginTop: '20px', textAlign: 'right' },
+    button: { padding: '10px 15px', marginLeft: '10px', border: 'none', borderRadius: '4px', cursor: 'pointer' },
+    buttonSave: { backgroundColor: '#28a745', color: 'white' },
+    buttonCancel: { backgroundColor: '#6c757d', color: 'white' },
+    errorText: { color: 'red', marginBottom: '10px' },
+    centeredMessage: { textAlign: 'center', padding: '20px' }
+};
 
-function SubCategoryForm() {
+const SubCategoryForm = () => {
     const { subCategoryId } = useParams();
     const navigate = useNavigate();
-    const isEditing = Boolean(subCategoryId);
+    const { apiInstance, isAuthenticated, isLoading: authLoading } = useAuth();
 
     const [name, setName] = useState('');
-    const [categoryId, setCategoryId] = useState('');
-    const [parentCategories, setParentCategories] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
-    const [loadingError, setLoadingError] = useState(null);
+    const [categoryId, setCategoryId] = useState(''); // For parent category
+    const [categories, setCategories] = useState([]); // To populate dropdown
 
-    const fetchParentCategories = useCallback(async (token) => {
-        setLoading(true);
-        setLoadingError(null);
+    const [isLoading, setIsLoading] = useState(false); // For form submission/data loading
+    const [pageError, setPageError] = useState(null);
+    const [formError, setFormError] = useState('');
+
+    const isEditMode = Boolean(subCategoryId);
+
+    // Fetch categories for the dropdown
+    const fetchParentCategories = useCallback(async () => {
+        if (!apiInstance || !isAuthenticated) return;
         try {
-            const config = { headers: { Authorization: `Bearer ${token}` } };
-            const response = await axios.get(`${API_BASE_URL}/categories`, config);
-            setParentCategories(response.data || []);
-            if (!isEditing) setLoading(false); // Only stop loading if not editing, as editing will have another fetch
+            const response = await apiInstance.get('/categories'); // Assuming this endpoint exists
+            setCategories(response.data || []);
         } catch (err) {
-            console.error("Error fetching parent categories:", err);
-            const errorMsg = err.response?.data?.message || 'Failed to load parent categories.';
-            if (err.response?.status === 401 || err.response?.status === 403) {
-                setLoadingError('Unauthorized: Could not fetch parent categories. Please log in again.');
-            } else {
-                setLoadingError(errorMsg);
-            }
-            setLoading(false);
+            console.error("Failed to fetch parent categories:", err);
+            setPageError("Could not load parent categories for selection.");
         }
-    }, [isEditing]);
+    }, [apiInstance, isAuthenticated]);
 
-    const fetchSubCategoryData = useCallback(async (token) => {
-        if (!isEditing) return;
-        setLoading(true);
-        setError(null);
+    // Fetch sub-category data if in edit mode
+    const fetchSubCategory = useCallback(async () => {
+        if (!isEditMode || !apiInstance || !isAuthenticated) return;
+        setIsLoading(true);
+        setPageError(null);
         try {
-            const config = { headers: { Authorization: `Bearer ${token}` } };
-            const response = await axios.get(`${API_BASE_URL}/sub-categories/${subCategoryId}`, config);
+            const response = await apiInstance.get(`/sub-categories/${subCategoryId}`);
             setName(response.data.name);
-            setCategoryId(response.data.category_id.toString()); // Ensure it's a string for select value
-            setLoading(false);
+            setCategoryId(response.data.category_id || ''); // Assuming backend sends category_id
         } catch (err) {
-            console.error("Error fetching sub-category details:", err);
-            const errorMsg = err.response?.data?.message || 'Failed to load sub-category data.';
-            if (err.response?.status === 401 || err.response?.status === 403) {
-                setError('Unauthorized: Could not fetch sub-category. Please log in again.');
-            } else {
-                setError(errorMsg);
+            console.error("Failed to fetch sub-category:", err);
+            setPageError(err.response?.data?.message || "Failed to load sub-category data.");
+        } finally {
+            setIsLoading(false);
+        }
+    }, [subCategoryId, apiInstance, isAuthenticated, isEditMode]);
+
+    useEffect(() => {
+        if (!authLoading && isAuthenticated) {
+            fetchParentCategories(); // Load categories for dropdown
+            if (isEditMode) {
+                fetchSubCategory();
             }
-            setLoading(false);
         }
-    }, [isEditing, subCategoryId]);
-
-    useEffect(() => {
-        const token = localStorage.getItem('token');
-        if (!token) {
-            setError('Authentication token not found. Please log in.');
-            setLoading(false);
-            // navigate('/login'); // Optionally redirect
-            return;
-        }
-        fetchParentCategories(token);
-    }, [fetchParentCategories, navigate]);
-
-    useEffect(() => {
-        const token = localStorage.getItem('token');
-        if (!token && isEditing) {
-            setError('Authentication token not found. Please log in.');
-            setLoading(false);
-            return;
-        }
-        if (isEditing && (parentCategories.length > 0 || loadingError === null)) { // Proceed if parent cats loaded or no error yet
-            fetchSubCategoryData(token);
-        } else if (!isEditing) {
-            setName('');
-            setCategoryId('');
-            setError(null);
-        }
-    }, [isEditing, parentCategories.length, loadingError, fetchSubCategoryData, navigate]);
-
+    }, [isEditMode, fetchSubCategory, fetchParentCategories, authLoading, isAuthenticated]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setLoading(true);
-        setError(null);
-
+        if (!apiInstance || !isAuthenticated) {
+            setPageError("Not authenticated or API client not available.");
+            return;
+        }
         if (!name.trim()) {
-            setError('Sub-category name is required.');
-            setLoading(false);
+            setFormError("Sub-category name cannot be empty.");
             return;
         }
         if (!categoryId) {
-            setError('Parent category must be selected.');
-            setLoading(false);
+            setFormError("Please select a parent category.");
             return;
         }
+        setFormError('');
+        setIsLoading(true);
+        setPageError(null);
 
-        const subCategoryData = {
-            name: name.trim(),
-            category_id: parseInt(categoryId),
-        };
+        const subCategoryData = { name, category_id: categoryId };
 
         try {
-            const token = localStorage.getItem('token');
-            if (!token) {
-                setError('Authentication token not found. Please log in.');
-                setLoading(false);
-                // navigate('/login'); // Optionally redirect
-                return;
-            }
-            const config = {
-                headers: { Authorization: `Bearer ${token}` }
-            };
-
-            if (isEditing) {
-                await axios.put(`${API_BASE_URL}/sub-categories/${subCategoryId}`, subCategoryData, config);
+            if (isEditMode) {
+                await apiInstance.put(`/sub-categories/${subCategoryId}`, subCategoryData);
             } else {
-                await axios.post(`${API_BASE_URL}/sub-categories`, subCategoryData, config);
+                await apiInstance.post('/sub-categories', subCategoryData);
             }
-            navigate('/sub-categories');
+            navigate('/dashboard/sub-categories');
         } catch (err) {
-            console.error("Error saving sub-category:", err);
-            const errorMsg = err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} sub-category.`;
-            if (err.response?.status === 401 || err.response?.status === 403) {
-                setError('Unauthorized: Could not save sub-category. Please log in again.');
-            } else {
-                setError(errorMsg);
-            }
+            console.error("Failed to save sub-category:", err);
+            setPageError(err.response?.data?.message || `Failed to ${isEditMode ? 'update' : 'create'} sub-category.`);
         } finally {
-            setLoading(false);
+            setIsLoading(false);
         }
     };
 
-    if (loadingError) return <p style={styles.errorBox}>Error: {loadingError}</p>;
-    if (loading && (!isEditing || !name)) return <p style={styles.centeredMessage}>Loading...</p>;
+    if (authLoading) return <p style={styles.centeredMessage}>Authenticating...</p>;
+    if (!isAuthenticated) return <p style={styles.centeredMessage}>Please log in to manage sub-categories.</p>;
+    // More refined loading state for edit mode
+    if (isEditMode && isLoading && !name) return <p style={styles.centeredMessage}>Loading sub-category data...</p>;
+    if (pageError) return <p style={{ ...styles.errorText, ...styles.centeredMessage }}>Error: {pageError}</p>;
+
 
     return (
-        <div style={styles.container}>
-            <h2 style={styles.title}>{isEditing ? 'Edit Sub-Category' : 'Add New Sub-Category'}</h2>
-            {error && <p style={styles.errorBox}>Error: {error}</p>}
-
+        <div style={styles.formContainer}>
+            <h2>{isEditMode ? 'Edit Sub-Category' : 'Add New Sub-Category'}</h2>
             <form onSubmit={handleSubmit}>
                 <div style={styles.formGroup}>
-                    <label htmlFor="parentCategory" style={styles.label}>Parent Category: *</label>
-                    <select
-                        id="parentCategory"
-                        value={categoryId}
-                        onChange={(e) => setCategoryId(e.target.value)}
-                        required
-                        style={styles.input}
-                        disabled={loading || parentCategories.length === 0}
-                    >
-                        <option value="">-- Select Parent Category --</option>
-                        {parentCategories.map(cat => (
-                            <option key={cat.id} value={cat.id.toString()}>
-                                {cat.name}
-                            </option>
-                        ))}
-                    </select>
-                    {parentCategories.length === 0 && !loading && !loadingError && <p style={styles.fieldHelperText}>No parent categories available. Please add a parent category first.</p>}
-                </div>
-
-                <div style={styles.formGroup}>
-                    <label htmlFor="subCategoryName" style={styles.label}>Sub-Category Name: *</label>
+                    <label htmlFor="name" style={styles.label}>Sub-Category Name:</label>
                     <input
                         type="text"
-                        id="subCategoryName"
+                        id="name"
+                        style={styles.input}
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         required
-                        style={styles.input}
-                        disabled={loading}
-                        placeholder="e.g., Smartphones, Laptops, T-Shirts"
                     />
                 </div>
-
-                <div style={styles.buttonGroup}>
-                    <button type="submit" disabled={loading} style={styles.buttonPrimary}>
-                        {loading ? 'Saving...' : (isEditing ? 'Update Sub-Category' : 'Create Sub-Category')}
-                    </button>
-                    <button type="button" onClick={() => navigate('/sub-categories')} style={styles.buttonSecondary} disabled={loading}>
+                <div style={styles.formGroup}>
+                    <label htmlFor="categoryId" style={styles.label}>Parent Category:</label>
+                    <select
+                        id="categoryId"
+                        style={styles.select}
+                        value={categoryId}
+                        onChange={(e) => setCategoryId(e.target.value)}
+                        required
+                    >
+                        <option value="">Select Parent Category</option>
+                        {categories.map(cat => (
+                            <option key={cat.id} value={cat.id}>{cat.name}</option>
+                        ))}
+                    </select>
+                </div>
+                {formError && <p style={styles.errorText}>{formError}</p>}
+                <div style={styles.buttonContainer}>
+                     <button type="button" onClick={() => navigate('/dashboard/sub-categories')} style={{...styles.button, ...styles.buttonCancel}} disabled={isLoading}>
                         Cancel
+                    </button>
+                    <button type="submit" style={{...styles.button, ...styles.buttonSave}} disabled={isLoading}>
+                        {isLoading ? 'Saving...' : (isEditMode ? 'Update Sub-Category' : 'Create Sub-Category')}
                     </button>
                 </div>
             </form>
         </div>
     );
-}
-
-// Consistent Form Styles
-const styles = {
-    container: { padding: '20px', maxWidth: '600px', margin: '40px auto', fontFamily: 'Arial, sans-serif', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', borderRadius: '8px', backgroundColor: '#fff' },
-    title: { marginBottom: '25px', color: '#333', textAlign: 'center', borderBottom: '1px solid #eee', paddingBottom: '15px' },
-    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
-    errorBox: { color: '#D8000C', border: '1px solid #FFBABA', padding: '10px 15px', marginBottom: '20px', borderRadius: '4px', backgroundColor: '#FFD2D2' },
-    formGroup: { marginBottom: '20px' },
-    label: { display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#555' },
-    input: { width: '100%', padding: '12px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1em' },
-    fieldHelperText: { fontSize: '0.9em', color: '#666', marginTop: '5px' },
-    buttonGroup: { marginTop: '30px', display: 'flex', justifyContent: 'flex-end', gap: '10px' },
-    buttonPrimary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
-    buttonSecondary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
 };
 
 export default SubCategoryForm;

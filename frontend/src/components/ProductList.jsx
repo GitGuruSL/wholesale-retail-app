@@ -1,253 +1,272 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { useStore } from '../context/useStore';
+import { Link, useNavigate, useLocation } from 'react-router-dom'; // Added useLocation
+// import apiInstance from '../services/api'; // REMOVE THIS LINE
+import { useAuth } from '../context/AuthContext'; // Ensure this is correctly pathed
 
+// --- Helper Function ---
+const formatCurrency = (value) => {
+    const number = parseFloat(value);
+    if (isNaN(number)) { return '-'; }
+    return number.toFixed(2);
+};
+
+// --- Basic Styling (ensure these are reasonable) ---
+const styles = {
+    container: { padding: '20px', fontFamily: 'Arial, sans-serif', maxWidth: '1200px', margin: '0 auto' },
+    title: { textAlign: 'center', marginBottom: '20px', color: '#333' },
+    centeredMessage: { textAlign: 'center', padding: '20px', fontSize: '1.2em' },
+    errorText: { color: 'red', fontWeight: 'bold' },
+    feedbackBox: { padding: '10px 15px', margin: '15px 0', borderRadius: '4px', textAlign: 'center', border: '1px solid transparent' },
+    feedbackSuccess: { borderColor: 'green', color: 'green', backgroundColor: '#e6ffed' },
+    feedbackError: { borderColor: 'red', color: 'red', backgroundColor: '#ffe6e6' },
+    addButtonLink: { display: 'block', textAlign: 'right', marginBottom: '15px' },
+    button: { padding: '8px 15px', margin: '0 5px', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9em', backgroundColor: '#f8f9fa' },
+    buttonAdd: { backgroundColor: '#28a745', color: 'white', borderColor: '#28a745'},
+    buttonEdit: { borderColor: '#ffc107', color: '#212529' },
+    buttonDelete: { borderColor: '#dc3545', color: 'white', backgroundColor: '#dc3545' },
+    buttonActivePage: { fontWeight: 'bold', backgroundColor: '#007bff', color: 'white', borderColor: '#007bff' },
+    table: { width: '100%', borderCollapse: 'collapse', marginTop: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
+    tableHeader: { backgroundColor: '#e9ecef' },
+    tableCell: { padding: '10px 8px', textAlign: 'left', verticalAlign: 'middle', borderBottom: '1px solid #dee2e6' },
+    tableRowOdd: { backgroundColor: '#fff' },
+    tableRowEven: { backgroundColor: '#f8f9fa' },
+    paginationNav: { marginTop: '20px', display: 'flex', justifyContent: 'center', alignItems: 'center' },
+    paginationUl: { display: 'flex', listStyle: 'none', padding: 0 },
+    pageItem: { margin: '0 2px' },
+    pageLink: { padding: '6px 12px', border: '1px solid #dee2e6', color: '#007bff', textDecoration: 'none', borderRadius: '4px' },
+    pageLinkDisabled: { color: '#6c757d', pointerEvents: 'none', backgroundColor: '#e9ecef' },
+    pageLinkActive: { zIndex: 3, color: '#fff', backgroundColor: '#007bff', borderColor: '#007bff' },
+};
+
+
+// --- Component ---
 function ProductList() {
+    // --- State ---
     const [products, setProducts] = useState([]);
-    // Initialize isLoading to true to cover initial setup and data fetching
-    const [isLoading, setIsLoading] = useState(true); 
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [feedback, setFeedback] = useState({ message: null, type: null });
-    const { api, user, ROLES, isLoading: isAuthLoading } = useAuth(); // Assuming AuthContext provides isLoading
-    const { selectedStore, isLoading: isStoreLoading, error: storeError } = useStore();
+    const navigate = useNavigate();
+    const location = useLocation(); // For feedback from form
+    // Get apiInstance from useAuth
+    const { apiInstance, isAuthenticated, isLoading: authLoading } = useAuth();
 
-    const fetchProducts = useCallback(async (currentApi, currentUser, currentSelectedStore, currentROLES) => {
-        // Pass dependencies directly to ensure useCallback uses the latest values if needed for a manual call
-        // Though for useEffect, it will use the ones from its own closure
-        if (!currentUser || !currentApi || !currentROLES) {
-            setProducts([]);
-            setIsLoading(false); // Ensure loading is false if prerequisites aren't met
-            return;
-        }
-        if (currentUser.role !== currentROLES.GLOBAL_ADMIN && !currentSelectedStore) {
-            setProducts([]);
-            setIsLoading(false); // Ensure loading is false
-            return;
-        }
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalProducts, setTotalProducts] = useState(0);
+    const [limit, setLimit] = useState(10); // Products per page
 
-        setIsLoading(true); // Set loading true specifically for product fetching
-        setError(null);
-        setFeedback({ message: null, type: null });
-
-        const params = {};
-        if (currentUser.role === currentROLES.GLOBAL_ADMIN) {
-            if (currentSelectedStore) params.store_id = currentSelectedStore.id;
-        } else if (currentSelectedStore) { // This implies store_admin or sales_person
-            params.store_id = currentSelectedStore.id;
-        } else {
-            // This case should ideally be caught by the check above
-            setProducts([]);
-            setIsLoading(false);
-            return;
-        }
-
-        try {
-            const response = await currentApi.get('/products', { params });
-            setProducts(Array.isArray(response.data) ? response.data : []);
-        } catch (err) {
-            console.error("Failed to fetch products:", err);
-            setError(err.response?.data?.message || 'Failed to fetch products.');
-            setProducts([]);
-        } finally {
-            setIsLoading(false);
-        }
-    }, []); // Removed dependencies as they will be passed or come from useEffect's closure
-
+    // Display feedback from form navigation
     useEffect(() => {
-        // Wait for auth and store context to be ready
-        if (isAuthLoading || isStoreLoading) {
-            setIsLoading(true); // Keep overall loading true
-            setProducts([]); // Clear products while contexts are loading
-            return;
+        if (location.state?.message) {
+            setFeedback({ message: location.state.message, type: location.state.type || 'success' });
+            navigate(location.pathname, { replace: true, state: {} }); // Clear location state
+            setTimeout(() => setFeedback({ message: null, type: null }), 5000);
         }
+    }, [location, navigate]);
 
-        // If contexts are loaded, but essential data is missing (e.g., user logged out, ROLES not loaded)
-        if (!user || !api || !ROLES) {
-            setError("User data or API configuration is not available.");
+    // --- Data Fetching ---
+    const fetchProducts = useCallback(async (page = 1, pageSize = 10) => {
+        // Ensure apiInstance is available
+        if (!isAuthenticated || !apiInstance) {
+            console.log("[ProductList] Not authenticated or API client not available. Skipping product fetch.");
             setProducts([]);
-            setIsLoading(false);
-            return;
-        }
-        
-        // If store context has an error
-        if (storeError) {
-            setError(`Store Error: ${storeError}`); // Combine errors or prioritize
-            setProducts([]);
-            setIsLoading(false);
+            setLoading(false);
+            setError("User not authenticated or API client not available. Please log in.");
             return;
         }
 
-        // Conditions for fetching products
-        if (user.role === ROLES.GLOBAL_ADMIN) {
-            fetchProducts(api, user, selectedStore, ROLES); // Pass current values
-        } else if (selectedStore) { // For STORE_ADMIN or SALES_PERSON, selectedStore is required
-            fetchProducts(api, user, selectedStore, ROLES); // Pass current values
-        } else {
-            // For non-global admin, if no store is selected, don't fetch, show message.
-            // The rendering logic below will handle the "Please select a store" message.
-            setProducts([]);
-            setIsLoading(false); 
-        }
-    // Add isAuthLoading to dependencies
-    }, [api, user, selectedStore, ROLES, fetchProducts, isAuthLoading, isStoreLoading, storeError]);
+        console.log(`[ProductList] Fetching products for page: ${page}, limit: ${pageSize}...`);
+        setLoading(true);
+        setError(null);
+        // setFeedback({ message: null, type: null }); // Clear feedback on new fetch
 
-
-    const handleDelete = async (productId, productName) => {
-        // ... (handleDelete logic remains the same)
-        if (!api) {
-            setFeedback({ message: 'API not available. Cannot delete.', type: 'error' });
-            return;
-        }
-        if (!window.confirm(`Are you sure you want to delete product: "${productName}" (ID: ${productId})?`)) {
-            return;
-        }
-        setFeedback({ message: null, type: null });
         try {
-            await api.delete(`/products/${productId}`);
-            setFeedback({ message: `Product "${productName}" deleted successfully.`, type: 'success' });
-            // Refetch with current context values
-            if (user && api && ROLES) { // Ensure context is still valid
-                 if (user.role === ROLES.GLOBAL_ADMIN) fetchProducts(api, user, selectedStore, ROLES);
-                 else if (selectedStore) fetchProducts(api, user, selectedStore, ROLES);
+            const response = await apiInstance.get(`/products?page=${page}&limit=${pageSize}`); // Use apiInstance from useAuth
+            console.log("[ProductList] API Response:", response.data);
+
+            if (response.data && Array.isArray(response.data.data)) {
+                setProducts(response.data.data);
+                if (response.data.pagination) {
+                    setCurrentPage(response.data.pagination.page);
+                    setTotalPages(response.data.pagination.totalPages);
+                    setTotalProducts(response.data.pagination.total);
+                    setLimit(response.data.pagination.limit);
+                } else {
+                    setTotalPages(1);
+                    setTotalProducts(response.data.data.length);
+                }
+            } else {
+                console.warn("[ProductList] API response.data.data is not an array or is missing:", response.data);
+                setProducts([]);
+                setError("Received invalid data format for products.");
             }
         } catch (err) {
-            setFeedback({ message: err.response?.data?.message || 'Failed to delete product.', type: 'error' });
+            console.error("[ProductList] Error fetching products:", err);
+            const errorMsg = err.response?.data?.message || err.message || 'Failed to fetch products.';
+            setError(errorMsg);
+            if (err.response?.status === 401) {
+                setFeedback({ message: "Your session may have expired. Please try logging in again.", type: 'error'});
+            }
+        } finally {
+            console.log("[ProductList] Finished fetching.");
+            setLoading(false);
+        }
+    }, [isAuthenticated, apiInstance]); // Add apiInstance to dependencies
+
+    useEffect(() => {
+        // Check for apiInstance along with isAuthenticated
+        if (!authLoading && isAuthenticated && apiInstance) {
+            fetchProducts(currentPage, limit);
+        } else if (!authLoading && !isAuthenticated) {
+            setError("Please log in to view products.");
+            setLoading(false);
+        } else if (!authLoading && !apiInstance && isAuthenticated) {
+            setError("API client not available. Please try again later.");
+            setLoading(false);
+        }
+    }, [authLoading, isAuthenticated, apiInstance, currentPage, limit, fetchProducts]); // Add apiInstance
+
+
+    // --- Actions ---
+    const handleDelete = async (productId, productName) => {
+        if (!isAuthenticated || !apiInstance) { // Check apiInstance
+            setFeedback({ message: "Not authenticated or API client not available.", type: 'error' });
+            return;
+        }
+        console.log(`[ProductList] Attempting to delete product ID: ${productId}, Name: ${productName}`);
+        if (!window.confirm(`Are you sure you want to delete product: ${productName} (ID: ${productId})?\nThis action cannot be undone and might fail if the product is referenced elsewhere.`)) {
+            console.log("[ProductList] Deletion cancelled by user."); return;
+        }
+        setError(null); setFeedback({ message: null, type: null });
+        try {
+            await apiInstance.delete(`/products/${productId}`); // Use apiInstance from useAuth
+            console.log(`[ProductList] DELETE request for ID ${productId} successful.`);
+            setFeedback({ message: `Product "${productName}" deleted successfully.`, type: 'success' });
+            // If on last page and it becomes empty, go to previous page
+            if (products.length === 1 && currentPage > 1) {
+                setCurrentPage(currentPage - 1);
+            } else {
+                fetchProducts(currentPage, limit);
+            }
+        } catch (err) {
+            console.error(`[ProductList] Error deleting product ${productId}:`, err);
+            const errorMsg = err.response?.data?.message || 'Failed to delete product.';
+            setFeedback({ message: errorMsg, type: 'error' });
+            setError(errorMsg);
         } finally {
             setTimeout(() => setFeedback({ message: null, type: null }), 5000);
         }
     };
 
-    // Determine these after initial loading checks
-    const canManageProducts = !isAuthLoading && !isStoreLoading && user && ROLES && (user.role === ROLES.GLOBAL_ADMIN || (user.role === ROLES.STORE_ADMIN && selectedStore));
-    const canAddNewProduct = !isAuthLoading && !isStoreLoading && user && ROLES && ((user.role === ROLES.GLOBAL_ADMIN && selectedStore) || (user.role === ROLES.STORE_ADMIN && selectedStore));
+    const handlePageChange = (newPage) => {
+        if (newPage >= 1 && newPage <= totalPages && newPage !== currentPage) {
+            setCurrentPage(newPage);
+        }
+    };
 
-    // Combined initial loading states
-    if (isAuthLoading) return <p style={styles.centeredMessage}>Loading user data...</p>;
-    if (isStoreLoading) return <p style={styles.centeredMessage}>Loading store information...</p>;
+    // --- Render Logic ---
+    console.log("[ProductList] Rendering component...", { loading, authLoading, error, productsLength: products.length });
+
+    if (authLoading) return <div style={styles.centeredMessage}>Authenticating...</div>;
+    if (loading && !products.length) return <div style={styles.centeredMessage}>Loading products...</div>; // Show loading only if no products yet
     
-    // If contexts are loaded but there was an issue (e.g. user is null after auth check)
-    if (!user || !ROLES) {
-         // This case might indicate an issue with AuthContext not setting user/ROLES correctly
-        return <p style={styles.centeredMessage}>User information is unavailable. Please try logging in again.</p>;
-    }
-    if (storeError) return <p style={{ ...styles.centeredMessage, ...styles.errorText }}>Store Error: {storeError}</p>;
-
-
-    // Specific condition for non-global admins needing a store selection
-    if (user.role !== ROLES.GLOBAL_ADMIN && !selectedStore) {
-        return (
-            <div style={styles.container}>
-                <h2 style={styles.title}>Products</h2>
-                <p style={styles.centeredMessage}>Please select a store to view products.</p>
-            </div>
-        );
+    if (error && products.length === 0) { 
+        return <div style={{ ...styles.centeredMessage, ...styles.errorText }}>Error: {error}</div>; 
     }
 
     return (
         <div style={styles.container}>
-            <h2 style={styles.title}>
-                Products
-                {user.role === ROLES.GLOBAL_ADMIN ?
-                    (selectedStore ? ` (Store: ${selectedStore.name})` : ' (All Stores)') :
-                    (selectedStore ? ` (Store: ${selectedStore.name})` : '') // Should always have selectedStore here due to check above
-                }
-            </h2>
+            <h2 style={styles.title}>Product List</h2>
+            {feedback.message && ( <div style={{ ...styles.feedbackBox, ...(feedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError) }}> {feedback.message} </div> )}
+            {error && products.length > 0 && !feedback.message && ( <p style={{...styles.errorText, textAlign:'center'}}>Warning: {error}</p> )}
 
-            {feedback.message && (
-                <div style={{ ...styles.feedbackBox, ...(feedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError) }}>
-                    {feedback.message}
-                </div>
-            )}
-            {/* Display general fetch error if no specific feedback and not currently loading products */}
-            {error && !feedback.message && !isLoading && (
-                 <p style={{...styles.errorText, textAlign: 'center', marginBottom: '10px'}}>Error: {error}</p>
-            )}
+            {/* Ensure navigation path is correct, e.g., /dashboard/products/new */}
+            <Link to="/dashboard/products/new" style={styles.addButtonLink}> <button style={{...styles.button, ...styles.buttonAdd}}>Add New Product</button> </Link>
 
-
-            {canAddNewProduct && (
-                <div style={styles.actionButtonsTop}>
-                    <Link to="/products/new">
-                        <button style={{...styles.button, ...styles.buttonAdd}}>Add New Product</button>
-                    </Link>
-                </div>
-            )}
-
-            {/* This isLoading is specific to fetching products, after initial context loading */}
-            {isLoading && <p style={styles.centeredMessage}>Loading products...</p>} 
-            
-            {!isLoading && !error && ( // Only show table/no products message if not loading and no error
-                products.length > 0 ? (
+            {products.length === 0 && !loading ? ( <p style={styles.centeredMessage}>No products found. Click "Add New Product" to create one.</p> ) : (
+                <>
+                <div style={{ overflowX: 'auto' }}> {/* For table responsiveness */}
                     <table style={styles.table}>
-                        {/* ... table content ... */}
                         <thead style={styles.tableHeader}>
                             <tr>
                                 <th style={styles.tableCell}>ID</th>
                                 <th style={styles.tableCell}>Name</th>
                                 <th style={styles.tableCell}>SKU</th>
                                 <th style={styles.tableCell}>Category</th>
-                                <th style={styles.tableCell}>Brand</th>
                                 <th style={styles.tableCell}>Base Unit</th>
-                                <th style={styles.tableCell}>Retail Price</th>
-                                {canManageProducts && <th style={styles.tableCell}>Actions</th>}
+                                <th style={styles.tableCell}>Cost</th>
+                                <th style={styles.tableCell}>Retail</th>
+                                <th style={styles.tableCell}>Wholesale</th>
+                                <th style={styles.tableCell}>Store</th>
+                                <th style={styles.tableCell}>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {products.map((product, index) => (
-                                <tr key={product.id} style={index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd}>
+                                <tr key={product.id || `product-${index}`} style={index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd}>
                                     <td style={styles.tableCell}>{product.id}</td>
-                                    <td style={styles.tableCell}><Link to={`/products/view/${product.id}`} style={styles.link}>{product.name}</Link></td>
+                                    <td style={styles.tableCell}>{product.product_name || product.name}</td>
                                     <td style={styles.tableCell}>{product.sku || '-'}</td>
-                                    <td style={styles.tableCell}>{product.category_name || '-'}</td>
-                                    <td style={styles.tableCell}>{product.brand_name || '-'}</td>
-                                    <td style={styles.tableCell}>{product.base_unit_name || '-'}</td>
-                                    <td style={styles.tableCell}>{product.sale_price !== undefined ? `$${Number(product.sale_price).toFixed(2)}` : '-'}</td>
-                                    {canManageProducts && (
-                                        <td style={{...styles.tableCell, ...styles.actionsCell}}>
-                                            <Link to={`/products/edit/${product.id}`}>
-                                                <button style={{...styles.button, ...styles.buttonEdit}} disabled={!canManageProducts}>Edit</button>
-                                            </Link>
-                                            <button onClick={() => handleDelete(product.id, product.name)} style={{...styles.button, ...styles.buttonDelete}} disabled={!canManageProducts}>
-                                                Delete
-                                            </button>
-                                        </td>
-                                    )}
+                                    <td style={styles.tableCell}>{product.category_name || 'N/A'}</td>
+                                    <td style={styles.tableCell}>{product.base_unit_name || 'N/A'}</td>
+                                    <td style={styles.tableCell}>{formatCurrency(product.cost_price)}</td>
+                                    <td style={styles.tableCell}>{formatCurrency(product.retail_price)}</td>
+                                    <td style={styles.tableCell}>{formatCurrency(product.wholesale_price)}</td>
+                                    <td style={styles.tableCell}>{product.store_name || (product.store_id ? `ID: ${product.store_id}` : 'N/A')}</td>
+                                    <td style={{...styles.tableCell, whiteSpace: 'nowrap'}}>
+                                        {/* Ensure navigation path is correct, e.g., /dashboard/products/edit/:id */}
+                                        <button onClick={() => navigate(`/dashboard/products/edit/${product.id}`)} style={{...styles.button, ...styles.buttonEdit}}> Edit </button>
+                                        <button onClick={() => handleDelete(product.id, product.product_name || product.name)} style={{...styles.button, ...styles.buttonDelete}}> Delete </button>
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
-                ) : (
-                     <p style={styles.centeredMessage}>
-                        {/* Message when no products are found after successful load & no error */}
-                        No products found for the current selection.
-                    </p>
-                )
+                </div>
+                {/* Pagination Controls */}
+                {totalPages > 1 && (
+                    <nav style={styles.paginationNav}>
+                        <ul style={styles.paginationUl}>
+                            <li style={styles.pageItem}>
+                                <button 
+                                    onClick={() => handlePageChange(currentPage - 1)} 
+                                    disabled={currentPage === 1}
+                                    style={{...styles.pageLink, ...(currentPage === 1 && styles.pageLinkDisabled)}}
+                                >
+                                    Previous
+                                </button>
+                            </li>
+                            {[...Array(totalPages).keys()].map(num => (
+                                <li key={num + 1} style={styles.pageItem}>
+                                    <button 
+                                        onClick={() => handlePageChange(num + 1)}
+                                        style={{...styles.pageLink, ...(currentPage === num + 1 && styles.pageLinkActive)}}
+                                    >
+                                        {num + 1}
+                                    </button>
+                                </li>
+                            ))}
+                            <li style={styles.pageItem}>
+                                <button 
+                                    onClick={() => handlePageChange(currentPage + 1)} 
+                                    disabled={currentPage === totalPages}
+                                    style={{...styles.pageLink, ...(currentPage === totalPages && styles.pageLinkDisabled)}}
+                                >
+                                    Next
+                                </button>
+                            </li>
+                        </ul>
+                    </nav>
+                )}
+                <p style={{textAlign: 'center', marginTop: '10px', fontSize: '0.9em', color: '#555'}}>
+                    Page {currentPage} of {totalPages} (Total Products: {totalProducts})
+                </p>
+                </>
             )}
         </div>
     );
 }
-
-// ... styles object remains the same ...
-const styles = {
-    container: { padding: '20px', fontFamily: 'Arial, sans-serif' },
-    title: { marginBottom: '20px', color: '#333', textAlign: 'center' },
-    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
-    errorText: { color: '#D8000C', fontWeight: 'bold' },
-    feedbackBox: { padding: '10px 15px', marginBottom: '15px', borderRadius: '4px', textAlign: 'center', border: '1px solid' },
-    feedbackSuccess: { borderColor: 'green', color: 'green', backgroundColor: '#e6ffed' },
-    feedbackError: { borderColor: 'red', color: 'red', backgroundColor: '#ffe6e6' },
-    actionButtonsTop: { marginBottom: '20px', textAlign: 'left' },
-    button: { padding: '8px 12px', margin: '0 5px 0 0', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9em' },
-    buttonAdd: { backgroundColor: '#28a745', color: 'white'},
-    buttonEdit: { backgroundColor: '#ffc107', color: '#000' },
-    buttonDelete: { backgroundColor: '#dc3545', color: 'white' },
-    table: { width: '100%', borderCollapse: 'collapse', marginTop: '0px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
-    tableHeader: { backgroundColor: '#e9ecef' },
-    tableCell: { padding: '12px 10px', textAlign: 'left', verticalAlign: 'middle', borderBottom: '1px solid #dee2e6' },
-    actionsCell: { whiteSpace: 'nowrap' },
-    tableRowOdd: { backgroundColor: '#fff' },
-    tableRowEven: { backgroundColor: '#f8f9fa' },
-    link: { color: '#007bff', textDecoration: 'none' },
-};
 
 export default ProductList;

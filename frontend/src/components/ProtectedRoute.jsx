@@ -15,8 +15,9 @@ const ProtectedRoute = ({ children, roles }) => {
     }
 
     if (roles && roles.length > 0) {
-        if (!user.role || !roles.includes(user.role)) {
-            console.warn(`User role "${user.role || 'undefined'}" not authorized for this route. Required: ${roles.join(', ')}`);
+        // Corrected to use user.role_name
+        if (!user.role_name || !roles.includes(user.role_name)) { 
+            console.warn(`User role "${user.role_name || 'undefined'}" not authorized for this route. Required: ${roles.join(', ')}`);
             return <Navigate to="/access-denied" state={{ from: location }} replace />;
         }
     }

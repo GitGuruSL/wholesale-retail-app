@@ -1,43 +1,47 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api'; // Ensure this port is correct
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
 
 const apiInstance = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+    baseURL: API_BASE_URL,
+    headers: {
+        'Content-Type': 'application/json',
+    },
 });
 
-// Modified Interceptor to log request headers
+// Request Interceptor to add the token to every request
 apiInstance.interceptors.request.use(
-  (config) => {
-    // Log all headers for debugging. Deep copy headers for reliable logging.
-    // Note: 'common' headers in defaults might not show up here if overridden or not applicable to the request type.
-    // We are most interested in the final 'Authorization' header.
-    console.log('[API Interceptor] Making request to:', config.url);
-    console.log('[API Interceptor] Request Headers:', JSON.parse(JSON.stringify(config.headers)));
-
-    // AuthContext is primarily responsible for setting the default Authorization header on apiInstance.
-    // This log helps verify if it was set.
-    if (config.headers.Authorization) {
-      console.log('[API Interceptor] Authorization header found:', config.headers.Authorization);
-    } else {
-      console.warn('[API Interceptor] Authorization header MISSING for request to:', config.url);
-      // As a fallback, you could try to set it from localStorage here if it's missing,
-      // but ideally, AuthContext should handle this.
-      // const tokenFromStorage = localStorage.getItem('token');
-      // if (tokenFromStorage) {
-      //   console.log('[API Interceptor] Fallback: Setting Authorization header from localStorage.');
-      //   config.headers.Authorization = `Bearer ${tokenFromStorage}`;
-      // }
+    (config) => {
+        const token = localStorage.getItem('token');
+        if (token) {
+            config.headers['Authorization'] = `Bearer ${token}`;
+            console.log('[API Interceptor] Token added to request headers.');
+        } else {
+            console.warn('[API Interceptor] No token found to add to request headers.');
+        }
+        return config;
+    },
+    (error) => {
+        console.error('[API Interceptor] Request error:', error);
+        return Promise.reject(error);
     }
-    return config;
-  },
-  (error) => {
-    console.error('[API Interceptor] Request Error:', error);
-    return Promise.reject(error);
-  }
+);
+
+// Response Interceptor for handling common errors like 401
+apiInstance.interceptors.response.use(
+    (response) => response, // Simply return the response if it's successful
+    (error) => {
+        console.error('[API Interceptor] Response error:', error.response || error.message);
+        if (error.response && error.response.status === 401) {
+            console.error('[API Interceptor] Unauthorized (401). Token might be invalid, expired, or not provided correctly.');
+            // Optionally, you could trigger a logout or token refresh mechanism here
+            // For example, by emitting an event or calling a logout function from AuthContext
+            // if AuthContext was imported here (can lead to circular dependencies, handle carefully)
+            // localStorage.removeItem('token');
+            // window.location.href = '/login'; // Force redirect - can be disruptive
+        }
+        return Promise.reject(error);
+    }
 );
 
 export default apiInstance;

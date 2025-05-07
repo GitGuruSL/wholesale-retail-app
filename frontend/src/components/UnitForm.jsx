@@ -2,144 +2,146 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-function UnitForm() {
-    const { unitId } = useParams();
+// Consistent styling (can be shared or component-specific)
+const styles = {
+    formContainer: { padding: '20px', maxWidth: '600px', margin: '20px auto', boxShadow: '0 0 10px rgba(0,0,0,0.1)', borderRadius: '8px', backgroundColor: '#fff' },
+    title: { textAlign: 'center', color: '#333', marginBottom: '25px'},
+    formGroup: { marginBottom: '20px' },
+    label: { display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#555' },
+    input: { width: '100%', padding: '12px', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box', fontSize: '1em' },
+    buttonContainer: { marginTop: '25px', textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: '10px' },
+    button: { padding: '10px 20px', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '1em', fontWeight: 'bold' },
+    buttonSave: { backgroundColor: '#28a745', color: 'white' },
+    buttonCancel: { backgroundColor: '#6c757d', color: 'white' },
+    errorText: { color: 'red', marginBottom: '15px', textAlign: 'center' },
+    formSpecificErrorText: { color: 'red', fontSize: '0.9em', marginTop: '5px'},
+    centeredMessage: { textAlign: 'center', padding: '30px', fontSize: '1.1em', color: '#666' }
+};
+
+const UnitForm = () => {
+    const { unitId } = useParams(); // For edit mode
     const navigate = useNavigate();
-    const { api } = useAuth();
-    const isEditing = Boolean(unitId);
+    const { apiInstance, isAuthenticated, isLoading: authLoading } = useAuth(); // Using api.js via AuthContext
 
-    const [name, setName] = useState('');
-    const [abbreviation, setAbbreviation] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
+    const [name, setUnitName] = useState('');
+    // const [abbreviation, setAbbreviation] = useState(''); // If you have an abbreviation field
 
-    const fetchUnitData = useCallback(async () => {
-        if (!isEditing) return;
-        setLoading(true);
-        setError(null);
+    const [isLoading, setIsLoading] = useState(false); // For form submission and data fetching
+    const [pageError, setPageError] = useState(null);
+    const [formError, setFormError] = useState('');
+
+    const isEditMode = Boolean(unitId);
+
+    const fetchUnitDetails = useCallback(async () => {
+        if (!isEditMode || !apiInstance || !isAuthenticated) return;
+
+        console.log(`[UnitForm] Fetching unit details for ID: ${unitId}`);
+        setIsLoading(true);
+        setPageError(null);
         try {
-            const response = await api.get(`/units/${unitId}`);
-            setName(response.data.name);
-            setAbbreviation(response.data.abbreviation || '');
+            const response = await apiInstance.get(`/units/${unitId}`);
+            setUnitName(response.data.name);
+            // setAbbreviation(response.data.abbreviation || '');
+            console.log("[UnitForm] Unit data fetched:", response.data);
         } catch (err) {
-            console.error("Error fetching unit details:", err);
-            const errorMsg = err.response?.data?.message || 'Failed to load unit data.';
-            if (err.response?.status === 401 || err.response?.status === 403) {
-                setError('Unauthorized: Could not fetch unit. Please log in again.');
-            } else {
-                setError(errorMsg);
-            }
+            console.error("[UnitForm] Failed to fetch unit:", err);
+            setPageError(err.response?.data?.message || "Failed to load unit data. Please try again.");
         } finally {
-            setLoading(false);
+            setIsLoading(false);
         }
-    }, [unitId, isEditing, api]);
+    }, [unitId, apiInstance, isAuthenticated, isEditMode]);
 
     useEffect(() => {
-        if (isEditing) {
-            fetchUnitData();
-        } else {
-            // Reset form for new entry
-            setName('');
-            setAbbreviation('');
-            setError(null);
+        if (isEditMode && !authLoading && isAuthenticated && apiInstance) {
+            fetchUnitDetails();
         }
-    }, [isEditing, fetchUnitData]);
+    }, [isEditMode, fetchUnitDetails, authLoading, isAuthenticated, apiInstance]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setLoading(true);
-        setError(null);
-
-        const unitData = {
-            name: name.trim(),
-            abbreviation: abbreviation.trim() === '' ? null : abbreviation.trim(),
-        };
-
-        if (!unitData.name) {
-            setError("Unit name cannot be empty.");
-            setLoading(false);
+        if (!apiInstance || !isAuthenticated) {
+            setPageError("Authentication error. Please log in again.");
             return;
         }
+        if (!name.trim()) {
+            setFormError("Unit name cannot be empty.");
+            return;
+        }
+        setFormError('');
+        setIsLoading(true);
+        setPageError(null);
+
+        const unitData = { name /*, abbreviation */ };
+        console.log("[UnitForm] Submitting data:", unitData);
 
         try {
-            if (isEditing) {
-                await api.put(`/units/${unitId}`, unitData);
+            if (isEditMode) {
+                await apiInstance.put(`/units/${unitId}`, unitData);
+                console.log("[UnitForm] Unit updated successfully.");
             } else {
-                await api.post('/units', unitData);
+                await apiInstance.post('/units', unitData);
+                console.log("[UnitForm] Unit created successfully.");
             }
-            navigate('/units');
+            navigate('/dashboard/units', { state: { message: `Unit "${name}" ${isEditMode ? 'updated' : 'created'} successfully.`, type: 'success' } });
         } catch (err) {
-            console.error("Error saving unit:", err);
-            const errorMsg = err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} unit.`;
-            if (err.response?.status === 401 || err.response?.status === 403) {
-                setError('Unauthorized: Could not save unit. Please log in again.');
-            } else {
-                setError(errorMsg);
+            console.error("[UnitForm] Failed to save unit:", err);
+            const errMsg = err.response?.data?.message || `Failed to ${isEditMode ? 'update' : 'create'} unit.`;
+            setPageError(errMsg);
+             if (err.response?.data?.errors) {
+                setFormError(Object.values(err.response.data.errors).join(', '));
             }
         } finally {
-            setLoading(false);
+            setIsLoading(false);
         }
     };
 
-    if (loading && isEditing && !name) return <p style={styles.centeredMessage}>Loading unit details...</p>;
+    if (authLoading) return <p style={styles.centeredMessage}>Authenticating...</p>;
+    if (!isAuthenticated) return <p style={styles.centeredMessage}>Please log in to manage units.</p>;
+    if (isLoading && isEditMode && !name) return <p style={styles.centeredMessage}>Loading unit data...</p>;
 
     return (
-        <div style={styles.container}>
-            <h2 style={styles.title}>{isEditing ? 'Edit Unit' : 'Add New Unit'}</h2>
-            {error && <p style={styles.errorBox}>Error: {error}</p>}
+        <div style={styles.formContainer}>
+            <h2 style={styles.title}>{isEditMode ? 'Edit Unit' : 'Add New Unit'}</h2>
+            {pageError && <p style={styles.errorText}>{pageError}</p>}
             <form onSubmit={handleSubmit}>
                 <div style={styles.formGroup}>
-                    <label htmlFor="unitName" style={styles.label}>Unit Name: *</label>
+                    <label htmlFor="unitName" style={styles.label}>Unit Name:</label>
                     <input
                         type="text"
                         id="unitName"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        required
                         style={styles.input}
-                        disabled={loading}
-                        placeholder="e.g., Piece, Box, Kilogram"
+                        value={name}
+                        onChange={(e) => setUnitName(e.target.value)}
+                        placeholder="e.g., Kilogram, Piece, Liter"
                     />
+                    {formError && <p style={styles.formSpecificErrorText}>{formError}</p>}
                 </div>
+
+                {/* Example for abbreviation:
                 <div style={styles.formGroup}>
                     <label htmlFor="abbreviation" style={styles.label}>Abbreviation (Optional):</label>
                     <input
                         type="text"
                         id="abbreviation"
+                        style={styles.input}
                         value={abbreviation}
                         onChange={(e) => setAbbreviation(e.target.value)}
-                        style={styles.input}
-                        disabled={loading}
-                        placeholder="e.g., pc, box, kg"
+                        placeholder="e.g., kg, pc, L"
                     />
-                    <small style={styles.helpText}>A short code for the unit, like 'kg' for Kilogram.</small>
                 </div>
-                <div style={styles.buttonGroup}>
-                    <button type="submit" disabled={loading} style={styles.buttonPrimary}>
-                        {loading ? 'Saving...' : (isEditing ? 'Update Unit' : 'Create Unit')}
-                    </button>
-                    <button type="button" onClick={() => navigate('/units')} style={styles.buttonSecondary} disabled={loading}>
+                */}
+
+                <div style={styles.buttonContainer}>
+                     <button type="button" onClick={() => navigate('/dashboard/units')} style={{...styles.button, ...styles.buttonCancel}} disabled={isLoading}>
                         Cancel
+                    </button>
+                    <button type="submit" style={{...styles.button, ...styles.buttonSave}} disabled={isLoading}>
+                        {isLoading ? 'Saving...' : (isEditMode ? 'Update Unit' : 'Create Unit')}
                     </button>
                 </div>
             </form>
         </div>
     );
-}
-
-// Consistent Form Styles
-const styles = {
-    container: { padding: '20px', maxWidth: '600px', margin: '40px auto', fontFamily: 'Arial, sans-serif', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', borderRadius: '8px', backgroundColor: '#fff' },
-    title: { marginBottom: '25px', color: '#333', textAlign: 'center', borderBottom: '1px solid #eee', paddingBottom: '15px' },
-    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
-    errorBox: { color: '#D8000C', border: '1px solid #FFBABA', padding: '10px 15px', marginBottom: '20px', borderRadius: '4px', backgroundColor: '#FFD2D2' },
-    formGroup: { marginBottom: '20px' },
-    label: { display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#555' },
-    input: { width: '100%', padding: '12px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1em' },
-    helpText: { fontSize: '0.85em', color: '#666', display: 'block', marginTop: '5px' },
-    buttonGroup: { marginTop: '30px', display: 'flex', justifyContent: 'flex-end', gap: '10px' },
-    buttonPrimary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
-    buttonSecondary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
 };
 
 export default UnitForm;

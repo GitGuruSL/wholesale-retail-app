@@ -1,195 +1,169 @@
-import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
-import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
-import { ROLES, ROLES_OPTIONS } from "../utils/roles.js";
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import apiInstance from '../services/api.js'; // Ensure this path is correct
 
 const AuthContext = createContext(null);
 
-export const useAuth = () => useContext(AuthContext);
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
-
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
-    const [token, setToken] = useState(null);
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
-    const navigate = useNavigate();
+    const [rolesOptions, setRolesOptions] = useState([]);
 
-    const api = axios.create({
-        baseURL: API_BASE_URL,
-    });
-
-    api.interceptors.request.use(
-        (config) => {
-            const currentToken = localStorage.getItem('token');
-            if (currentToken) {
-                config.headers.Authorization = `Bearer ${currentToken}`;
-            }
-            return config;
-        },
-        (error) => Promise.reject(error)
-    );
-
-    const clearAuthData = useCallback(() => {
-        console.log("AuthContext: clearAuthData called");
-        setUser(null);
-        setToken(null);
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        setIsLoading(false);
-    }, [setIsLoading, setUser, setToken]);
-
-    const logoutUser = useCallback((message = "You have been logged out.") => {
-        console.log("AuthContext: logoutUser called");
-        clearAuthData();
-        navigate('/login', { state: { message } });
-    }, [navigate, clearAuthData]);
-
-    api.interceptors.response.use(
-        (response) => response,
-        async (err) => {
-            const originalRequest = err.config;
-            if (err.response?.status === 401 && !originalRequest._retry) {
-                originalRequest._retry = true;
-                console.warn('AuthContext: Token expired or invalid (interceptor). Logging out.');
-                logoutUser('Your session has expired. Please log in again.');
-            }
-            return Promise.reject(err);
+    // Fetch roles from the backend
+    const fetchRoles = useCallback(async () => {
+        if (!apiInstance) {
+            console.warn("[AuthContext] apiInstance not available for fetchRoles.");
+            return;
         }
-    );
-
-    const fetchUserProfile = useCallback(async (currentTokenToFetchWith) => {
-        if (!currentTokenToFetchWith) {
-            console.log("fetchUserProfile: No token provided, clearing auth data.");
-            clearAuthData();
-            return null;
-        }
-        console.log("fetchUserProfile: Attempting to fetch profile. Setting isLoading true.");
-        setIsLoading(true);
-        setError(null);
+        console.log("[AuthContext] Attempting to fetch roles...");
         try {
-            const response = await api.get('/auth/profile', {
-                headers: { Authorization: `Bearer ${currentTokenToFetchWith}` }
-            });
-            
-            console.log("fetchUserProfile: Raw profile response data from API:", response.data);
-
-            const rawUserData = response.data;
-            let finalUserData = rawUserData; 
-            if (rawUserData && typeof rawUserData.user === 'object' && rawUserData.user !== null) {
-                console.log("fetchUserProfile: User data was nested. Extracted from 'user' key:", rawUserData.user);
-                finalUserData = rawUserData.user; 
+            // Assuming apiInstance.defaults.baseURL is 'http://localhost:5001/api'
+            // So, '/roles' will target 'http://localhost:5001/api/roles'
+            const response = await apiInstance.get('/roles');
+            if (response.data && Array.isArray(response.data)) {
+                const formattedRoles = response.data.map(role => ({
+                    value: String(role.id),
+                    label: role.name
+                }));
+                setRolesOptions(formattedRoles);
+                setError(null); // Clear role-specific or general error if successful
+                console.log('[AuthContext] Roles fetched and formatted:', formattedRoles);
             } else {
-                console.log("fetchUserProfile: User data was not nested under a 'user' key. Using raw data:", rawUserData);
+                console.warn('[AuthContext] Roles data received is not in the expected array format:', response.data);
+                setRolesOptions([]);
+                setError("Failed to load roles: Unexpected data format from server.");
             }
-            
-            console.log("fetchUserProfile: 'finalUserData' before attempting to access username/role:", finalUserData);
-
-            // Ensure finalUserData is an object before trying to access properties
-            if (typeof finalUserData !== 'object' || finalUserData === null) {
-                console.error("fetchUserProfile: 'finalUserData' is not an object or is null. Cannot proceed.", finalUserData);
-                throw new Error("Processed user profile data is invalid.");
-            }
-
-            const usernameToSet = finalUserData.username || finalUserData.user_name || null;
-            const roleToSet = finalUserData.role || finalUserData.user_role || null;
-
-            console.log("fetchUserProfile: Attempting to set username from finalUserData.username:", finalUserData.username, "OR finalUserData.user_name:", finalUserData.user_name, "Resulting usernameToSet:", usernameToSet);
-            console.log("fetchUserProfile: Attempting to set role from finalUserData.role:", finalUserData.role, "OR finalUserData.user_role:", finalUserData.user_role, "Resulting roleToSet:", roleToSet);
-
-            const userDataToSet = {
-                ...finalUserData, // Spread the rest of the properties from finalUserData
-                username: usernameToSet, 
-                role: roleToSet       
-            };
-            
-            if (!userDataToSet.username || !userDataToSet.role) {
-                console.warn("fetchUserProfile: Processed 'userDataToSet' is missing username or role. Full object:", userDataToSet);
-                // If these are absolutely critical, you might throw an error to trigger the catch block
-                // throw new Error("User profile data is incomplete (missing username or role after processing)."); 
-            }
-
-            console.log("fetchUserProfile: Profile processed successfully. 'userDataToSet' is:", userDataToSet);
-            setUser(userDataToSet);
-            setToken(currentTokenToFetchWith); 
-            localStorage.setItem('user', JSON.stringify(userDataToSet));
-            setIsLoading(false); 
-            return userDataToSet;
         } catch (err) {
-            console.error("fetchUserProfile: Failed to fetch profile or process data:", err.response?.data?.message || err.message, err);
-            clearAuthData(); 
-            setError(err.response?.data?.message || "Failed to fetch profile or process data.");
-            return null;
+            console.error('[AuthContext] Failed to fetch roles:', err.response?.data?.message || err.message, err);
+            setRolesOptions([]);
+            setError(err.response?.data?.message || "Could not load roles. Please check API connection or endpoint.");
         }
-    }, [api, clearAuthData, setIsLoading, setError, setUser, setToken]);
-
-    useEffect(() => {
-        console.log("AuthContext useEffect [INITIAL MOUNT]: Initializing authentication...");
-        const initializeAuth = async () => {
-            const storedToken = localStorage.getItem('token');
-            console.log("AuthContext useEffect [INITIAL MOUNT]: Stored token:", storedToken);
-            if (storedToken) {
-                await fetchUserProfile(storedToken);
-            } else {
-                console.log("AuthContext useEffect [INITIAL MOUNT]: No stored token, clearing auth.");
-                clearAuthData();
-            }
-        };
-        initializeAuth();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const loginUser = async (credentials) => {
-        console.log("AuthContext: loginUser called");
+    // Verify token and set user state
+    const verifyTokenAndSetUser = useCallback(async () => {
+        const token = localStorage.getItem('token');
+        if (token) {
+            try {
+                // Assuming apiInstance.defaults.baseURL is 'http://localhost:5001/api'
+                // So, '/auth/me' will target 'http://localhost:5001/api/auth/me'
+                const response = await apiInstance.get('/auth/me');
+                setUser(response.data.user || response.data); // Adjust if user object is nested differently
+                setIsAuthenticated(true);
+                setError(null);
+                console.log('[AuthContext] Token verified, user set:', response.data.user || response.data);
+            } catch (err) {
+                console.error('[AuthContext] Token verification failed:', err.response?.data?.message || err.message);
+                localStorage.removeItem('token');
+                setUser(null);
+                setIsAuthenticated(false);
+                // setError("Session expired. Please log in again."); // Optionally set an error
+            }
+        } else {
+            console.log('[AuthContext] No token found for verification.');
+            setUser(null);
+            setIsAuthenticated(false);
+        }
+    }, []);
+
+    // Effect for initial application load: verify token AND fetch roles
+    useEffect(() => {
+        const performInitialLoad = async () => {
+            setIsLoading(true);
+            await verifyTokenAndSetUser();
+            await fetchRoles(); // Fetch roles regardless of auth status initially, or conditionally if preferred
+            setIsLoading(false);
+        };
+        performInitialLoad();
+    }, [verifyTokenAndSetUser, fetchRoles]);
+
+    // Login user
+    const loginUser = useCallback(async (credentials) => {
         setIsLoading(true);
         setError(null);
         try {
-            const response = await axios.post(`${API_BASE_URL}/auth/login`, credentials);
-            const { token: newToken } = response.data;
-            
-            if (!newToken) {
-                throw new Error("Login response missing token.");
-            }
-            console.log("AuthContext: loginUser - Login API success, token received.");
-            localStorage.setItem('token', newToken);
+            // Assuming apiInstance.defaults.baseURL is 'http://localhost:5001/api'
+            // So, '/auth/login' will target 'http://localhost:5001/api/auth/login'
+            const response = await apiInstance.post('/auth/login', credentials);
+            const { token, user: userData } = response.data;
 
-            const fetchedUser = await fetchUserProfile(newToken);
-
-            if (fetchedUser) {
-                console.log("AuthContext: loginUser - Profile fetched successfully after login:", fetchedUser);
-                return { success: true, user: fetchedUser };
+            if (token && userData) {
+                localStorage.setItem('token', token);
+                setUser(userData);
+                setIsAuthenticated(true);
+                await fetchRoles(); // Re-fetch roles after login
+                console.log('[AuthContext] Login successful, user:', userData);
+                setIsLoading(false);
+                return { success: true, user: userData };
             } else {
-                console.error("AuthContext: loginUser - Profile fetch FAILED after login.");
-                return { success: false, error: error || "Profile fetch failed after login. Please try again." };
+                throw new Error("Login response did not include a token or user data.");
             }
         } catch (err) {
-            console.error("AuthContext: loginUser - Login API FAILED:", err.response?.data?.message || err.message);
-            const errorMessage = err.response?.data?.message || "Login failed. Please check your credentials.";
+            const errorMessage = err.response?.data?.message || err.message || "Login failed. Please check credentials.";
+            console.error('[AuthContext] Login failed:', errorMessage, err);
+            localStorage.removeItem('token');
+            setUser(null);
+            setIsAuthenticated(false);
             setError(errorMessage);
-            clearAuthData();
+            setIsLoading(false);
             return { success: false, error: errorMessage };
         }
-    };
+    }, [fetchRoles]); // Added fetchRoles dependency
 
-    const contextValue = {
+    // Logout user
+    const logout = useCallback(() => {
+        console.log('[AuthContext] Attempting to logout...');
+        localStorage.removeItem('token');
+        setUser(null);
+        setIsAuthenticated(false);
+        setRolesOptions([]); // Clear roles on logout
+        setError(null); // Clear any errors
+        console.log('[AuthContext] User logged out. isAuthenticated:', false, 'User:', null);
+        // Navigation to login page should be handled by the component calling logout
+        // or by a route guard detecting unauthenticated state.
+    }, []);
+
+    // Effect to handle token removal from another tab/window
+    useEffect(() => {
+        const handleStorageChange = (event) => {
+            if (event.key === 'token' && !localStorage.getItem('token')) {
+                console.log('[AuthContext] Token removed from storage (external event). Logging out via storage event.');
+                logout(); // Call the logout function to ensure all state is reset consistently
+            }
+        };
+        window.addEventListener('storage', handleStorageChange);
+        return () => {
+            window.removeEventListener('storage', handleStorageChange);
+        };
+    }, [logout]);
+
+    // Context value
+    const value = {
         user,
-        token,
+        isAuthenticated,
         isLoading,
-        error,
         loginUser,
-        logoutUser,
-        api,
-        ROLES,
-        ROLES_OPTIONS,
-        isAuthenticated: !!token && !!user,
-        setError,
+        logout,
+        apiInstance, // Exposing apiInstance can be useful but also consider if components should always go via context methods
+        refreshAuth: verifyTokenAndSetUser,
+        error,
+        setError, // Expose setError for components to potentially set global errors, use with caution
+        ROLES_OPTIONS: rolesOptions,
     };
 
-    console.log("AuthContext: Rendering with isLoading:", isLoading, "User object:", user, "Username:", user ? user.username : null, "Role:", user ? user.role : null, "Token:", token ? 'present' : null);
     return (
-        <AuthContext.Provider value={contextValue}>
+        <AuthContext.Provider value={value}>
             {children}
         </AuthContext.Provider>
     );
+};
+
+// Custom hook to use the AuthContext
+export const useAuth = () => {
+    const context = useContext(AuthContext);
+    if (context === null) {
+        throw new Error('useAuth must be used within an AuthProvider');
+    }
+    return context;
 };
