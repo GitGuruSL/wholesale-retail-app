@@ -1,163 +1,143 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext'; // Import useAuth
-
-// --- Styles (can be kept as is or refactored) ---
-const styles = {
-    container: { padding: '20px', maxWidth: '600px', margin: '40px auto', fontFamily: 'Arial, sans-serif', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', borderRadius: '8px', backgroundColor: '#fff' },
-    title: { marginBottom: '25px', color: '#333', textAlign: 'center', borderBottom: '1px solid #eee', paddingBottom: '15px' },
-    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
-    errorBox: { color: '#D8000C', border: '1px solid #FFBABA', padding: '10px 15px', marginBottom: '20px', borderRadius: '4px', backgroundColor: '#FFD2D2', textAlign: 'center' },
-    formSpecificErrorText: { color: 'red', fontSize: '0.9em', marginTop: '5px'},
-    formGroup: { marginBottom: '20px' },
-    label: { display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#555' },
-    input: { width: '100%', padding: '12px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1em' },
-    textarea: { width: '100%', padding: '12px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', minHeight: '80px', fontSize: '1em' },
-    buttonGroup: { marginTop: '30px', display: 'flex', justifyContent: 'flex-end', gap: '10px' },
-    buttonPrimary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
-    buttonSecondary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
-};
+import { Paper, Typography, TextField, Button, Box, Alert } from '@mui/material';
+import { useAuth } from '../context/AuthContext';
 
 function BrandForm() {
-    const { brandId } = useParams();
-    const navigate = useNavigate();
-    const { apiInstance, isAuthenticated, isLoading: authLoading } = useAuth(); // Use AuthContext
+  const { brandId } = useParams();
+  const navigate = useNavigate();
+  const { apiInstance, isAuthenticated, isLoading: authLoading } = useAuth();
+  const isEditing = Boolean(brandId);
 
-    const isEditing = Boolean(brandId);
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [loading, setLoading] = useState(false); // submission and data fetching loading state
+  const [pageError, setPageError] = useState(null); // page-level errors
+  const [formError, setFormError] = useState(''); // field-specific validation error
 
-    const [name, setName] = useState('');
-    const [description, setDescription] = useState('');
-    const [isLoading, setIsLoading] = useState(false); // For form submission and data fetching
-    const [pageError, setPageError] = useState(null);   // For page-level errors
-    const [formError, setFormError] = useState('');     // For specific field validation errors
+  const fetchBrandDetails = useCallback(async () => {
+    if (!isEditing || !apiInstance || !isAuthenticated) return;
+    setLoading(true);
+    setPageError(null);
+    try {
+      const response = await apiInstance.get(`/brands/${brandId}`);
+      setName(response.data.name);
+      setDescription(response.data.description || '');
+    } catch (err) {
+      console.error("[BrandForm] Failed to fetch brand:", err);
+      setPageError(err.response?.data?.message || "Failed to load brand data.");
+    } finally {
+      setLoading(false);
+    }
+  }, [brandId, apiInstance, isAuthenticated, isEditing]);
 
-    const fetchBrandDetails = useCallback(async () => {
-        if (!isEditing || !apiInstance || !isAuthenticated) return;
+  useEffect(() => {
+    if (isEditing && !authLoading && isAuthenticated && apiInstance) {
+      fetchBrandDetails();
+    } else if (isEditing && !authLoading && !isAuthenticated) {
+      setPageError("Please log in to edit brands.");
+    } else if (!isEditing) {
+      setName('');
+      setDescription('');
+      setPageError(null);
+      setFormError('');
+    }
+  }, [isEditing, fetchBrandDetails, authLoading, isAuthenticated, apiInstance]);
 
-        console.log(`[BrandForm] Fetching brand details for ID: ${brandId}`);
-        setIsLoading(true);
-        setPageError(null);
-        try {
-            const response = await apiInstance.get(`/brands/${brandId}`);
-            setName(response.data.name);
-            setDescription(response.data.description || '');
-            console.log("[BrandForm] Brand data fetched:", response.data);
-        } catch (err) {
-            console.error("[BrandForm] Failed to fetch brand:", err);
-            setPageError(err.response?.data?.message || "Failed to load brand data.");
-        } finally {
-            setIsLoading(false);
-        }
-    }, [brandId, apiInstance, isAuthenticated, isEditing]);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!apiInstance || !isAuthenticated) {
+      setPageError("Authentication error. Please log in again.");
+      return;
+    }
+    if (!name.trim()) {
+      setFormError("Brand name cannot be empty.");
+      return;
+    }
+    setFormError('');
+    setLoading(true);
+    setPageError(null);
 
-    useEffect(() => {
-        if (isEditing && !authLoading && isAuthenticated && apiInstance) {
-            fetchBrandDetails();
-        } else if (isEditing && !authLoading && !isAuthenticated) {
-            setPageError("Please log in to edit brands.");
-        } else if (!isEditing) {
-            // Reset form for new brand
-            setName('');
-            setDescription('');
-            setPageError(null);
-            setFormError('');
-        }
-    }, [isEditing, fetchBrandDetails, authLoading, isAuthenticated, apiInstance]);
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (!apiInstance || !isAuthenticated) {
-            setPageError("Authentication error. Please log in again.");
-            return;
-        }
-        if (!name.trim()) {
-            setFormError("Brand name cannot be empty.");
-            return;
-        }
-        setFormError('');
-        setIsLoading(true);
-        setPageError(null);
-
-        const brandData = {
-            name: name.trim(),
-            description: description.trim() === '' ? null : description.trim(),
-        };
-        console.log("[BrandForm] Submitting data:", brandData);
-
-        try {
-            if (isEditing) {
-                await apiInstance.put(`/brands/${brandId}`, brandData);
-            } else {
-                await apiInstance.post('/brands', brandData);
-            }
-            navigate('/dashboard/brands', { // Ensure path matches App.jsx
-                state: {
-                    message: `Brand "${name}" ${isEditing ? 'updated' : 'created'} successfully.`,
-                    type: 'success'
-                }
-            });
-        } catch (err) {
-            console.error("[BrandForm] Error saving brand:", err);
-            const errMsg = err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} brand.`;
-            setPageError(errMsg);
-            if (err.response?.data?.errors) {
-                setFormError(Object.values(err.response.data.errors).join(', '));
-            }
-        } finally {
-            setIsLoading(false);
-        }
+    const brandData = {
+      name: name.trim(),
+      description: description.trim() === '' ? null : description.trim(),
     };
 
-    if (authLoading) return <p style={styles.centeredMessage}>Authenticating...</p>;
-    if (isLoading && isEditing && !name) return <p style={styles.centeredMessage}>Loading brand details...</p>;
+    try {
+      if (isEditing) {
+        await apiInstance.put(`/brands/${brandId}`, brandData);
+      } else {
+        await apiInstance.post('/brands', brandData);
+      }
+      navigate('/dashboard/brands', {
+        state: {
+          message: `Brand "${name}" ${isEditing ? 'updated' : 'created'} successfully.`,
+          type: 'success'
+        }
+      });
+    } catch (err) {
+      console.error("[BrandForm] Error saving brand:", err);
+      const errMsg = err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} brand.`;
+      setPageError(errMsg);
+      if (err.response?.data?.errors) {
+        setFormError(Object.values(err.response.data.errors).join(', '));
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    return (
-        <div style={styles.container}>
-            <h2 style={styles.title}>{isEditing ? 'Edit Brand' : 'Add New Brand'}</h2>
-            {pageError && <p style={styles.errorBox}>{pageError}</p>}
-            <form onSubmit={handleSubmit}>
-                <div style={styles.formGroup}>
-                    <label htmlFor="brandName" style={styles.label}>Brand Name: *</label>
-                    <input
-                        type="text"
-                        id="brandName"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        required
-                        style={styles.input}
-                        disabled={isLoading}
-                        placeholder="e.g., Sony, Apple, Samsung"
-                    />
-                    {formError && <p style={styles.formSpecificErrorText}>{formError}</p>}
-                </div>
-                <div style={styles.formGroup}>
-                    <label htmlFor="brandDescription" style={styles.label}>Description:</label>
-                    <textarea
-                        id="brandDescription"
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        rows="3"
-                        style={styles.textarea}
-                        disabled={isLoading}
-                        placeholder="Optional: A brief description of the brand"
-                    />
-                </div>
-                <div style={styles.buttonGroup}>
-                    <button type="submit" disabled={isLoading} style={styles.buttonPrimary}>
-                        {isLoading ? 'Saving...' : (isEditing ? 'Update Brand' : 'Create Brand')}
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => navigate('/dashboard/brands')} // Ensure path matches App.jsx
-                        style={styles.buttonSecondary}
-                        disabled={isLoading}
-                    >
-                        Cancel
-                    </button>
-                </div>
-            </form>
-        </div>
-    );
+  if (authLoading)
+    return <Typography align="center" sx={{ p: 2 }}>Authenticating...</Typography>;
+  if (isEditing && loading && !name && !pageError)
+    return <Typography align="center" sx={{ p: 2 }}>Loading brand details...</Typography>;
+
+  return (
+    <Paper sx={{ p: 3, m: 2, maxWidth: 600, mx: 'auto' }}>
+      <Typography variant="h5" align="center" gutterBottom>
+        {isEditing ? 'Edit Brand' : 'Add New Brand'}
+      </Typography>
+      {pageError && <Alert severity="error" sx={{ mb: 2 }}>{pageError}</Alert>}
+      <Box component="form" onSubmit={handleSubmit} noValidate>
+        <TextField
+          label="Brand Name"
+          variant="outlined"
+          fullWidth
+          required
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          disabled={loading}
+          placeholder="e.g., Sony, Apple, Samsung"
+          sx={{ mb: 2 }}
+        />
+        {formError && (
+          <Typography color="error" variant="body2" sx={{ mb: 2 }}>
+            {formError}
+          </Typography>
+        )}
+        <TextField
+          label="Description"
+          variant="outlined"
+          multiline
+          minRows={3}
+          fullWidth
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          disabled={loading}
+          placeholder="Optional: A brief description of the brand"
+          sx={{ mb: 2 }}
+        />
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+          <Button variant="contained" color="primary" type="submit" disabled={loading}>
+            {loading ? 'Saving...' : (isEditing ? 'Update Brand' : 'Create Brand')}
+          </Button>
+          <Button variant="outlined" color="secondary" onClick={() => navigate('/dashboard/brands')} disabled={loading}>
+            Cancel
+          </Button>
+        </Box>
+      </Box>
+    </Paper>
+  );
 }
 
 export default BrandForm;
