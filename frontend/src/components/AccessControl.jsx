@@ -1,370 +1,246 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 
-// Helper function to group permissions by their specific functional area (sub-group)
 const getPermissionGroupName = (permissionName) => {
-    const prefix = permissionName.split(':')[0];
-    switch (prefix) {
-        case 'user': return 'User Management';
-        case 'role': return 'Role Management';
-        case 'permission': return 'Permission Management';
-        case 'store': return 'Store Core';
-        case 'product': return 'Product Core';
-        case 'category': return 'Product Categories';
-        case 'subcategory': return 'Product Sub-Categories';
-        case 'brand': return 'Product Brands';
-        case 'specialcategory': return 'Product Special Categories';
-        case 'product_attribute': return 'Product Attributes';
-        case 'tax_type': return 'Tax Types';
-        case 'tax': return 'Taxes';
-        case 'unit': return 'Product Units';
-        case 'manufacturer': return 'Product Manufacturers';
-        case 'warranty': return 'Product Warranties';
-        case 'barcode_symbology': return 'Product Barcode Symbologies';
-        case 'discount_type': return 'Product Discount Types';
-        case 'inventory': return 'Inventory Management';
-        case 'sale': return 'Sales Management';
-        case 'supplier': return 'Supplier Management';
-        case 'report': return 'Reporting';
-        case 'system': return 'System Settings';
-        case 'store_settings': return 'Store Settings';
-        default: return `Other Permissions (${prefix})`;
-    }
+  if (!permissionName || typeof permissionName !== 'string') return 'Other';
+  const parts = permissionName.split(':');
+  const prefix = parts.length > 1 ? parts[0] : permissionName;
+  switch (prefix) {
+    case 'user': return 'User Management';
+    case 'role': return 'Role Management';
+    case 'permission': return 'Permission Management';
+    case 'store': return 'Store & Product Catalog';
+    case 'product': return 'Store & Product Catalog';
+    case 'category': return 'Store & Product Catalog';
+    case 'subcategory': return 'Store & Product Catalog';
+    case 'brand': return 'Store & Product Catalog';
+    case 'specialcategory': return 'Store & Product Catalog';
+    case 'product_attribute': return 'Product Configuration';
+    case 'tax_type': return 'Product Configuration';
+    case 'tax': return 'Product Configuration';
+    case 'unit': return 'Product Configuration';
+    case 'manufacturer': return 'Product Configuration';
+    case 'warranty': return 'Product Configuration';
+    case 'barcode_symbology': return 'Product Configuration';
+    case 'discount_type': return 'Product Configuration';
+    case 'inventory': return 'Operations';
+    case 'sale': return 'Operations';
+    case 'supplier': return 'Operations';
+    case 'report': return 'System & Reports';
+    case 'system': return 'System & Reports';
+    case 'store_settings': return 'System & Reports';
+    default: return 'Other';
+  }
 };
-
-// Define top-level categories and map permission sub-groups to them
-// IMPORTANT: Adjust this structure to match your application's needs and the groups from getPermissionGroupName
-const permissionStructure = {
-    "User, Role & Permission Mgmt": ["User Management", "Role Management", "Permission Management"],
-    "Store & Product Catalog": ["Store Core", "Product Core", "Product Categories", "Product Sub-Categories", "Product Brands", "Product Special Categories"],
-    "Product Configuration": ["Product Attributes", "Tax Types", "Taxes", "Product Units", "Product Manufacturers", "Product Warranties", "Product Barcode Symbologies", "Product Discount Types"],
-    "Operations": ["Inventory Management", "Sales Management", "Supplier Management"],
-    "System & Reports": ["Reporting", "System Settings", "Store Settings"],
-    "Other": [] // Catch-all for any groups not explicitly mapped, or you can map "Other Permissions" here
-};
-
-// Helper to add any unmapped groups to "Other"
-const getFinalPermissionStructure = (allGroupedPermissionKeys) => {
-    const finalStructure = JSON.parse(JSON.stringify(permissionStructure)); // Deep copy
-    const allMappedGroups = new Set(Object.values(finalStructure).flat());
-    
-    allGroupedPermissionKeys.forEach(key => {
-        if (!allMappedGroups.has(key)) {
-            if (!finalStructure["Other"]) {
-                finalStructure["Other"] = [];
-            }
-            if (!finalStructure["Other"].includes(key)) {
-                finalStructure["Other"].push(key);
-            }
-        }
-    });
-    // Remove "Other" if it's empty
-    if (finalStructure["Other"] && finalStructure["Other"].length === 0) {
-        delete finalStructure["Other"];
-    }
-    return finalStructure;
-};
-
 
 function AccessControl() {
-    const { apiInstance } = useAuth();
+  const { apiInstance } = useAuth();
 
-    const [entityType, setEntityType] = useState('role');
-    const [selectedEntityId, setSelectedEntityId] = useState('');
+  const [permissionCategories, setPermissionCategories] = useState([]);
+  const [allPermissions, setAllPermissions] = useState([]);
+  const [roles, setRoles] = useState([]);
+  const [rolePermissions, setRolePermissions] = useState([]);
+  const [error, setError] = useState(null);
+  const [isFetchingData, setIsFetchingData] = useState(false);
 
-    const [allRoles, setAllRoles] = useState([]);
-    const [allPermissions, setAllPermissions] = useState([]);
-    
-    const [currentEntityPermissions, setCurrentEntityPermissions] = useState(new Set());
+  const [selectedTopCategory, setSelectedTopCategory] = useState('');
+  const [selectedRole, setSelectedRole] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
 
-    const [isLoading, setIsLoading] = useState(false);
-    const [isFetchingData, setIsFetchingData] = useState(false);
-    const [error, setError] = useState(null);
-    const [successMessage, setSuccessMessage] = useState('');
-
-    const [selectedTopCategory, setSelectedTopCategory] = useState('');
-    const [expandedGroups, setExpandedGroups] = useState({});
-
-    useEffect(() => {
-        const fetchData = async () => {
-            setIsFetchingData(true);
-            setError(null);
-            setSuccessMessage(''); 
-            try {
-                const [rolesRes, permissionsRes] = await Promise.all([
-                    apiInstance.get('/roles'),
-                    apiInstance.get('/permissions')
-                ]);
-                setAllRoles(rolesRes.data || []);
-                setAllPermissions(permissionsRes.data || []);
-            } catch (err) {
-                console.error("Error fetching initial data for Access Control:", err);
-                setError(err.response?.data?.message || 'Failed to load necessary data. Please try again.');
-            } finally {
-                setIsFetchingData(false);
-            }
-        };
-        fetchData();
-    }, [apiInstance]);
-
-    useEffect(() => {
-        if (!selectedEntityId || !entityType) {
-            setCurrentEntityPermissions(new Set());
-            setExpandedGroups({});
-            setSelectedTopCategory('');
-            return;
+  // Fetch permissions and categories
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsFetchingData(true);
+      setError(null);
+      try {
+        const [permissionsRes, categoriesRes] = await Promise.all([
+          apiInstance.get('/permissions'),
+          apiInstance.get('/permission-categories')
+        ]);
+        setAllPermissions(permissionsRes.data || []);
+        setPermissionCategories(categoriesRes.data || []);
+        if (categoriesRes.data && categoriesRes.data.length) {
+          setSelectedTopCategory(
+            categoriesRes.data.sort((a, b) => a.display_order - b.display_order)[0].name
+          );
         }
+      } catch (err) {
+        setError(err.response?.data?.message || 'Failed to load permissions data.');
+      } finally {
+        setIsFetchingData(false);
+      }
+    };
+    fetchData();
+  }, [apiInstance]);
 
-        const fetchEntityPermissions = async () => {
-            setIsLoading(true); 
-            setError(null); 
-            try {
-                if (entityType === 'role') {
-                    const response = await apiInstance.get(`/roles/${selectedEntityId}`);
-                    setCurrentEntityPermissions(new Set(response.data.permissions || []));
-                    // Set default top category if available, otherwise clear
-                    const availableTopCategories = Object.keys(getFinalPermissionStructure(Object.keys(groupedPermissions)));
-                    setSelectedTopCategory(availableTopCategories.length > 0 ? availableTopCategories[0] : '');
-                    setExpandedGroups({}); 
-                } 
-            } catch (err) {
-                console.error(`Error fetching permissions for ${entityType} ID ${selectedEntityId}:`, err);
-                setError(err.response?.data?.message || `Failed to load permissions for the selected ${entityType}.`);
-                setCurrentEntityPermissions(new Set());
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        fetchEntityPermissions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedEntityId, entityType, apiInstance]); // groupedPermissions is not added here to avoid re-triggering when it recalculates
-
-
-    const groupedPermissions = useMemo(() => {
-        if (!allPermissions.length) return {};
-        const groups = allPermissions.reduce((acc, permission) => {
-            const groupName = getPermissionGroupName(permission.name);
-            if (!acc[groupName]) {
-                acc[groupName] = [];
-            }
-            acc[groupName].push(permission);
-            return acc;
-        }, {});
-        return Object.keys(groups).sort().reduce((obj, key) => {
-            obj[key] = groups[key].sort((a, b) => a.display_name.localeCompare(b.display_name));
-            return obj;
-        }, {});
-    }, [allPermissions]);
-
-    const finalPermissionStructure = useMemo(() => getFinalPermissionStructure(Object.keys(groupedPermissions)), [groupedPermissions]);
-
-    const filteredSubGroups = useMemo(() => {
-        if (!selectedTopCategory || !finalPermissionStructure[selectedTopCategory]) {
-            return {};
+  // Fetch roles
+  useEffect(() => {
+    const fetchRoles = async () => {
+      try {
+        const rolesRes = await apiInstance.get('/roles');
+        setRoles(rolesRes.data || []);
+        if (rolesRes.data && rolesRes.data.length) {
+          setSelectedRole(rolesRes.data[0].id);
         }
-        const subGroupNames = finalPermissionStructure[selectedTopCategory];
-        const result = {};
-        subGroupNames.forEach(groupName => {
-            if (groupedPermissions[groupName]) {
-                result[groupName] = groupedPermissions[groupName];
-            }
-        });
-        return result;
-    }, [selectedTopCategory, groupedPermissions, finalPermissionStructure]);
-
-    const handleEntityTypeChange = (e) => {
-        setEntityType(e.target.value);
-        setSelectedEntityId(''); 
-        setCurrentEntityPermissions(new Set());
-        setSelectedTopCategory('');
-        setExpandedGroups({});
+      } catch (err) {
+        console.error("Error fetching roles:", err);
+      }
     };
+    fetchRoles();
+  }, [apiInstance]);
 
-    const handleEntityChange = (e) => {
-        setSelectedEntityId(e.target.value);
+  // Fetch role permissions using endpoint /roles/:id/permissions.
+  // If your API uses a different endpoint (e.g. /role-permissions?roleId=...), adjust accordingly.
+  useEffect(() => {
+    const fetchRolePermissions = async () => {
+      if (!selectedRole) {
+        setRolePermissions([]);
+        return;
+      }
+      try {
+        const res = await apiInstance.get(`/roles/${selectedRole}/permissions`);
+        setRolePermissions(res.data.map(permission => permission.id));
+      } catch (err) {
+        console.error("Error fetching role permissions:", err);
+        setRolePermissions([]); // fallback to empty array if not found
+      }
     };
-    
-    const handleTopCategoryChange = (e) => {
-        setSelectedTopCategory(e.target.value);
-        setExpandedGroups({}); 
-    };
+    fetchRolePermissions();
+  }, [selectedRole, apiInstance]);
 
-    const handlePermissionToggle = (permissionId) => {
-        setCurrentEntityPermissions(prev => {
-            const newPermissions = new Set(prev);
-            if (newPermissions.has(permissionId)) {
-                newPermissions.delete(permissionId);
-            } else {
-                newPermissions.add(permissionId);
-            }
-            return newPermissions;
-        });
-    };
-
-    const handleSaveChanges = async () => {
-        if (!selectedEntityId || !entityType) {
-            setError(`Please select a ${entityType} to update permissions.`);
-            return;
+  // Group and sort permissions and filter by search term
+  const groupedPermissions = useMemo(() => {
+    if (!allPermissions.length) return {};
+    const groups = allPermissions.reduce((acc, permission) => {
+      const groupName = getPermissionGroupName(permission.name);
+      if (
+        !searchTerm ||
+        (permission.display_name &&
+          permission.display_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        permission.name.toLowerCase().includes(searchTerm.toLowerCase())
+      ) {
+        if (!acc[groupName]) {
+          acc[groupName] = [];
         }
-        setIsLoading(true);
-        setError(null);
-        setSuccessMessage('');
+        acc[groupName].push(permission);
+      }
+      return acc;
+    }, {});
+    return Object.keys(groups)
+      .sort()
+      .reduce((obj, key) => {
+        obj[key] = groups[key].sort((a, b) =>
+          (a.display_name || '').localeCompare(b.display_name || '')
+        );
+        return obj;
+      }, {});
+  }, [allPermissions, searchTerm]);
 
-        try {
-            const payload = { permissionIds: Array.from(currentEntityPermissions).map(id => Number(id)) };
-            if (entityType === 'role') {
-                await apiInstance.post(`/roles/${selectedEntityId}/permissions`, payload);
-                setSuccessMessage(`Permissions for role updated successfully!`);
-            } 
-        } catch (err) {
-            console.error(`Error saving permissions for ${entityType} ID ${selectedEntityId}:`, err);
-            setError(err.response?.data?.message || `Failed to save permissions.`);
-        } finally {
-            setIsLoading(false);
+  // Build final permission structure using the categories from the DB.
+  const finalPermissionStructure = useMemo(() => {
+    const structure = {};
+    permissionCategories.forEach(cat => {
+      structure[cat.name] = [];
+    });
+    Object.keys(groupedPermissions).forEach(group => {
+      const exists = Object.keys(structure).find(key => key === group);
+      if (!exists) {
+        if (!structure['Other']) structure['Other'] = [];
+        if (!structure['Other'].includes(group)) {
+          structure['Other'].push(group);
         }
-    };
+      }
+    });
+    return structure;
+  }, [permissionCategories, groupedPermissions]);
 
-    const handleToggleGroup = (groupName) => {
-        setExpandedGroups(prev => ({
-            ...prev,
-            [groupName]: !prev[groupName]
-        }));
-    };
-    
-    const toggleAllSubGroupsInCategory = (expand) => {
-        const newExpandedState = { ...expandedGroups };
-        Object.keys(filteredSubGroups).forEach(groupName => {
-            newExpandedState[groupName] = expand;
-        });
-        setExpandedGroups(newExpandedState);
-    };
-
-    if (isFetchingData) {
-        return <p>Loading access control data...</p>;
-    }
-
-    return (
-        <div className="access-control-container" style={{ padding: '20px' }}>
-            <h2>Access Control Management</h2>
-
-            {error && <p style={{ color: 'red', border: '1px solid red', padding: '10px', backgroundColor: '#ffe6e6' }}>{error}</p>}
-            {successMessage && <p style={{ color: 'green', border: '1px solid green', padding: '10px', backgroundColor: '#e6ffe6' }}>{successMessage}</p>}
-
-            <div className="entity-selection" style={{ marginBottom: '20px', padding: '15px', border: '1px solid #ddd', borderRadius: '4px' }}>
-                <label htmlFor="entityType">Manage Permissions For: </label>
-                <select id="entityType" value={entityType} onChange={handleEntityTypeChange} disabled={isLoading} style={{ marginRight: '10px', padding: '5px' }}>
-                    <option value="role">Role</option>
-                </select>
-
-                {entityType === 'role' && allRoles.length > 0 && (
-                    <>
-                        <label htmlFor="roleSelect">Select Role: </label>
-                        <select id="roleSelect" value={selectedEntityId} onChange={handleEntityChange} disabled={isLoading || !allRoles.length} style={{ padding: '5px' }}>
-                            <option value="">-- Select a Role --</option>
-                            {allRoles.map(role => (
-                                <option key={role.id} value={role.id}>{role.display_name} ({role.name})</option>
-                            ))}
-                        </select>
-                    </>
-                )}
-                 {entityType === 'role' && !allRoles.length && !isFetchingData && <p>No roles found.</p>}
-            </div>
-
-            {selectedEntityId && (
-                <div className="permissions-assignment" style={{ marginTop: '20px' }}>
-                    <h3>Assign Permissions for {entityType === 'role' ? allRoles.find(r => r.id === parseInt(selectedEntityId))?.display_name || `Role ID ${selectedEntityId}` : 'Selected User'}:</h3>
-                    
-                    {Object.keys(finalPermissionStructure).length > 0 && (
-                        <div style={{ margin: '20px 0', padding: '15px', border: '1px solid #e0e0e0', borderRadius: '4px', backgroundColor: '#f9f9f9' }}>
-                            <label htmlFor="topCategorySelect" style={{ marginRight: '10px', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>Select Permission Category:</label>
-                            <select
-                                id="topCategorySelect"
-                                value={selectedTopCategory}
-                                onChange={handleTopCategoryChange}
-                                disabled={isLoading}
-                                style={{ padding: '8px', minWidth: '300px', width:'100%', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' }}
-                            >
-                                <option value="">-- Choose a Category --</option>
-                                {Object.keys(finalPermissionStructure).map(categoryName => (
-                                    <option key={categoryName} value={categoryName}>{categoryName}</option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
-
-                    {isLoading && selectedTopCategory && !Object.keys(filteredSubGroups).length && <p>Loading permissions for selected category...</p>}
-                    
-                    {selectedTopCategory && Object.keys(filteredSubGroups).length > 0 && (
-                        <div style={{ marginBottom: '10px' }}>
-                            <button onClick={() => toggleAllSubGroupsInCategory(true)} style={{ marginRight: '5px', padding: '5px 10px' }} disabled={isLoading}>Expand All in Category</button>
-                            <button onClick={() => toggleAllSubGroupsInCategory(false)} style={{ padding: '5px 10px' }} disabled={isLoading}>Collapse All in Category</button>
-                        </div>
-                    )}
-
-                    {selectedTopCategory && Object.keys(filteredSubGroups).map(groupName => (
-                        <div key={groupName} className="permission-group-container" style={{ marginBottom: '10px', border: '1px solid #ccc', borderRadius: '4px' }}>
-                            <button
-                                onClick={() => handleToggleGroup(groupName)}
-                                style={{
-                                    width: '100%',
-                                    textAlign: 'left',
-                                    padding: '10px 15px',
-                                    backgroundColor: '#f0f0f0',
-                                    border: 'none',
-                                    borderBottom: expandedGroups[groupName] ? '1px solid #ccc' : 'none',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center',
-                                    fontSize: '1.1em',
-                                    fontWeight: 'bold'
-                                }}
-                                aria-expanded={!!expandedGroups[groupName]}
-                                aria-controls={`permissions-list-${groupName.replace(/\s+/g, '-')}`}
-                            >
-                                {groupName}
-                                <span style={{ fontSize: '0.8em' }}>{expandedGroups[groupName] ? '▲ Collapse' : '▼ Expand'}</span>
-                            </button>
-                            {expandedGroups[groupName] && (
-                                <div 
-                                    id={`permissions-list-${groupName.replace(/\s+/g, '-')}`}
-                                    className="permission-items-list" 
-                                    style={{ padding: '15px' }}
-                                >
-                                    {filteredSubGroups[groupName].map(permission => (
-                                        <div key={permission.id} className="permission-item" style={{ marginBottom: '8px', paddingLeft: '10px' }}>
-                                            <label style={{ display: 'flex', alignItems: 'flex-start', cursor: 'pointer' }}>
-                                                <input
-                                                    type="checkbox"
-                                                    value={permission.id}
-                                                    checked={currentEntityPermissions.has(permission.id)}
-                                                    onChange={() => handlePermissionToggle(permission.id)}
-                                                    disabled={isLoading}
-                                                    style={{ marginRight: '10px', marginTop: '3px', transform: 'scale(1.1)' }}
-                                                />
-                                                <div>
-                                                    <span style={{ fontWeight: '500' }}>{permission.display_name}</span> (<code style={{ fontSize: '0.9em', color: '#555' }}>{permission.name}</code>)
-                                                    {permission.description && <small style={{ display: 'block', color: '#666', marginLeft: '2px', marginTop: '2px' }}>{permission.description}</small>}
-                                                </div>
-                                            </label>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    ))}
-                    
-                    {Object.keys(groupedPermissions).length > 0 && ( // Show save button if there are any permissions to manage
-                        <button onClick={handleSaveChanges} disabled={isLoading || !selectedEntityId} style={{ marginTop: '20px', padding: '10px 20px', fontSize: '1.1em' }}>
-                            {isLoading ? 'Saving...' : 'Save Changes'}
-                        </button>
-                    )}
-                </div>
-            )}
-            {!selectedEntityId && entityType && <p style={{marginTop: '20px'}}>Please select a {entityType} to manage its permissions.</p>}
+  return (
+    <div className="access-control-container" style={{ padding: '20px' }}>
+      <h2>Access Control Management</h2>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+      {isFetchingData && <p>Loading access control data...</p>}
+      <div style={{ marginBottom: '20px' }}>
+        <input
+          type="text"
+          placeholder="Search permissions..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          style={{ padding: '8px', width: '300px', marginRight: '10px' }}
+        />
+      </div>
+      {roles.length > 0 && (
+        <div style={{ margin: '20px 0' }}>
+          <label htmlFor="roleSelect" style={{ marginRight: '10px' }}>
+            Select Role:
+          </label>
+          <select
+            id="roleSelect"
+            value={selectedRole}
+            onChange={(e) => setSelectedRole(e.target.value)}
+            style={{ padding: '8px', minWidth: '300px' }}
+          >
+            {roles.map(role => (
+              <option key={role.id} value={role.id}>
+                {role.name}
+              </option>
+            ))}
+          </select>
         </div>
-    );
+      )}
+      {permissionCategories.length > 0 && (
+        <div style={{ margin: '20px 0' }}>
+          <label htmlFor="topCategorySelect" style={{ marginRight: '10px' }}>
+            Select Permission Category:
+          </label>
+          <select
+            id="topCategorySelect"
+            value={selectedTopCategory}
+            onChange={(e) => setSelectedTopCategory(e.target.value)}
+            style={{ padding: '8px', minWidth: '300px' }}
+          >
+            <option value="">-- Choose a Category --</option>
+            {permissionCategories
+              .sort((a, b) => a.display_order - b.display_order)
+              .map(cat => (
+                <option key={cat.id} value={cat.name}>
+                  {cat.name}
+                </option>
+              ))}
+          </select>
+        </div>
+      )}
+      {selectedTopCategory && groupedPermissions && (
+        <div>
+          <h3>{selectedTopCategory}</h3>
+          {Object.keys(groupedPermissions)
+            .filter(groupName =>
+              selectedTopCategory === groupName ||
+              ((finalPermissionStructure[selectedTopCategory] || []).includes(groupName))
+            )
+            .map(groupName => (
+              <div key={groupName}>
+                <h4>{groupName}</h4>
+                <ul>
+                  {groupedPermissions[groupName]?.map(permission => (
+                    <li key={permission.id}>
+                      <label style={{ cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={rolePermissions.includes(permission.id)}
+                          readOnly
+                          style={{ marginRight: '8px' }}
+                        />
+                        {permission.display_name} (<code>{permission.name}</code>)
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default AccessControl;
