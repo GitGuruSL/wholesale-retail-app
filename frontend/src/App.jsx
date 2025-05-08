@@ -1,8 +1,8 @@
 import React from 'react';
 import { Routes, Route, Navigate, Outlet, Link, useLocation } from 'react-router-dom';
 import { AuthProvider } from "./context/AuthContext";
-import { StoreProvider } from "./context/StoreContext"; // Assuming you use this
-import { ROLES } from './utils/roles'; // Ensure this path is correct
+import { StoreProvider } from "./context/StoreContext"; 
+import { ROLES } from './utils/roles'; 
 
 // --- Layout and Route Components ---
 import ProtectedRoute from './components/ProtectedRoute';
@@ -11,11 +11,11 @@ import MainLayout from './components/MainLayout';
 // --- Page Components ---
 import LoginPage from "./pages/LoginPage";
 import AccessDeniedPage from './pages/AccessDeniedPage';
-// ... other imports ...
+
+// --- Component Imports ---
 // Product Management
-import ProductList from './components/ProductList'; // <--- IMPORT ProductList
+import ProductList from './components/ProductList';
 import ProductForm from './components/ProductForm';
-// ... other imports ...
 import CategoryList from './components/CategoryList';
 import CategoryForm from './components/CategoryForm';
 import SubCategoryList from './components/SubCategoryList';
@@ -40,14 +40,16 @@ import BarcodeSymbologyList from './components/BarcodeSymbologyList';
 import BarcodeSymbologyForm from './components/BarcodeSymbologyForm';
 import DiscountTypeList from './components/DiscountTypeList';
 import DiscountTypeForm from './components/DiscountTypeForm';
-// ... other imports from your App.jsx ...
+// User & Store Management
 import SupplierList from './components/SupplierList';
 import SupplierForm from './components/SupplierForm';
 import UserList from './components/UserList'; 
 import UserForm from './components/UserForm';
 import StoreList from './components/StoreList';
 import StoreForm from './components/StoreForm';
-
+// Roles Management - Corrected Paths (assuming files are in frontend/src/components/roles/)
+import RolesList from './components/RolesList'; // Removed /roles from path
+import RoleForm from './components/RoleForm';
 
 // --- HomePage (Dashboard Index) Component ---
 const HomePage = () => {
@@ -81,7 +83,7 @@ const GlobalNotFoundPage = () => (
 function App() {
     const globalAdminOnly = [ROLES.GLOBAL_ADMIN];
     const storeAdminAndGlobalAdminRoles = [ROLES.GLOBAL_ADMIN, ROLES.STORE_ADMIN];
-    const allAuthenticatedUsers = [ROLES.GLOBAL_ADMIN, ROLES.STORE_ADMIN, ROLES.SALES_PERSON];
+    const allAuthenticatedUsers = [ROLES.GLOBAL_ADMIN, ROLES.STORE_ADMIN, ROLES.SALES_PERSON]; // Add other roles as they are created
 
     return (
         <AuthProvider>
@@ -108,7 +110,6 @@ function App() {
                             <Route path="stores/edit/:storeId" element={<ProtectedRoute roles={globalAdminOnly} permissions={['store:update']}><StoreForm /></ProtectedRoute>} />
 
                             {/* Product Management */}
-                            {/* Use ProductList directly instead of ProductPage */}
                             <Route path="products" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['product:read']}><ProductList /></ProtectedRoute>} /> 
                             <Route path="products/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['product:create']}><ProductForm /></ProtectedRoute>} />
                             <Route path="products/edit/:productId" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['product:update']}><ProductForm /></ProtectedRoute>} />
@@ -179,7 +180,11 @@ function App() {
                             <Route path="users/new" element={<ProtectedRoute roles={globalAdminOnly} permissions={['user:create']}><UserForm /></ProtectedRoute>} />
                             <Route path="users/edit/:userId" element={<ProtectedRoute roles={globalAdminOnly} permissions={['user:update_all']}><UserForm /></ProtectedRoute>} />
                             
-                            <Route path="roles" element={<ProtectedRoute roles={globalAdminOnly} permissions={['role:read']}><PlaceholderComponent title="Role Management" /></ProtectedRoute>} />
+                            {/* Roles Management - Corrected Routes */}
+                            <Route path="roles" element={<ProtectedRoute roles={globalAdminOnly} permissions={['role:read']}><RolesList /></ProtectedRoute>} />
+                            <Route path="roles/add" element={<ProtectedRoute roles={globalAdminOnly} permissions={['role:create']}><RoleForm /></ProtectedRoute>} />
+                            <Route path="roles/edit/:roleId" element={<ProtectedRoute roles={globalAdminOnly} permissions={['role:update']}><RoleForm /></ProtectedRoute>} />
+                        
                             
                             <Route path="permissions" element={<ProtectedRoute roles={globalAdminOnly} permissions={['permission:read']}><PlaceholderComponent title="View System Permissions" /></ProtectedRoute>} />
 
