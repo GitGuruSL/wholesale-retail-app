@@ -1,9 +1,9 @@
-// Define your PERMISSIONS object
+// Define the PERMISSIONS object
 const PERMISSIONS = {
     // User Permissions
     USER_CREATE: 'user:create',
     USER_READ_ALL: 'user:read_all',
-    USER_READ_SELF: 'user:read_self', // If users can view their own profile
+    USER_READ_SELF: 'user:read_self', // For users to view their own profile
     USER_UPDATE_ALL: 'user:update_all', // For admins to update any user
     USER_UPDATE_SELF: 'user:update_self', // For users to update their own profile
     USER_DELETE: 'user:delete',
@@ -15,9 +15,9 @@ const PERMISSIONS = {
     PRODUCT_READ: 'product:read', // General read access
     PRODUCT_UPDATE: 'product:update',
     PRODUCT_DELETE: 'product:delete',
-    PRODUCT_MANAGE_PRICE: 'product:manage_price', // If price changes are restricted
+    PRODUCT_MANAGE_PRICE: 'product:manage_price', // For managing product prices
 
-    // Category/SubCategory Permissions (can be combined or separate)
+    // Category/SubCategory Permissions
     CATEGORY_CREATE: 'category:create',
     CATEGORY_READ: 'category:read',
     CATEGORY_UPDATE: 'category:update',
@@ -45,21 +45,27 @@ const PERMISSIONS = {
     SUPPLIER_READ: 'supplier:read',
     SUPPLIER_UPDATE: 'supplier:update',
     SUPPLIER_DELETE: 'supplier:delete',
-    
-    // Add more permissions as needed for other modules like:
-    // reports, settings, taxes, discounts, brands, etc.
-    // Example: REPORT_VIEW_SALES: 'report:view_sales'
+
+    // Additional Permissions
+    REPORT_VIEW_SALES: 'report:view_sales',
+    REPORT_VIEW_INVENTORY: 'report:view_inventory',
+    SETTINGS_MANAGE: 'settings:manage',
+    TAX_MANAGE: 'tax:manage',
+    DISCOUNT_MANAGE: 'discount:manage',
+    BRAND_MANAGE: 'brand:manage',
 };
 
+// Define the ROLES object
 const ROLES = {
     GLOBAL_ADMIN: 'global_admin',
     STORE_ADMIN: 'store_admin',
     STORE_MANAGER: 'store_manager',
-    SALES_PERSON: 'sales_person'
-    // Add other roles as defined in your database
+    SALES_PERSON: 'sales_person',
+    // Add other roles as needed
 };
 
+// Export the PERMISSIONS and ROLES objects
 module.exports = {
-    PERMISSIONS, // Now PERMISSIONS is defined before being exported
-    ROLES
+    PERMISSIONS,
+    ROLES,
 };

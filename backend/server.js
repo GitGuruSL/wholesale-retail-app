@@ -25,13 +25,14 @@ const createTaxesRouter = require('./routes/taxes');
 const createUnitsRouter = require('./routes/units');
 const createUsersRouter = require('./routes/users');
 const createWarrantiesRouter = require('./routes/warranties');
+const createRolesRouter = require('./routes/roles'); // Add roles router
 
 const app = express();
 
 // --- Core Middleware ---
 app.use(cors({
     origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-    credentials: true
+    credentials: true,
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -42,8 +43,7 @@ app.use((req, res, next) => {
     next();
 });
 
-// --- Mount Routers ---
-// Helper to mount routers, allowing for prepended middleware (like authenticateToken)
+// --- Helper Function to Mount Routers ---
 const mountRouter = (path, routerCreator, ...middlewares) => {
     if (typeof routerCreator !== 'function') {
         console.warn(`Router creator for ${path} is not a function or is undefined. Skipping mount.`);
@@ -63,10 +63,10 @@ const mountRouter = (path, routerCreator, ...middlewares) => {
     }
 };
 
-// Public routes (or routes with their own internal auth)
+// --- Public Routes ---
 mountRouter('/api/auth', createAuthRouter);
 
-// Protected routes - apply authenticateToken before these routers
+// --- Protected Routes (Require Authentication) ---
 mountRouter('/api/barcode-symbologies', createBarcodeSymbologiesRouter, authenticateToken);
 mountRouter('/api/brands', createBrandsRouter, authenticateToken);
 mountRouter('/api/categories', createCategoriesRouter, authenticateToken);
@@ -78,7 +78,7 @@ mountRouter('/api/product-units', createProductUnitsRouter, authenticateToken);
 mountRouter('/api/products', createProductsRouter, authenticateToken);
 mountRouter('/api/sales', createSalesRouter, authenticateToken);
 mountRouter('/api/special-categories', createSpecialCategoriesRouter, authenticateToken);
-mountRouter('/api/stores', createStoresRouter, authenticateToken); // Getting store list might need auth
+mountRouter('/api/stores', createStoresRouter, authenticateToken);
 mountRouter('/api/sub-categories', createSubCategoriesRouter, authenticateToken);
 mountRouter('/api/suppliers', createSuppliersRouter, authenticateToken);
 mountRouter('/api/tax-types', createTaxTypesRouter, authenticateToken);
@@ -86,27 +86,24 @@ mountRouter('/api/taxes', createTaxesRouter, authenticateToken);
 mountRouter('/api/units', createUnitsRouter, authenticateToken);
 mountRouter('/api/users', createUsersRouter, authenticateToken);
 mountRouter('/api/warranties', createWarrantiesRouter, authenticateToken);
-
+mountRouter('/api/roles', createRolesRouter, authenticateToken); // Add roles route
 
 // --- Global Error Handler ---
 app.use((err, req, res, next) => {
     console.error("Global Error Handler Caught:", err.message, err.stack || '');
-    let statusCode = err.statusCode || 500;
-    let message = err.message || 'An unexpected error occurred on the server.';
+    const statusCode = err.statusCode || 500;
+    const message = err.message || 'An unexpected error occurred on the server.';
 
-    if (err.name === 'UnauthorizedError') { // Example for express-jwt, adjust if using different
-        statusCode = 401;
-        message = 'Invalid or expired token.';
+    if (err.name === 'UnauthorizedError') {
+        res.status(401).json({ status: 'error', statusCode: 401, message: 'Invalid or expired token.' });
+    } else {
+        res.status(statusCode).json({
+            status: 'error',
+            statusCode,
+            message,
+            ...(process.env.NODE_ENV === 'development' && { errorDetails: err.stack }),
+        });
     }
-    // Add more specific error type handling if needed
-    // e.g., if (err instanceof MyCustomError) { ... }
-
-    res.status(statusCode).json({
-        status: 'error',
-        statusCode,
-        message,
-        ...(process.env.NODE_ENV === 'development' && { errorDetails: err.stack }),
-    });
 });
 
 // --- Start Server ---

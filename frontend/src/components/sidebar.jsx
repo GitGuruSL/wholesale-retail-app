@@ -4,7 +4,7 @@ import {
     Drawer, List, ListItem, ListItemIcon, ListItemText, Divider, IconButton,
     Typography, Box, Collapse, Tooltip
 } from '@mui/material';
-import { styled } from '@mui/material/styles'; // Removed useTheme as it's available in sx prop
+import { styled } from '@mui/material/styles';
 import MenuIcon from '@mui/icons-material/Menu';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import DashboardIcon from '@mui/icons-material/Dashboard';
@@ -22,23 +22,23 @@ import ExpandMore from '@mui/icons-material/ExpandMore';
 import BusinessIcon from '@mui/icons-material/Business';
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
-import MonetizationOnIcon from '@mui/icons-material/MonetizationOn'; // For Tax Types/Taxes
+import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
+import AccountCircleIcon from '@mui/icons-material/AccountCircle'; // For user icon
 
 // --- Icons for new items ---
-import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner'; // For Barcode Symbology
-import LocalOfferIcon from '@mui/icons-material/LocalOffer';       // For Discount Type
-import PrecisionManufacturingIcon from '@mui/icons-material/PrecisionManufacturing'; // For Manufacturer
-import StraightenIcon from '@mui/icons-material/Straighten';       // For Unit
-import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';   // For Warranty
-import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest'; // For the new section header
+import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
+import LocalOfferIcon from '@mui/icons-material/LocalOffer';
+import PrecisionManufacturingIcon from '@mui/icons-material/PrecisionManufacturing';
+import StraightenIcon from '@mui/icons-material/Straighten';
+import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
+import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest';
 
-// Placeholder icons (replace with more specific ones if you have them)
-const SubCategoryIcon = CategoryIcon;
-const BrandIcon = StoreIcon;
-const SpecialCategoryIcon = CategoryIcon;
-const SupplierIcon = PeopleIcon; // Consider LocalShippingIcon or similar for Suppliers
+const SubCategoryIcon = CategoryIcon; // Placeholder
+const BrandIcon = StoreIcon; // Placeholder
+const SpecialCategoryIcon = CategoryIcon; // Placeholder
+const SupplierIcon = PeopleIcon; // Placeholder
 
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext'; // Ensure path is correct
 
 const StyledDrawer = styled(Drawer, { shouldForwardProp: (prop) => prop !== 'open' && prop !== 'drawerWidth' })(
     ({ theme, open, drawerWidth }) => ({
@@ -68,18 +68,19 @@ const StyledDrawer = styled(Drawer, { shouldForwardProp: (prop) => prop !== 'ope
 
 const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
     const location = useLocation();
-    const { user, logoutUser } = useAuth();
+    const { user, logout } = useAuth(); // Correctly destructure logout
     const [openSections, setOpenSections] = useState({});
 
     useEffect(() => {
         if (user) {
-            console.log("Sidebar: User permissions:", JSON.stringify(user?.permissions));
+            // console.log("Sidebar: User data:", JSON.stringify(user));
+            // console.log("Sidebar: User permissions:", JSON.stringify(user?.permissions));
         }
     }, [user]);
 
     const hasPermission = (requiredPermission) => {
-        if (!requiredPermission) return true;
-        if (!user || !user.permissions) return false;
+        if (!requiredPermission) return true; // No permission needed
+        if (!user || !user.permissions) return false; // User or permissions not available
         return user.permissions.includes(requiredPermission);
     };
 
@@ -88,7 +89,7 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
     };
 
     const mainMenuItems = [
-        { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard', requiredPermission: 'user:read_self' },
+        { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard', requiredPermission: 'user:read_self' }, // Example permission
         { text: 'Stores', icon: <StoreIcon />, path: '/dashboard/stores', requiredPermission: 'store:read' },
         { text: 'Products', icon: <ListAltIcon />, path: '/dashboard/products', requiredPermission: 'product:read' },
         { text: 'Suppliers', icon: <SupplierIcon />, path: '/dashboard/suppliers', requiredPermission: 'supplier:read' },
@@ -96,7 +97,7 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
 
     const collapsibleSectionsData = [
         {
-            id: "productCatalog", label: "Product Catalog", icon: <CategoryIcon />, requiredPermission: 'product:read',
+            id: "productCatalog", label: "Product Catalog", icon: <CategoryIcon />, requiredPermission: 'product:read', // Broad permission for section
             items: [
                 { text: 'Categories', icon: <CategoryIcon />, path: '/dashboard/categories', requiredPermission: 'category:read' },
                 { text: 'Sub-Categories', icon: <SubCategoryIcon />, path: '/dashboard/sub-categories', requiredPermission: 'subcategory:read' },
@@ -112,17 +113,14 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
                 { text: 'Taxes', icon: <MonetizationOnIcon />, path: '/dashboard/taxes', requiredPermission: 'tax:manage' },
             ]
         },
-        { // NEW SECTION
-            id: "productSettings",
-            label: "Product Settings",
-            icon: <SettingsSuggestIcon />,
-            requiredPermission: 'product_settings:read', // Define this permission in backend
+        {
+            id: "productSettings", label: "Product Settings", icon: <SettingsSuggestIcon />, requiredPermission: 'product_settings:read',
             items: [
-                { text: 'Units', icon: <StraightenIcon />, path: '/dashboard/units', requiredPermission: 'unit:read' }, // Define unit:read
-                { text: 'Manufacturers', icon: <PrecisionManufacturingIcon />, path: '/dashboard/manufacturers', requiredPermission: 'manufacturer:read' }, // Define manufacturer:read
-                { text: 'Warranties', icon: <VerifiedUserIcon />, path: '/dashboard/warranties', requiredPermission: 'warranty:read' }, // Define warranty:read
-                { text: 'Barcode Symbologies', icon: <QrCodeScannerIcon />, path: '/dashboard/barcode-symbologies', requiredPermission: 'barcode_symbology:read' }, // Define barcode_symbology:read
-                { text: 'Discount Types', icon: <LocalOfferIcon />, path: '/dashboard/discount-types', requiredPermission: 'discount_type:read' }, // Define discount_type:read
+                { text: 'Units', icon: <StraightenIcon />, path: '/dashboard/units', requiredPermission: 'unit:read' },
+                { text: 'Manufacturers', icon: <PrecisionManufacturingIcon />, path: '/dashboard/manufacturers', requiredPermission: 'manufacturer:read' },
+                { text: 'Warranties', icon: <VerifiedUserIcon />, path: '/dashboard/warranties', requiredPermission: 'warranty:read' },
+                { text: 'Barcode Symbologies', icon: <QrCodeScannerIcon />, path: '/dashboard/barcode-symbologies', requiredPermission: 'barcode_symbology:read' },
+                { text: 'Discount Types', icon: <LocalOfferIcon />, path: '/dashboard/discount-types', requiredPermission: 'discount_type:read' },
             ]
         },
         {
@@ -171,8 +169,6 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
         }
         const filteredSubItems = section.items.filter(subItem => hasPermission(subItem.requiredPermission));
         
-        // If the section itself has a path and no visible sub-items, make the section header a direct link.
-        // This is useful if a section's main permission implies access to a general page for that section.
         if (section.path && filteredSubItems.length === 0) {
              return (
                 <Tooltip title={!open ? section.label : ""} placement="right" key={section.id} disableHoverListener={open}>
@@ -189,7 +185,6 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
             );
         }
 
-        // If no sub-items are visible and the section header itself doesn't have a path, don't render the section.
         if (filteredSubItems.length === 0 && !section.path) {
             return null;
         }
@@ -233,23 +228,39 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
                 sx={(theme) => ({
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between',
+                    justifyContent: 'space-between', // Changed to space-between
                     padding: theme.spacing(0, 1),
                     ...theme.mixins.toolbar,
                 })}
             >
                 {open && (
-                    <Typography component="h1" variant="h6" color="inherit" noWrap sx={{ flexGrow: 1, ml: 1 }}>
+                    <Typography component="h1" variant="h6" color="inherit" noWrap sx={{ ml: 1 }}>
                         App Name
                     </Typography>
                 )}
-                {!open && <Box sx={{ flexGrow: 1 }} />}
+                {/* {!open && <Box sx={{ flexGrow: 1 }} />} Removed to allow IconButton to be at the end */}
                 <IconButton onClick={handleDrawerToggle}>
                     {open ? <ChevronLeftIcon /> : <MenuIcon />}
                 </IconButton>
             </Box>
             <Divider />
-            <List component="nav" sx={{ pt: 0, pb: 0 }}>
+
+            {open && user && (
+                <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+                    <AccountCircleIcon sx={{ fontSize: 40, mb: 1, color: 'text.secondary' }} />
+                    <Typography variant="subtitle1" noWrap>
+                        {user.name || user.username || user.email || "User"}
+                    </Typography>
+                    {(user.role_display_name || user.role_name) && ( // Check for role_display_name first
+                        <Typography variant="caption" color="text.secondary" noWrap>
+                            {user.role_display_name || user.role_name} {/* Use role_display_name, fallback to role_name */}
+                        </Typography>
+                    )}
+                </Box>
+            )}
+            {open && user && <Divider sx={{ mb: 1 }} />}
+
+            <List component="nav" sx={{ pt: 0, pb: 0, flexGrow: 1, overflowY: 'auto' }}> {/* Added flexGrow and overflowY */}
                 {filteredMainMenuItems.map((item) => (
                     <Tooltip title={!open ? item.text : ""} placement="right" key={item.text} disableHoverListener={open}>
                         <ListItem
@@ -266,10 +277,10 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
                 <Divider sx={{ my: 1 }} />
                 {collapsibleSectionsData.map(section => renderCollapsibleMenu(section))}
             </List>
-            <Box sx={{ flexGrow: 1 }} />
+            {/* <Box sx={{ flexGrow: 1 }} /> Removed as List now handles flexGrow */}
             <Divider />
             <Tooltip title={!open ? "Logout" : ""} placement="right" disableHoverListener={open}>
-                <ListItem button onClick={() => logoutUser ? logoutUser() : console.error("logoutUser function not available")}>
+                <ListItem button onClick={logout}> {/* Corrected to use logout directly */}
                     <ListItemIcon><LogoutIcon /></ListItemIcon>
                     {open && <ListItemText primary="Logout" />}
                 </ListItem>
