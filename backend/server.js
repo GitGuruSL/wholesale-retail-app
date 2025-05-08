@@ -28,6 +28,7 @@ const createWarrantiesRouter = require('./routes/warranties');
 const createRolesRouter = require('./routes/roles'); // Add roles router
 const createPermissionsRouter = require('./routes/permissions');
 const createPermissionCategoriesRouter = require('./routes/permissionCategories');
+const createStoreSettingsRoutes = require('./routes/settings');
 
 const app = express();
 
@@ -91,6 +92,7 @@ mountRouter('/api/warranties', createWarrantiesRouter, authenticateToken);
 mountRouter('/api/roles', createRolesRouter, authenticateToken);
 mountRouter('/api/permissions', createPermissionsRouter, authenticateToken);
 mountRouter('/api/permission-categories', createPermissionCategoriesRouter, authenticateToken);
+mountRouter('/api/settings', createStoreSettingsRoutes, authenticateToken);
 
 // --- Global Error Handler ---
 app.use((err, req, res, next) => {

@@ -58,6 +58,7 @@ import PermissionCategoryList from './components/PermissionCategoryList';
 import PermissionCategoryForm from './components/PermissionCategoryForm'; 
 
 import AccessControl from './components/AccessControl'; 
+import StoreSettings from './components/StoreSettings';
 
 
 
@@ -223,7 +224,7 @@ const AppRoutes = () => {
 
                     {/* Settings Section */}
                     <Route path="settings/company" element={<ProtectedRoute roles={globalAdminOnly} permissions={['system:manage_settings']}><PlaceholderComponent title="Company Settings" /></ProtectedRoute>} />
-                    <Route path="settings/store" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['store_settings:read', 'store_settings:update']}><PlaceholderComponent title="My Store Settings" /></ProtectedRoute>} />
+                    <Route path="settings/store" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['store_settings:read', 'store_settings:update']}><StoreSettings /></ProtectedRoute>} />
                     
                     <Route path="*" element={<PlaceholderComponent title="Page Not Found in Dashboard" />} />
                 </Route>

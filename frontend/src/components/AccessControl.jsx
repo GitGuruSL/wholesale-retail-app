@@ -1,246 +1,245 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { FaEdit, FaTrashAlt, FaPlus } from 'react-icons/fa';
+import listStyles from '../styles/ListStyles';
 
-const getPermissionGroupName = (permissionName) => {
-  if (!permissionName || typeof permissionName !== 'string') return 'Other';
-  const parts = permissionName.split(':');
-  const prefix = parts.length > 1 ? parts[0] : permissionName;
-  switch (prefix) {
-    case 'user': return 'User Management';
-    case 'role': return 'Role Management';
-    case 'permission': return 'Permission Management';
-    case 'store': return 'Store & Product Catalog';
-    case 'product': return 'Store & Product Catalog';
-    case 'category': return 'Store & Product Catalog';
-    case 'subcategory': return 'Store & Product Catalog';
-    case 'brand': return 'Store & Product Catalog';
-    case 'specialcategory': return 'Store & Product Catalog';
-    case 'product_attribute': return 'Product Configuration';
-    case 'tax_type': return 'Product Configuration';
-    case 'tax': return 'Product Configuration';
-    case 'unit': return 'Product Configuration';
-    case 'manufacturer': return 'Product Configuration';
-    case 'warranty': return 'Product Configuration';
-    case 'barcode_symbology': return 'Product Configuration';
-    case 'discount_type': return 'Product Configuration';
-    case 'inventory': return 'Operations';
-    case 'sale': return 'Operations';
-    case 'supplier': return 'Operations';
-    case 'report': return 'System & Reports';
-    case 'system': return 'System & Reports';
-    case 'store_settings': return 'System & Reports';
-    default: return 'Other';
-  }
-};
+function PermissionList() {
+    const [roles, setRoles] = useState([]);
+    const [selectedRole, setSelectedRole] = useState('');
+    const [rolePermissions, setRolePermissions] = useState([]); // full permission objects assigned to the role
+    const [allPermissions, setAllPermissions] = useState([]);   // full list from /permissions/list-all
+    const [categories, setCategories] = useState([]);            // permission categories
+    const [selectedCategory, setSelectedCategory] = useState('');  // selected category id (as string)
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
 
-function AccessControl() {
-  const { apiInstance } = useAuth();
+    const { apiInstance, userCan } = useAuth();
 
-  const [permissionCategories, setPermissionCategories] = useState([]);
-  const [allPermissions, setAllPermissions] = useState([]);
-  const [roles, setRoles] = useState([]);
-  const [rolePermissions, setRolePermissions] = useState([]);
-  const [error, setError] = useState(null);
-  const [isFetchingData, setIsFetchingData] = useState(false);
-
-  const [selectedTopCategory, setSelectedTopCategory] = useState('');
-  const [selectedRole, setSelectedRole] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-
-  // Fetch permissions and categories
-  useEffect(() => {
-    const fetchData = async () => {
-      setIsFetchingData(true);
-      setError(null);
-      try {
-        const [permissionsRes, categoriesRes] = await Promise.all([
-          apiInstance.get('/permissions'),
-          apiInstance.get('/permission-categories')
-        ]);
-        setAllPermissions(permissionsRes.data || []);
-        setPermissionCategories(categoriesRes.data || []);
-        if (categoriesRes.data && categoriesRes.data.length) {
-          setSelectedTopCategory(
-            categoriesRes.data.sort((a, b) => a.display_order - b.display_order)[0].name
-          );
+    // Fetch all permissions (full list) once at mount.
+    useEffect(() => {
+        async function fetchAllPermissions() {
+            try {
+                const res = await apiInstance.get('/permissions/list-all');
+                setAllPermissions(res.data || []);
+            } catch (err) {
+                console.error("Error fetching all permissions:", err);
+            }
         }
-      } catch (err) {
-        setError(err.response?.data?.message || 'Failed to load permissions data.');
-      } finally {
-        setIsFetchingData(false);
-      }
-    };
-    fetchData();
-  }, [apiInstance]);
+        fetchAllPermissions();
+    }, [apiInstance]);
 
-  // Fetch roles
-  useEffect(() => {
-    const fetchRoles = async () => {
-      try {
-        const rolesRes = await apiInstance.get('/roles');
-        setRoles(rolesRes.data || []);
-        if (rolesRes.data && rolesRes.data.length) {
-          setSelectedRole(rolesRes.data[0].id);
+    // Fetch permission categories
+    useEffect(() => {
+        async function fetchCategories() {
+            try {
+                const res = await apiInstance.get('/permissions/categories');
+                setCategories(res.data || []);
+            } catch (err) {
+                console.error("Error fetching permission categories:", err);
+            }
         }
-      } catch (err) {
-        console.error("Error fetching roles:", err);
-      }
-    };
-    fetchRoles();
-  }, [apiInstance]);
+        fetchCategories();
+    }, [apiInstance]);
 
-  // Fetch role permissions using endpoint /roles/:id/permissions.
-  // If your API uses a different endpoint (e.g. /role-permissions?roleId=...), adjust accordingly.
-  useEffect(() => {
-    const fetchRolePermissions = async () => {
-      if (!selectedRole) {
-        setRolePermissions([]);
-        return;
-      }
-      try {
-        const res = await apiInstance.get(`/roles/${selectedRole}/permissions`);
-        setRolePermissions(res.data.map(permission => permission.id));
-      } catch (err) {
-        console.error("Error fetching role permissions:", err);
-        setRolePermissions([]); // fallback to empty array if not found
-      }
-    };
-    fetchRolePermissions();
-  }, [selectedRole, apiInstance]);
-
-  // Group and sort permissions and filter by search term
-  const groupedPermissions = useMemo(() => {
-    if (!allPermissions.length) return {};
-    const groups = allPermissions.reduce((acc, permission) => {
-      const groupName = getPermissionGroupName(permission.name);
-      if (
-        !searchTerm ||
-        (permission.display_name &&
-          permission.display_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        permission.name.toLowerCase().includes(searchTerm.toLowerCase())
-      ) {
-        if (!acc[groupName]) {
-          acc[groupName] = [];
+    // Fetch roles for the dropdown
+    useEffect(() => {
+        async function fetchRoles() {
+            try {
+                const res = await apiInstance.get('/roles');
+                const rolesData = res.data || [];
+                setRoles(rolesData);
+                if (rolesData.length > 0) {
+                    setSelectedRole(rolesData[0].id); // set default role to first
+                }
+            } catch (err) {
+                console.error("Error fetching roles:", err);
+            }
         }
-        acc[groupName].push(permission);
-      }
-      return acc;
+        fetchRoles();
+    }, [apiInstance]);
+
+    // Fetch role details (including assigned permissions) when selectedRole or allPermissions changes
+    useEffect(() => {
+        async function fetchRolePermissions() {
+            if (!selectedRole) {
+                setRolePermissions([]);
+                return;
+            }
+            setLoading(true);
+            setError(null);
+            try {
+                // GET /roles/:id should return a role object with a "permissions" array.
+                const res = await apiInstance.get(`/roles/${selectedRole}`);
+                const rp = res.data.permissions || [];
+                let perms = [];
+                if (rp.length > 0 && typeof rp[0] === "object") {
+                    perms = rp;
+                } else {
+                    perms = allPermissions.filter(p => rp.includes(p.id));
+                }
+                setRolePermissions(perms);
+            } catch (err) {
+                console.error("Error fetching role permissions:", err);
+                setError(err.response?.data?.message || 'Failed to load role permissions.');
+                setRolePermissions([]);
+            } finally {
+                setLoading(false);
+            }
+        }
+        fetchRolePermissions();
+    }, [selectedRole, apiInstance, allPermissions]);
+
+    const handleRoleChange = (e) => {
+        setSelectedRole(e.target.value);
+    };
+
+    const handleCategoryChange = (e) => {
+        setSelectedCategory(e.target.value);
+    };
+
+    const handleDelete = async (permissionId, permissionName) => {
+        if (window.confirm(`Are you sure you want to delete the permission "${permissionName}"? This action cannot be undone.`)) {
+            try {
+                setLoading(true);
+                await apiInstance.delete(`/permissions/${permissionId}`);
+                // Re-fetch role data to update permissions after deletion.
+                const res = await apiInstance.get(`/roles/${selectedRole}`);
+                const rp = res.data.permissions || [];
+                let perms = [];
+                if (rp.length > 0 && typeof rp[0] === "object") {
+                    perms = rp;
+                } else {
+                    perms = allPermissions.filter(p => rp.includes(p.id));
+                }
+                setRolePermissions(perms);
+            } catch (err) {
+                console.error("Error deleting permission:", err);
+                setError(err.response?.data?.message || 'Failed to delete permission.');
+            } finally {
+                setLoading(false);
+            }
+        }
+    };
+
+    // First filter by selectedCategory (if any); if not selected, keep all:
+    const filteredPermissions = rolePermissions.filter(permission => {
+        if (!selectedCategory) return true;
+        return permission.permission_category_id === parseInt(selectedCategory, 10);
+    });
+
+    // Group the filtered permissions by category name.
+    const groupedPermissions = filteredPermissions.reduce((groups, permission) => {
+        const categoryObj = categories.find(cat => cat.id === permission.permission_category_id);
+        const categoryName = categoryObj ? categoryObj.name : "Uncategorized";
+        if (!groups[categoryName]) {
+            groups[categoryName] = [];
+        }
+        groups[categoryName].push(permission);
+        return groups;
     }, {});
-    return Object.keys(groups)
-      .sort()
-      .reduce((obj, key) => {
-        obj[key] = groups[key].sort((a, b) =>
-          (a.display_name || '').localeCompare(b.display_name || '')
-        );
-        return obj;
-      }, {});
-  }, [allPermissions, searchTerm]);
 
-  // Build final permission structure using the categories from the DB.
-  const finalPermissionStructure = useMemo(() => {
-    const structure = {};
-    permissionCategories.forEach(cat => {
-      structure[cat.name] = [];
-    });
-    Object.keys(groupedPermissions).forEach(group => {
-      const exists = Object.keys(structure).find(key => key === group);
-      if (!exists) {
-        if (!structure['Other']) structure['Other'] = [];
-        if (!structure['Other'].includes(group)) {
-          structure['Other'].push(group);
-        }
-      }
-    });
-    return structure;
-  }, [permissionCategories, groupedPermissions]);
+    return (
+        <div style={listStyles.container}>
+            <div style={listStyles.titleContainer}>
+                <h2 style={listStyles.title}>Role Wise Permissions</h2>
+                {typeof userCan === 'function' && userCan('permission:create') && (
+                    <Link to="/dashboard/permissions/new" style={listStyles.addButton}>
+                        <FaPlus /> Create New Permission
+                    </Link>
+                )}
+            </div>
 
-  return (
-    <div className="access-control-container" style={{ padding: '20px' }}>
-      <h2>Access Control Management</h2>
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-      {isFetchingData && <p>Loading access control data...</p>}
-      <div style={{ marginBottom: '20px' }}>
-        <input
-          type="text"
-          placeholder="Search permissions..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          style={{ padding: '8px', width: '300px', marginRight: '10px' }}
-        />
-      </div>
-      {roles.length > 0 && (
-        <div style={{ margin: '20px 0' }}>
-          <label htmlFor="roleSelect" style={{ marginRight: '10px' }}>
-            Select Role:
-          </label>
-          <select
-            id="roleSelect"
-            value={selectedRole}
-            onChange={(e) => setSelectedRole(e.target.value)}
-            style={{ padding: '8px', minWidth: '300px' }}
-          >
-            {roles.map(role => (
-              <option key={role.id} value={role.id}>
-                {role.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-      {permissionCategories.length > 0 && (
-        <div style={{ margin: '20px 0' }}>
-          <label htmlFor="topCategorySelect" style={{ marginRight: '10px' }}>
-            Select Permission Category:
-          </label>
-          <select
-            id="topCategorySelect"
-            value={selectedTopCategory}
-            onChange={(e) => setSelectedTopCategory(e.target.value)}
-            style={{ padding: '8px', minWidth: '300px' }}
-          >
-            <option value="">-- Choose a Category --</option>
-            {permissionCategories
-              .sort((a, b) => a.display_order - b.display_order)
-              .map(cat => (
-                <option key={cat.id} value={cat.name}>
-                  {cat.name}
-                </option>
-              ))}
-          </select>
-        </div>
-      )}
-      {selectedTopCategory && groupedPermissions && (
-        <div>
-          <h3>{selectedTopCategory}</h3>
-          {Object.keys(groupedPermissions)
-            .filter(groupName =>
-              selectedTopCategory === groupName ||
-              ((finalPermissionStructure[selectedTopCategory] || []).includes(groupName))
-            )
-            .map(groupName => (
-              <div key={groupName}>
-                <h4>{groupName}</h4>
-                <ul>
-                  {groupedPermissions[groupName]?.map(permission => (
-                    <li key={permission.id}>
-                      <label style={{ cursor: 'pointer' }}>
-                        <input
-                          type="checkbox"
-                          checked={rolePermissions.includes(permission.id)}
-                          readOnly
-                          style={{ marginRight: '8px' }}
-                        />
-                        {permission.display_name} (<code>{permission.name}</code>)
-                      </label>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+            {/* Dropdowns for role and permission category */}
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+                <div style={{ flex: '1' }}>
+                    <label style={listStyles.label} htmlFor="roleFilter">Select Role:</label>
+                    <select
+                        id="roleFilter"
+                        style={listStyles.select}
+                        value={selectedRole}
+                        onChange={handleRoleChange}
+                    >
+                        {roles.map(role => (
+                            <option key={role.id} value={role.id}>{role.name}</option>
+                        ))}
+                    </select>
+                </div>
+                <div style={{ flex: '1' }}>
+                    <label style={listStyles.label} htmlFor="categoryFilter">Select Permission Category:</label>
+                    <select
+                        id="categoryFilter"
+                        style={listStyles.select}
+                        value={selectedCategory}
+                        onChange={handleCategoryChange}
+                    >
+                        <option value="">All Categories</option>
+                        {categories
+                            .sort((a, b) => a.display_order - b.display_order)
+                            .map(category => (
+                                <option key={category.id} value={category.id}>
+                                    {category.name}
+                                </option>
+                        ))}
+                    </select>
+                </div>
+            </div>
+
+            {loading && <p style={listStyles.centeredMessage}>Loading permissions...</p>}
+            {error && <p style={{ ...listStyles.errorBox, color: 'red' }}>{error}</p>}
+            {(!loading && filteredPermissions.length === 0) && (
+                <p style={listStyles.centeredMessage}>No permissions assigned to this role in the selected category.</p>
+            )}
+
+            {/* Render grouped permission lists */}
+            {Object.entries(groupedPermissions).map(([group, permissions]) => (
+                <div key={group} style={{ marginBottom: '1.5rem' }}>
+                    <h3 style={{ ...listStyles.title, borderBottom: '1px solid #ddd', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
+                        {group}
+                    </h3>
+                    <ul style={{ listStyle: 'none', padding: 0 }}>
+                        {permissions.map(permission => (
+                            <li key={permission.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid #eee' }}>
+                                <div>
+                                    <input 
+                                        type="checkbox" 
+                                        disabled 
+                                        style={{ marginRight: '0.5rem' }} 
+                                        checked
+                                    />
+                                    <span style={{ fontWeight: 'bold' }}>
+                                        {permission.display_name || permission.name}
+                                    </span>
+                                    <small style={{ display: 'block', color: '#6c757d' }}>Code: {permission.name}</small>
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    {typeof userCan === 'function' && userCan('permission:update') && (
+                                        <Link 
+                                            to={`/dashboard/permissions/edit/${permission.id}`} 
+                                            style={{ ...listStyles.actionButton, ...listStyles.editButton }}
+                                            title="Edit"
+                                        >
+                                            <FaEdit />
+                                        </Link>
+                                    )}
+                                    {typeof userCan === 'function' && userCan('permission:delete') && (
+                                        <button
+                                            onClick={() => handleDelete(permission.id, permission.display_name || permission.name)}
+                                            style={{ ...listStyles.actionButton, ...listStyles.deleteButton }}
+                                            title="Delete"
+                                            disabled={loading}
+                                        >
+                                            <FaTrashAlt />
+                                        </button>
+                                    )}
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
             ))}
         </div>
-      )}
-    </div>
-  );
+    );
 }
 
-export default AccessControl;
+export default PermissionList;

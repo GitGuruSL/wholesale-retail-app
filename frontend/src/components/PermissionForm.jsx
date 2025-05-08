@@ -1,68 +1,56 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import formStyles from '../styles/FormStyles';
 
 function PermissionForm() {
     const { permissionId } = useParams();
     const navigate = useNavigate();
     const { apiInstance } = useAuth();
-
     const isEditing = Boolean(permissionId);
 
     const [formData, setFormData] = useState({
         name: '',
         display_name: '',
         description: '',
-        permission_category_id: '', // Keep as empty string for initial "Select" state
+        permission_category_id: '',
         sub_group_key: '',
         sub_group_display_name: ''
     });
     const [categories, setCategories] = useState([]);
-    const [loading, setLoading] = useState(false); // Combined loading state
+    const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [formErrors, setFormErrors] = useState({});
 
-    // Fetch permission categories
     const fetchCategories = useCallback(async () => {
-        console.log("Fetching categories...");
         try {
             const response = await apiInstance.get('/permissions/categories');
             setCategories(response.data || []);
-            console.log("Categories fetched:", response.data);
         } catch (err) {
             console.error('Failed to fetch permission categories:', err);
-            setError(prev => `${prev ? prev + ' ' : ''}Failed to load permission categories.`);
+            setError("Failed to load permission categories.");
             setCategories([]);
         }
     }, [apiInstance]);
 
-    // Fetch a single permission for editing
     const fetchPermission = useCallback(async (id) => {
-        console.log(`Fetching permission with ID: ${id}`);
-        setLoading(true); // Set loading true when starting to fetch permission
+        setLoading(true);
         setError(null);
         try {
             const response = await apiInstance.get(`/permissions/${id}`);
             const permissionData = response.data;
-            console.log('Fetched Permission Data for Edit:', permissionData);
-
-            let categoryIdToSet = ''; // Default for the select if no category ID
+            let categoryIdToSet = '';
             if (permissionData.permission_category_id !== null && permissionData.permission_category_id !== undefined) {
-                // Ensure it's a number to match option values if category.id is a number
-                // If category.id in <option> is a string, convert to string here.
-                // Assuming category.id is a number from your API.
                 const parsedId = parseInt(permissionData.permission_category_id, 10);
                 if (!isNaN(parsedId)) {
                     categoryIdToSet = parsedId;
                 }
             }
-            console.log('Setting permission_category_id in formData to:', categoryIdToSet, typeof categoryIdToSet);
-            
             setFormData({
                 name: permissionData.name || '',
                 display_name: permissionData.display_name || '',
                 description: permissionData.description || '',
-                permission_category_id: categoryIdToSet, // This should be a number or ''
+                permission_category_id: categoryIdToSet,
                 sub_group_key: permissionData.sub_group_key || '',
                 sub_group_display_name: permissionData.sub_group_display_name || ''
             });
@@ -70,18 +58,17 @@ function PermissionForm() {
             setError(err.response?.data?.message || 'Failed to fetch permission details.');
             console.error('Error fetching permission:', err);
         } finally {
-            setLoading(false); // Set loading false after fetch attempt
+            setLoading(false);
         }
     }, [apiInstance]);
 
     useEffect(() => {
         const loadInitialData = async () => {
-            setLoading(true); // Overall loading for initial data
-            await fetchCategories(); // Fetch categories first
+            setLoading(true);
+            await fetchCategories();
             if (isEditing && permissionId) {
-                await fetchPermission(permissionId); // Then fetch permission if editing
+                await fetchPermission(permissionId);
             } else {
-                // Reset form for new permission entry
                 setFormData({
                     name: '',
                     display_name: '',
@@ -90,18 +77,15 @@ function PermissionForm() {
                     sub_group_key: '',
                     sub_group_display_name: ''
                 });
-                setLoading(false); // Not fetching permission, so stop loading
+                setLoading(false);
             }
-            // If not editing, fetchPermission sets loading to false.
-            // If editing, fetchPermission sets loading to false.
         };
         loadInitialData();
-    }, [isEditing, permissionId, fetchCategories, fetchPermission]); // fetchCategories & fetchPermission are stable due to useCallback
+    }, [isEditing, permissionId, fetchCategories, fetchPermission]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
         let processedValue = value;
-        // If changing the category, ensure it's stored as a number if it's numeric
         if (name === 'permission_category_id' && value !== '') {
             const numValue = parseInt(value, 10);
             if (!isNaN(numValue)) {
@@ -115,9 +99,8 @@ function PermissionForm() {
     };
 
     const validateForm = () => {
-        // ... (validation logic remains the same)
         const errors = {};
-        if (!isEditing && !formData.name.trim()) { // Name required only on create
+        if (!isEditing && !formData.name.trim()) {
             errors.name = 'Permission name (code) is required.';
         } else if (!isEditing && !/^[a-z0-9_:-]+$/.test(formData.name.trim())) {
             errors.name = 'Name can only contain lowercase letters, numbers, underscores, hyphens, and colons (e.g., user:create).';
@@ -139,11 +122,8 @@ function PermissionForm() {
     };
 
     const handleSubmit = async (e) => {
-        // ... (submit logic remains largely the same, ensure permission_category_id is int)
         e.preventDefault();
-        if (!validateForm()) {
-            return;
-        }
+        if (!validateForm()) return;
         setLoading(true);
         setError(null);
         try {
@@ -157,7 +137,6 @@ function PermissionForm() {
             if (!isEditing) {
                 payload.name = formData.name.trim();
             }
-
             if (isEditing) {
                 await apiInstance.put(`/permissions/${permissionId}`, payload);
             } else {
@@ -182,129 +161,115 @@ function PermissionForm() {
         }
     };
 
-    // More granular loading state for the form content
     if (loading && isEditing && !formData.name) {
-         return <div className="page-container"><p>Loading permission details...</p></div>;
+         return <div style={formStyles.container}><p>Loading permission details...</p></div>;
     }
-    if (loading && categories.length === 0) { // Still loading categories
-        return <div className="page-container"><p>Loading categories...</p></div>;
+    if (loading && categories.length === 0) {
+        return <div style={formStyles.container}><p>Loading categories...</p></div>;
     }
-
 
     return (
-        <div className="page-container">
-            <div className="page-header">
-                <h2>{isEditing ? 'Edit Permission' : 'Create New Permission'}</h2>
-            </div>
-            {error && <div className="error-message alert alert-danger" style={{ marginBottom: '1rem' }}>Error: {error}</div>}
-            
-            <form onSubmit={handleSubmit} className="form-card">
+        <div style={formStyles.container}>
+            <h2 style={formStyles.title}>{isEditing ? 'Edit Permission' : 'Create New Permission'}</h2>
+            {error && <div style={{ ...formStyles.errorBox, backgroundColor: '#f8d7da', color: '#721c24' }}>Error: {error}</div>}
+            <form onSubmit={handleSubmit}>
                 {/* Permission Name (Code) */}
-                <div className="form-group">
-                    <label htmlFor="name" className="form-label">Permission Name (Code):</label>
+                <div style={formStyles.formGroup}>
+                    <label style={formStyles.label} htmlFor="name">Permission Name (Code):</label>
                     <input
                         type="text"
                         id="name"
                         name="name"
-                        className={`form-control ${formErrors.name ? 'is-invalid' : ''}`}
+                        style={formStyles.input}
                         value={formData.name}
                         onChange={handleChange}
                         placeholder="e.g., user:create, product:edit"
                         disabled={isEditing}
                     />
-                    {formErrors.name && <div className="invalid-feedback">{formErrors.name}</div>}
-                    {isEditing && <small className="form-text text-muted">The permission name (code) cannot be changed after creation.</small>}
+                    {formErrors.name && <div style={{ color: 'red', fontSize: '.8em' }}>{formErrors.name}</div>}
+                    {isEditing && <small style={formStyles.helpText}>The permission name (code) cannot be changed after creation.</small>}
                 </div>
-
                 {/* Display Name */}
-                <div className="form-group">
-                    <label htmlFor="display_name" className="form-label">Display Name:</label>
+                <div style={formStyles.formGroup}>
+                    <label style={formStyles.label} htmlFor="display_name">Display Name:</label>
                     <input
                         type="text"
                         id="display_name"
                         name="display_name"
-                        className={`form-control ${formErrors.display_name ? 'is-invalid' : ''}`}
+                        style={formStyles.input}
                         value={formData.display_name}
                         onChange={handleChange}
                         placeholder="e.g., Create Users, Edit Products"
                     />
-                    {formErrors.display_name && <div className="invalid-feedback">{formErrors.display_name}</div>}
+                    {formErrors.display_name && <div style={{ color: 'red', fontSize: '.8em' }}>{formErrors.display_name}</div>}
                 </div>
-                
                 {/* Permission Category */}
-                <div className="form-group">
-                    <label htmlFor="permission_category_id" className="form-label">Permission Category:</label>
-                    {/* Log values right before rendering the select */}
-                    {console.log("Render Select - Value:", formData.permission_category_id, "Type:", typeof formData.permission_category_id)}
-                    {console.log("Render Select - Options:", categories.map(c => ({id: c.id, type: typeof c.id, name: c.name})))}
+                <div style={formStyles.formGroup}>
+                    <label style={formStyles.label} htmlFor="permission_category_id">Permission Category:</label>
                     <select
                         id="permission_category_id"
                         name="permission_category_id"
-                        className={`form-control form-select ${formErrors.permission_category_id ? 'is-invalid' : ''}`}
-                        value={formData.permission_category_id} // Should be a number or ''
+                        style={formStyles.select}
+                        value={formData.permission_category_id}
                         onChange={handleChange}
                     >
                         <option value="">-- Select a Category --</option>
                         {categories.map(category => (
-                            // Assuming category.id is a number
                             <option key={category.id} value={category.id}>
                                 {category.name}
                             </option>
                         ))}
                     </select>
-                    {formErrors.permission_category_id && <div className="invalid-feedback">{formErrors.permission_category_id}</div>}
+                    {formErrors.permission_category_id && <div style={{ color: 'red', fontSize: '.8em' }}>{formErrors.permission_category_id}</div>}
                 </div>
-
                 {/* Sub-Group Key */}
-                <div className="form-group">
-                    <label htmlFor="sub_group_key" className="form-label">Sub-Group Key:</label>
+                <div style={formStyles.formGroup}>
+                    <label style={formStyles.label} htmlFor="sub_group_key">Sub-Group Key:</label>
                     <input
                         type="text"
                         id="sub_group_key"
                         name="sub_group_key"
-                        className={`form-control ${formErrors.sub_group_key ? 'is-invalid' : ''}`}
+                        style={formStyles.input}
                         value={formData.sub_group_key}
                         onChange={handleChange}
                         placeholder="e.g., user, product_core, tax_settings"
                     />
-                    {formErrors.sub_group_key && <div className="invalid-feedback">{formErrors.sub_group_key}</div>}
+                    {formErrors.sub_group_key && <div style={{ color: 'red', fontSize: '.8em' }}>{formErrors.sub_group_key}</div>}
                 </div>
-
                 {/* Sub-Group Display Name */}
-                <div className="form-group">
-                    <label htmlFor="sub_group_display_name" className="form-label">Sub-Group Display Name:</label>
-                    {/* ... existing code ... */}
+                <div style={formStyles.formGroup}>
+                    <label style={formStyles.label} htmlFor="sub_group_display_name">Sub-Group Display Name:</label>
                     <input
                         type="text"
                         id="sub_group_display_name"
                         name="sub_group_display_name"
-                        className={`form-control ${formErrors.sub_group_display_name ? 'is-invalid' : ''}`}
+                        style={formStyles.input}
                         value={formData.sub_group_display_name}
                         onChange={handleChange}
                         placeholder="e.g., User Management, Product Core Setup"
                     />
-                    {formErrors.sub_group_display_name && <div className="invalid-feedback">{formErrors.sub_group_display_name}</div>}
+                    {formErrors.sub_group_display_name && <div style={{ color: 'red', fontSize: '.8em' }}>{formErrors.sub_group_display_name}</div>}
                 </div>
-
-                <div className="form-group">
-                    <label htmlFor="description" className="form-label">Description (Optional):</label>
+                {/* Description */}
+                <div style={formStyles.formGroup}>
+                    <label style={formStyles.label} htmlFor="description">Description (Optional):</label>
                     <textarea
                         id="description"
                         name="description"
-                        className="form-control"
+                        style={formStyles.textarea}
                         value={formData.description}
                         onChange={handleChange}
                         rows="3"
                         placeholder="Briefly describe what this permission allows"
                     />
-                    {formErrors.description && <div className="invalid-feedback">{formErrors.description}</div>}
+                    {formErrors.description && <div style={{ color: 'red', fontSize: '.8em' }}>{formErrors.description}</div>}
                 </div>
-
-                <div className="form-actions">
-                    <button type="submit" className="btn btn-primary" disabled={loading}>
+                {/* Form Actions */}
+                <div style={formStyles.buttonGroup}>
+                    <button type="submit" style={formStyles.buttonPrimary} disabled={loading}>
                         {loading ? (isEditing ? 'Updating...' : 'Creating...') : (isEditing ? 'Update Permission' : 'Create Permission')}
                     </button>
-                    <button type="button" className="btn btn-secondary" onClick={() => navigate('/dashboard/permissions')} disabled={loading}>
+                    <button type="button" style={formStyles.buttonSecondary} onClick={() => navigate('/dashboard/permissions')} disabled={loading}>
                         Cancel
                     </button>
                 </div>

@@ -2,11 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { FaEdit, FaTrashAlt, FaPlus } from 'react-icons/fa';
+import listStyles from '../styles/ListStyles';
 
 function PermissionList() {
     const [permissions, setPermissions] = useState([]);
     const [categories, setCategories] = useState([]);
-    const [selectedCategoryId, setSelectedCategoryId] = useState(''); // '' for all or unselected
+    const [selectedCategoryId, setSelectedCategoryId] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -50,15 +51,14 @@ function PermissionList() {
     const handleDelete = async (permissionId, permissionName) => {
         if (window.confirm(`Are you sure you want to delete the permission "${permissionName}"? This action cannot be undone.`)) {
             try {
-                setLoading(true); // Indicate loading state for delete operation
+                setLoading(true);
                 await apiInstance.delete(`/permissions/${permissionId}`);
                 setSuccessMessage(`Permission "${permissionName}" deleted successfully.`);
-                // Refetch permissions to update the list, which will also set loading to false in its finally block
                 fetchPermissionsAndCategories();
             } catch (err) {
                 console.error('Error deleting permission:', err);
                 setError(err.response?.data?.message || 'Failed to delete permission.');
-                setLoading(false); // Ensure loading is false on error if fetch doesn't run or also errors
+                setLoading(false);
             }
         }
     };
@@ -71,14 +71,10 @@ function PermissionList() {
         setSearchTerm(e.target.value.toLowerCase());
     };
 
-    const filteredPermissions = permissions
-        .filter(permission => {
-            // Category filter
+    const filteredPermissions = permissions.filter(permission => {
             if (selectedCategoryId && permission.permission_category_id !== parseInt(selectedCategoryId)) {
                 return false;
             }
-            // Search term filter (searches name, display_name)
-            // Description search can be added back if desired: (permission.description && permission.description.toLowerCase().includes(searchTerm))
             if (searchTerm) {
                 return (
                     permission.name.toLowerCase().includes(searchTerm) ||
@@ -87,13 +83,11 @@ function PermissionList() {
             }
             return true;
         })
-        .sort((a, b) => { // Sort by category display_order, then by sub_group_display_name, then by display_name
+        .sort((a, b) => {
             const categoryA = categories.find(c => c.id === a.permission_category_id);
             const categoryB = categories.find(c => c.id === b.permission_category_id);
-
             const displayOrderA = categoryA ? categoryA.display_order : Infinity;
             const displayOrderB = categoryB ? categoryB.display_order : Infinity;
-
             if (displayOrderA !== displayOrderB) {
                 return displayOrderA - displayOrderB;
             }
@@ -104,12 +98,10 @@ function PermissionList() {
             return 0;
         });
 
-    // Group permissions by category and then by sub-group for display
     const groupedPermissions = filteredPermissions.reduce((acc, permission) => {
         const category = categories.find(c => c.id === permission.permission_category_id);
         const categoryName = category ? category.name : 'Uncategorized';
         const subGroupName = permission.sub_group_display_name || 'General';
-
         if (!acc[categoryName]) {
             acc[categoryName] = {};
         }
@@ -120,50 +112,49 @@ function PermissionList() {
         return acc;
     }, {});
 
-
-    if (loading && permissions.length === 0 && categories.length === 0) { // Initial full load
-        return <div className="page-container"><p>Loading permissions and categories...</p></div>;
+    if (loading && permissions.length === 0 && categories.length === 0) {
+        return <div style={listStyles.container}><p style={listStyles.centeredMessage}>Loading permissions and categories...</p></div>;
     }
     if (error) {
-        return <div className="page-container alert alert-danger">Error: {error}</div>;
+        return <div style={listStyles.container}><p style={{ ...listStyles.errorBox }}>{error}</p></div>;
     }
 
     return (
-        <div className="page-container">
-            <div className="page-header d-flex justify-content-between align-items-center">
-                <h2>Manage Permissions</h2>
+        <div style={listStyles.container}>
+            <div style={listStyles.titleContainer}>
+                <h2 style={listStyles.title}>Manage Permissions</h2>
                 {typeof userCan === 'function' && userCan('permission:create') && (
-                    <Link to="/dashboard/permissions/new" className="btn btn-primary">
+                    <Link to="/dashboard/permissions/new" style={listStyles.addButton}>
                         <FaPlus /> Create New Permission
                     </Link>
                 )}
             </div>
 
-            {successMessage && <div className="alert alert-success mt-3">{successMessage}</div>}
+            {successMessage && <div style={{ ...listStyles.errorBox, backgroundColor: '#d4edda', color: '#155724' }}>{successMessage}</div>}
 
-            <div className="row mb-3 mt-3">
-                <div className="col-md-6">
-                    <label htmlFor="categoryFilter" className="form-label">Filter by Category:</label>
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+                <div style={{ flex: '1' }}>
+                    <label style={listStyles.label} htmlFor="categoryFilter">Filter by Category:</label>
                     <select
                         id="categoryFilter"
-                        className="form-select"
+                        style={listStyles.select}
                         value={selectedCategoryId}
                         onChange={handleCategoryChange}
                     >
                         <option value="">All Categories</option>
-                        {categories.sort((a,b) => a.display_order - b.display_order).map(category => (
+                        {categories.sort((a, b) => a.display_order - b.display_order).map(category => (
                             <option key={category.id} value={category.id}>
                                 {category.name}
                             </option>
                         ))}
                     </select>
                 </div>
-                <div className="col-md-6">
-                    <label htmlFor="searchFilter" className="form-label">Search Permissions:</label>
+                <div style={{ flex: '1' }}>
+                    <label style={listStyles.label} htmlFor="searchFilter">Search Permissions:</label>
                     <input
                         type="text"
                         id="searchFilter"
-                        className="form-control"
+                        style={listStyles.input || { padding: '10px', width: '100%' }}
                         placeholder="Search by name, display name..."
                         value={searchTerm}
                         onChange={handleSearchChange}
@@ -171,41 +162,37 @@ function PermissionList() {
                 </div>
             </div>
             
-            {loading && permissions.length > 0 && <p className="text-center my-3">Updating list...</p>}
+            {loading && permissions.length > 0 && <p style={listStyles.centeredMessage}>Updating list...</p>}
 
             {Object.keys(groupedPermissions).length === 0 && !loading && (
-                <div className="alert alert-info mt-3">No permissions found matching your criteria.</div>
+                <div style={{ ...listStyles.errorBox, backgroundColor: '#cce5ff', color: '#004085' }}>No permissions found matching your criteria.</div>
             )}
 
             {Object.entries(groupedPermissions).map(([categoryName, subGroups]) => (
-                <div key={categoryName} className="mb-4 permission-category-group">
+                <div key={categoryName} style={{ marginBottom: '1.5rem' }}>
                     {(!selectedCategoryId || Object.keys(groupedPermissions).length > 1) && (
-                        <h3 className="category-title h4 border-bottom pb-2 mb-3">{categoryName}</h3>
+                        <h3 style={{ ...listStyles.title, borderBottom: '1px solid #ddd', paddingBottom: '0.5rem', marginBottom: '1rem' }}>{categoryName}</h3>
                     )}
                     {Object.entries(subGroups).map(([subGroupName, perms]) => (
-                         <div key={subGroupName} className="mb-3 permission-sub-group">
-                            <h4 className="sub-group-title h5 text-muted">{subGroupName}</h4>
-                            <ul className="list-group">
+                        <div key={subGroupName} style={{ marginBottom: '1rem' }}>
+                            <h4 style={{ color: '#6c757d', marginBottom: '0.5rem' }}>{subGroupName}</h4>
+                            <ul style={{ listStyle: 'none', padding: 0 }}>
                                 {perms.map(permission => (
-                                    <li key={permission.id} className="list-group-item d-flex justify-content-between align-items-center">
-                                        <div className="form-check">
+                                    <li key={permission.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid #eee' }}>
+                                        <div>
                                             <input 
-                                                className="form-check-input" 
                                                 type="checkbox" 
-                                                id={`perm-checkbox-${permission.id}`} 
                                                 disabled 
-                                                style={{ marginTop: '0.2rem' }}
+                                                style={{ marginRight: '0.5rem' }} 
                                             />
-                                            <label className="form-check-label" htmlFor={`perm-checkbox-${permission.id}`}>
-                                                {permission.display_name}
-                                                <small className="d-block text-muted">Code: {permission.name}</small>
-                                            </label>
+                                            <span style={{ fontWeight: 'bold' }}>{permission.display_name}</span>
+                                            <small style={{ display: 'block', color: '#6c757d' }}>Code: {permission.name}</small>
                                         </div>
-                                        <div className="permission-actions ms-2">
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
                                             {typeof userCan === 'function' && userCan('permission:update') && (
                                                 <Link 
                                                     to={`/dashboard/permissions/edit/${permission.id}`} 
-                                                    className="btn btn-sm btn-outline-secondary me-1"
+                                                    style={{ ...listStyles.actionButton, ...listStyles.editButton }}
                                                     title="Edit"
                                                 >
                                                     <FaEdit />
@@ -214,7 +201,7 @@ function PermissionList() {
                                             {typeof userCan === 'function' && userCan('permission:delete') && (
                                                 <button
                                                     onClick={() => handleDelete(permission.id, permission.display_name)}
-                                                    className="btn btn-sm btn-outline-danger"
+                                                    style={{ ...listStyles.actionButton, ...listStyles.deleteButton }}
                                                     title="Delete"
                                                     disabled={loading}
                                                 >
