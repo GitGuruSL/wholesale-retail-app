@@ -51,8 +51,15 @@ import StoreForm from './components/StoreForm';
 import RolesList from './components/RolesList'; 
 import RoleForm from './components/RoleForm';
 
-import PermissionList from './components/PermissionList'; // You should have this
+import PermissionList from './components/PermissionList'; 
 import PermissionForm from './components/PermissionForm'; 
+
+import PermissionCategoryList from './components/PermissionCategoryList';
+import PermissionCategoryForm from './components/PermissionCategoryForm'; 
+
+import AccessControl from './components/AccessControl'; 
+
+
 
 // --- HomePage (Dashboard Index) Component ---
 const HomePage = () => {
@@ -199,6 +206,14 @@ const AppRoutes = () => {
                     <Route path="permissions" element={<ProtectedRoute permissions={['permission:read']}><PermissionList /></ProtectedRoute>} />
                     <Route path="permissions/new" element={<ProtectedRoute permissions={['permission:create']}><PermissionForm /></ProtectedRoute>} />
                     <Route path="permissions/edit/:permissionId" element={<ProtectedRoute permissions={['permission:update']}><PermissionForm /></ProtectedRoute>} />
+
+                    {/* Permission Categories Management - NEW */}
+                    <Route path="permission-categories" element={<ProtectedRoute permissions={['system:manage_permission_categories']}><PermissionCategoryList /></ProtectedRoute>} />
+                    <Route path="permission-categories/new" element={<ProtectedRoute permissions={['system:manage_permission_categories']}><PermissionCategoryForm /></ProtectedRoute>} />
+                    <Route path="permission-categories/edit/:categoryId" element={<ProtectedRoute permissions={['system:manage_permission_categories']}><PermissionCategoryForm /></ProtectedRoute>} />
+
+                     {/* Access Control - New Route */}
+                     <Route path="access-control" element={<ProtectedRoute roles={globalAdminOnly} permissions={['role:assign_permissions']}><AccessControl /></ProtectedRoute>} />
 
                     {/* Reports Section */}
                     <Route path="reports" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['report:read']}><PlaceholderComponent title="Reports Dashboard" /></ProtectedRoute>} />

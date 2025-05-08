@@ -9,6 +9,7 @@ export const AuthProvider = ({ children }) => {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
     const [rolesOptions, setRolesOptions] = useState([]);
+    const [userPermissions, setUserPermissions] = useState(new Set()); // For userCan
 
     // Fetch roles from the backend
     const fetchRoles = useCallback(async () => {
@@ -18,8 +19,6 @@ export const AuthProvider = ({ children }) => {
         }
         console.log("[AuthContext] Attempting to fetch roles...");
         try {
-            // Assuming apiInstance.defaults.baseURL is 'http://localhost:5001/api'
-            // So, '/roles' will target 'http://localhost:5001/api/roles'
             const response = await apiInstance.get('/roles');
             if (response.data && Array.isArray(response.data)) {
                 const formattedRoles = response.data.map(role => ({
@@ -27,7 +26,7 @@ export const AuthProvider = ({ children }) => {
                     label: role.name
                 }));
                 setRolesOptions(formattedRoles);
-                setError(null); // Clear role-specific or general error if successful
+                setError(null);
                 console.log('[AuthContext] Roles fetched and formatted:', formattedRoles);
             } else {
                 console.warn('[AuthContext] Roles data received is not in the expected array format:', response.data);
@@ -41,29 +40,42 @@ export const AuthProvider = ({ children }) => {
         }
     }, []);
 
+    // Helper to set user data and permissions
+    const processUserData = (userData) => {
+        setUser(userData);
+        setIsAuthenticated(true);
+        if (userData && Array.isArray(userData.permissions)) {
+            setUserPermissions(new Set(userData.permissions));
+            console.log('[AuthContext] User permissions set:', userData.permissions);
+        } else {
+            setUserPermissions(new Set());
+            console.warn('[AuthContext] User data does not contain a permissions array. userCan will always return false.');
+        }
+        setError(null);
+    };
+
     // Verify token and set user state
     const verifyTokenAndSetUser = useCallback(async () => {
         const token = localStorage.getItem('token');
         if (token) {
             try {
-                // Assuming apiInstance.defaults.baseURL is 'http://localhost:5001/api'
-                // So, '/auth/me' will target 'http://localhost:5001/api/auth/me'
                 const response = await apiInstance.get('/auth/me');
-                setUser(response.data.user || response.data); // Adjust if user object is nested differently
-                setIsAuthenticated(true);
-                setError(null);
-                console.log('[AuthContext] Token verified, user set:', response.data.user || response.data);
+                // Assuming response.data or response.data.user contains the user object with a 'permissions' array
+                const userData = response.data.user || response.data; 
+                processUserData(userData);
+                console.log('[AuthContext] Token verified, user set:', userData);
             } catch (err) {
                 console.error('[AuthContext] Token verification failed:', err.response?.data?.message || err.message);
                 localStorage.removeItem('token');
                 setUser(null);
                 setIsAuthenticated(false);
-                // setError("Session expired. Please log in again."); // Optionally set an error
+                setUserPermissions(new Set());
             }
         } else {
             console.log('[AuthContext] No token found for verification.');
             setUser(null);
             setIsAuthenticated(false);
+            setUserPermissions(new Set());
         }
     }, []);
 
@@ -72,7 +84,7 @@ export const AuthProvider = ({ children }) => {
         const performInitialLoad = async () => {
             setIsLoading(true);
             await verifyTokenAndSetUser();
-            await fetchRoles(); // Fetch roles regardless of auth status initially, or conditionally if preferred
+            await fetchRoles(); 
             setIsLoading(false);
         };
         performInitialLoad();
@@ -83,19 +95,16 @@ export const AuthProvider = ({ children }) => {
         setIsLoading(true);
         setError(null);
         try {
-            // Assuming apiInstance.defaults.baseURL is 'http://localhost:5001/api'
-            // So, '/auth/login' will target 'http://localhost:5001/api/auth/login'
             const response = await apiInstance.post('/auth/login', credentials);
-            const { token, user: userData } = response.data;
+            const { token, user: userDataFromLogin } = response.data;
 
-            if (token && userData) {
+            if (token && userDataFromLogin) {
                 localStorage.setItem('token', token);
-                setUser(userData);
-                setIsAuthenticated(true);
-                await fetchRoles(); // Re-fetch roles after login
-                console.log('[AuthContext] Login successful, user:', userData);
+                processUserData(userDataFromLogin); // Use helper to set user and permissions
+                await fetchRoles(); 
+                console.log('[AuthContext] Login successful, user:', userDataFromLogin);
                 setIsLoading(false);
-                return { success: true, user: userData };
+                return { success: true, user: userDataFromLogin };
             } else {
                 throw new Error("Login response did not include a token or user data.");
             }
@@ -105,11 +114,12 @@ export const AuthProvider = ({ children }) => {
             localStorage.removeItem('token');
             setUser(null);
             setIsAuthenticated(false);
+            setUserPermissions(new Set());
             setError(errorMessage);
             setIsLoading(false);
             return { success: false, error: errorMessage };
         }
-    }, [fetchRoles]); // Added fetchRoles dependency
+    }, [fetchRoles]);
 
     // Logout user
     const logout = useCallback(() => {
@@ -117,11 +127,10 @@ export const AuthProvider = ({ children }) => {
         localStorage.removeItem('token');
         setUser(null);
         setIsAuthenticated(false);
-        setRolesOptions([]); // Clear roles on logout
-        setError(null); // Clear any errors
+        setRolesOptions([]); 
+        setUserPermissions(new Set()); // Clear permissions on logout
+        setError(null); 
         console.log('[AuthContext] User logged out. isAuthenticated:', false, 'User:', null);
-        // Navigation to login page should be handled by the component calling logout
-        // or by a route guard detecting unauthenticated state.
     }, []);
 
     // Effect to handle token removal from another tab/window
@@ -129,7 +138,7 @@ export const AuthProvider = ({ children }) => {
         const handleStorageChange = (event) => {
             if (event.key === 'token' && !localStorage.getItem('token')) {
                 console.log('[AuthContext] Token removed from storage (external event). Logging out via storage event.');
-                logout(); // Call the logout function to ensure all state is reset consistently
+                logout(); 
             }
         };
         window.addEventListener('storage', handleStorageChange);
@@ -138,6 +147,14 @@ export const AuthProvider = ({ children }) => {
         };
     }, [logout]);
 
+    // userCan function
+    const userCan = useCallback((permission) => {
+        if (!isAuthenticated || !permission) {
+            return false;
+        }
+        return userPermissions.has(permission);
+    }, [isAuthenticated, userPermissions]);
+
     // Context value
     const value = {
         user,
@@ -145,11 +162,12 @@ export const AuthProvider = ({ children }) => {
         isLoading,
         loginUser,
         logout,
-        apiInstance, // Exposing apiInstance can be useful but also consider if components should always go via context methods
+        apiInstance, 
         refreshAuth: verifyTokenAndSetUser,
         error,
-        setError, // Expose setError for components to potentially set global errors, use with caution
+        setError, 
         ROLES_OPTIONS: rolesOptions,
+        userCan, // Added userCan to the context value
     };
 
     return (
@@ -162,7 +180,7 @@ export const AuthProvider = ({ children }) => {
 // Custom hook to use the AuthContext
 export const useAuth = () => {
     const context = useContext(AuthContext);
-    if (context === null) {
+    if (context === null) { // Check for null, not undefined, as createContext(null)
         throw new Error('useAuth must be used within an AuthProvider');
     }
     return context;

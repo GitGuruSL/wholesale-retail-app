@@ -1,171 +1,234 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext'; // To get apiInstance
-// import './PermissionList.css'; // Optional: Create and import a CSS file for specific styles
-
-// Helper function to get a display-friendly group name (remains the same)
-const getGroupName = (permissionName) => {
-    const prefix = permissionName.split(':')[0];
-    switch (prefix) {
-        case 'user': return 'User Management';
-        case 'role': return 'Role Management';
-        case 'permission': return 'Permission System';
-        case 'store': return 'Store Management';
-        case 'product': return 'Product Core';
-        case 'category': return 'Categories';
-        case 'subcategory': return 'Sub-Categories';
-        case 'brand': return 'Brands';
-        case 'specialcategory': return 'Special Categories';
-        case 'product_attribute': return 'Product Attributes (General)';
-        case 'tax_type': return 'Tax Types';
-        case 'tax': return 'Taxes';
-        case 'product_settings': return 'Product Settings (General)';
-        case 'unit': return 'Units';
-        case 'manufacturer': return 'Manufacturers';
-        case 'warranty': return 'Warranties';
-        case 'barcode_symbology': return 'Barcode Symbologies';
-        case 'discount_type': return 'Discount Types';
-        case 'inventory': return 'Inventory Management';
-        case 'sale': return 'Sales Management';
-        case 'supplier': return 'Supplier Management';
-        case 'report': return 'Reports';
-        case 'system': return 'System Settings';
-        case 'store_settings': return 'Store Settings';
-        default: return 'Other';
-    }
-};
+import React, { useState, useEffect, useCallback } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { FaEdit, FaTrashAlt, FaPlus } from 'react-icons/fa';
 
 function PermissionList() {
-    const [allPermissions, setAllPermissions] = useState([]);
+    const [permissions, setPermissions] = useState([]);
+    const [categories, setCategories] = useState([]);
+    const [selectedCategoryId, setSelectedCategoryId] = useState(''); // '' for all or unselected
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [activeGroup, setActiveGroup] = useState('');
-    const { apiInstance } = useAuth();
-    const location = useLocation();
+    const [searchTerm, setSearchTerm] = useState('');
 
-    useEffect(() => {
-        const fetchPermissions = async () => {
-            setLoading(true);
-            try {
-                const response = await apiInstance.get('/permissions');
-                setAllPermissions(response.data || []);
-                setError(null);
-            } catch (err) {
-                setError(err.response?.data?.message || 'Failed to fetch permissions.');
-                console.error(err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchPermissions();
+    const { apiInstance, userCan } = useAuth();
+    const navigate = useNavigate();
+    const location = useLocation();
+    const [successMessage, setSuccessMessage] = useState(location.state?.message || '');
+
+    const fetchPermissionsAndCategories = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const [permissionsResponse, categoriesResponse] = await Promise.all([
+                apiInstance.get('/permissions/list-all'),
+                apiInstance.get('/permissions/categories')
+            ]);
+            setPermissions(permissionsResponse.data || []);
+            setCategories(categoriesResponse.data || []);
+        } catch (err) {
+            console.error('Error fetching data:', err);
+            setError(err.response?.data?.message || 'Failed to load permissions or categories.');
+        } finally {
+            setLoading(false);
+        }
     }, [apiInstance]);
 
-    const groupedPermissions = useMemo(() => {
-        if (!allPermissions.length) return {};
-        const groups = allPermissions.reduce((acc, permission) => {
-            const groupName = getGroupName(permission.name);
-            if (!acc[groupName]) {
-                acc[groupName] = [];
-            }
-            acc[groupName].push(permission);
-            return acc;
-        }, {});
-        return Object.keys(groups).sort().reduce((obj, key) => {
-            obj[key] = groups[key];
-            return obj;
-        }, {});
-    }, [allPermissions]);
+    useEffect(() => {
+        fetchPermissionsAndCategories();
+    }, [fetchPermissionsAndCategories]);
 
     useEffect(() => {
-        const groupKeys = Object.keys(groupedPermissions);
-        if (activeGroup === '' && groupKeys.length > 0) {
-            setActiveGroup(groupKeys[0]);
-        } else if (activeGroup && !groupKeys.includes(activeGroup) && groupKeys.length > 0) {
-            setActiveGroup(groupKeys[0]);
-        } else if (groupKeys.length === 0) {
-            setActiveGroup('');
+        if (location.state?.message) {
+            setSuccessMessage(location.state.message);
+            navigate(location.pathname, { replace: true, state: {} });
+            const timer = setTimeout(() => setSuccessMessage(''), 3000);
+            return () => clearTimeout(timer);
         }
-    }, [groupedPermissions, activeGroup]);
+    }, [location.state, navigate, location.pathname]);
 
-    const handleDelete = async (permissionId) => {
-        if (window.confirm('Are you sure you want to delete this permission? This might affect roles using it.')) {
+    const handleDelete = async (permissionId, permissionName) => {
+        if (window.confirm(`Are you sure you want to delete the permission "${permissionName}"? This action cannot be undone.`)) {
             try {
+                setLoading(true); // Indicate loading state for delete operation
                 await apiInstance.delete(`/permissions/${permissionId}`);
-                setAllPermissions(prevPermissions => prevPermissions.filter(p => p.id !== permissionId));
+                setSuccessMessage(`Permission "${permissionName}" deleted successfully.`);
+                // Refetch permissions to update the list, which will also set loading to false in its finally block
+                fetchPermissionsAndCategories();
             } catch (err) {
-                alert(err.response?.data?.message || 'Failed to delete permission.');
-                console.error(err);
+                console.error('Error deleting permission:', err);
+                setError(err.response?.data?.message || 'Failed to delete permission.');
+                setLoading(false); // Ensure loading is false on error if fetch doesn't run or also errors
             }
         }
     };
 
-    if (loading) return <div className="loading-message">Loading permissions...</div>;
-    if (error) return <div className="error-message">Error: {error}</div>;
+    const handleCategoryChange = (e) => {
+        setSelectedCategoryId(e.target.value);
+    };
 
-    const permissionGroups = Object.keys(groupedPermissions);
+    const handleSearchChange = (e) => {
+        setSearchTerm(e.target.value.toLowerCase());
+    };
+
+    const filteredPermissions = permissions
+        .filter(permission => {
+            // Category filter
+            if (selectedCategoryId && permission.permission_category_id !== parseInt(selectedCategoryId)) {
+                return false;
+            }
+            // Search term filter (searches name, display_name)
+            // Description search can be added back if desired: (permission.description && permission.description.toLowerCase().includes(searchTerm))
+            if (searchTerm) {
+                return (
+                    permission.name.toLowerCase().includes(searchTerm) ||
+                    permission.display_name.toLowerCase().includes(searchTerm)
+                );
+            }
+            return true;
+        })
+        .sort((a, b) => { // Sort by category display_order, then by sub_group_display_name, then by display_name
+            const categoryA = categories.find(c => c.id === a.permission_category_id);
+            const categoryB = categories.find(c => c.id === b.permission_category_id);
+
+            const displayOrderA = categoryA ? categoryA.display_order : Infinity;
+            const displayOrderB = categoryB ? categoryB.display_order : Infinity;
+
+            if (displayOrderA !== displayOrderB) {
+                return displayOrderA - displayOrderB;
+            }
+            if (a.sub_group_display_name < b.sub_group_display_name) return -1;
+            if (a.sub_group_display_name > b.sub_group_display_name) return 1;
+            if (a.display_name < b.display_name) return -1;
+            if (a.display_name > b.display_name) return 1;
+            return 0;
+        });
+
+    // Group permissions by category and then by sub-group for display
+    const groupedPermissions = filteredPermissions.reduce((acc, permission) => {
+        const category = categories.find(c => c.id === permission.permission_category_id);
+        const categoryName = category ? category.name : 'Uncategorized';
+        const subGroupName = permission.sub_group_display_name || 'General';
+
+        if (!acc[categoryName]) {
+            acc[categoryName] = {};
+        }
+        if (!acc[categoryName][subGroupName]) {
+            acc[categoryName][subGroupName] = [];
+        }
+        acc[categoryName][subGroupName].push(permission);
+        return acc;
+    }, {});
+
+
+    if (loading && permissions.length === 0 && categories.length === 0) { // Initial full load
+        return <div className="page-container"><p>Loading permissions and categories...</p></div>;
+    }
+    if (error) {
+        return <div className="page-container alert alert-danger">Error: {error}</div>;
+    }
 
     return (
-        <div className="permission-list-container page-container"> {/* Added class for overall container */}
-            <div className="page-header">
-                <h1>Manage Permissions</h1>
-                <Link to="/dashboard/permissions/new" className="btn btn-primary"> {/* Standard button class */}
-                    Add New Permission
-                </Link>
+        <div className="page-container">
+            <div className="page-header d-flex justify-content-between align-items-center">
+                <h2>Manage Permissions</h2>
+                {typeof userCan === 'function' && userCan('permission:create') && (
+                    <Link to="/dashboard/permissions/new" className="btn btn-primary">
+                        <FaPlus /> Create New Permission
+                    </Link>
+                )}
             </div>
 
-            {location.state?.message && <div className="success-message">{location.state.message}</div>}
+            {successMessage && <div className="alert alert-success mt-3">{successMessage}</div>}
 
-            {permissionGroups.length === 0 && !loading ? (
-                <p className="empty-state-message">No permissions defined yet.</p>
-            ) : (
-                <div className="content-card"> {/* Card-like container for controls and table */}
-                    <div className="form-group filter-controls"> {/* Class for filter section */}
-                        <label htmlFor="permission-group-select" className="form-label">Select Category:</label>
-                        <select
-                            id="permission-group-select"
-                            value={activeGroup}
-                            onChange={(e) => setActiveGroup(e.target.value)}
-                            className="form-control form-select" // Standard form control classes
-                        >
-                            {permissionGroups.map(groupName => (
-                                <option key={groupName} value={groupName}>
-                                    {groupName} ({groupedPermissions[groupName]?.length || 0})
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-
-                    {activeGroup && groupedPermissions[activeGroup] && groupedPermissions[activeGroup].length > 0 ? (
-                        <div className="table-responsive"> {/* Wrapper for responsive table */}
-                            <table className="table table-striped table-hover"> {/* Standard table classes */}
-                                <thead>
-                                    <tr>
-                                        <th>Name (Code)</th>
-                                        <th>Display Name</th>
-                                        <th>Description</th>
-                                        <th className="text-center">Actions</th> {/* Centering actions header */}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {groupedPermissions[activeGroup].map(permission => (
-                                        <tr key={permission.id}>
-                                            <td>{permission.name}</td>
-                                            <td>{permission.display_name}</td>
-                                            <td>{permission.description || '-'}</td> {/* Show dash if no description */}
-                                            <td className="actions-cell text-center"> {/* Class for actions cell */}
-                                                <Link to={`/dashboard/permissions/edit/${permission.id}`} className="btn btn-sm btn-outline-secondary">Edit</Link>
-                                                <button onClick={() => handleDelete(permission.id)} className="btn btn-sm btn-outline-danger ms-2">Delete</button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : (
-                        activeGroup && <p className="info-message">No permissions in the selected category: {activeGroup}.</p>
-                    )}
+            <div className="row mb-3 mt-3">
+                <div className="col-md-6">
+                    <label htmlFor="categoryFilter" className="form-label">Filter by Category:</label>
+                    <select
+                        id="categoryFilter"
+                        className="form-select"
+                        value={selectedCategoryId}
+                        onChange={handleCategoryChange}
+                    >
+                        <option value="">All Categories</option>
+                        {categories.sort((a,b) => a.display_order - b.display_order).map(category => (
+                            <option key={category.id} value={category.id}>
+                                {category.name}
+                            </option>
+                        ))}
+                    </select>
                 </div>
+                <div className="col-md-6">
+                    <label htmlFor="searchFilter" className="form-label">Search Permissions:</label>
+                    <input
+                        type="text"
+                        id="searchFilter"
+                        className="form-control"
+                        placeholder="Search by name, display name..."
+                        value={searchTerm}
+                        onChange={handleSearchChange}
+                    />
+                </div>
+            </div>
+            
+            {loading && permissions.length > 0 && <p className="text-center my-3">Updating list...</p>}
+
+            {Object.keys(groupedPermissions).length === 0 && !loading && (
+                <div className="alert alert-info mt-3">No permissions found matching your criteria.</div>
             )}
+
+            {Object.entries(groupedPermissions).map(([categoryName, subGroups]) => (
+                <div key={categoryName} className="mb-4 permission-category-group">
+                    {(!selectedCategoryId || Object.keys(groupedPermissions).length > 1) && (
+                        <h3 className="category-title h4 border-bottom pb-2 mb-3">{categoryName}</h3>
+                    )}
+                    {Object.entries(subGroups).map(([subGroupName, perms]) => (
+                         <div key={subGroupName} className="mb-3 permission-sub-group">
+                            <h4 className="sub-group-title h5 text-muted">{subGroupName}</h4>
+                            <ul className="list-group">
+                                {perms.map(permission => (
+                                    <li key={permission.id} className="list-group-item d-flex justify-content-between align-items-center">
+                                        <div className="form-check">
+                                            <input 
+                                                className="form-check-input" 
+                                                type="checkbox" 
+                                                id={`perm-checkbox-${permission.id}`} 
+                                                disabled 
+                                                style={{ marginTop: '0.2rem' }}
+                                            />
+                                            <label className="form-check-label" htmlFor={`perm-checkbox-${permission.id}`}>
+                                                {permission.display_name}
+                                                <small className="d-block text-muted">Code: {permission.name}</small>
+                                            </label>
+                                        </div>
+                                        <div className="permission-actions ms-2">
+                                            {typeof userCan === 'function' && userCan('permission:update') && (
+                                                <Link 
+                                                    to={`/dashboard/permissions/edit/${permission.id}`} 
+                                                    className="btn btn-sm btn-outline-secondary me-1"
+                                                    title="Edit"
+                                                >
+                                                    <FaEdit />
+                                                </Link>
+                                            )}
+                                            {typeof userCan === 'function' && userCan('permission:delete') && (
+                                                <button
+                                                    onClick={() => handleDelete(permission.id, permission.display_name)}
+                                                    className="btn btn-sm btn-outline-danger"
+                                                    title="Delete"
+                                                    disabled={loading}
+                                                >
+                                                    <FaTrashAlt />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    ))}
+                </div>
+            ))}
         </div>
     );
 }

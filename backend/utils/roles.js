@@ -53,6 +53,14 @@ const PERMISSIONS = {
     TAX_MANAGE: 'tax:manage',
     DISCOUNT_MANAGE: 'discount:manage',
     BRAND_MANAGE: 'brand:manage',
+
+
+    // Role Permissions (managing the roles themselves)
+    ROLE_CREATE: 'role:create',
+    ROLE_READ: 'role:read',
+    ROLE_UPDATE: 'role:update', // For updating role details like name, description
+    ROLE_DELETE: 'role:delete',
+    ROLE_ASSIGN_PERMISSIONS: 'role:assign_permissions',
 };
 
 // Define the ROLES object

@@ -1,243 +1,214 @@
 const express = require('express');
-const { body, validationResult } = require('express-validator');
-const { authenticateToken, authorizePermissions } = require('../middleware/authMiddleware'); // Assuming you have this
-const { PERMISSIONS } // Assuming you might want to define a permission for managing roles
-    // = require('../utils/roles'); // Or wherever PERMISSIONS is defined
-    = { ROLE_MANAGE: 'role:manage', ROLE_READ: 'role:read' }; // Placeholder, added ROLE_READ
+const { authenticateToken, authorizePermissions } = require('../middleware/authMiddleware');
+// const { PERMISSIONS } = require('../utils/roles'); // Your permission constants
 
 const createRolesRouter = (knex) => {
     const router = express.Router();
 
-    // GET /api/roles - Fetch all roles
-    router.get(
-        '/', 
-        authenticateToken, 
-        // authorizePermissions([PERMISSIONS.ROLE_READ]), // Optional: if you have a specific permission for reading roles
-        async (req, res) => { 
+    // GET all roles
+    router.get('/', authenticateToken, /* authorizePermissions(['role:read']), */ async (req, res) => {
         try {
-            const rolesFromDb = await knex('roles')
-                .select('id', 'name', 'display_name', 'description', 'created_at', 'updated_at')
-                .orderBy('display_name');
-            res.status(200).json(rolesFromDb);
+            const roles = await knex('roles')
+                .select('id', 'name', 'display_name', 'description', 'is_system_role', 'created_at', 'updated_at')
+                .orderBy('name');
+            res.json(roles);
         } catch (error) {
-            console.error('Error fetching roles from database:', error);
-            res.status(500).json({ message: 'Failed to fetch roles from database' });
+            console.error('Error fetching roles:', error);
+            res.status(500).json({ message: 'Failed to fetch roles' });
         }
     });
 
-    // --- >>> ADD THIS ROUTE HANDLER <<< ---
-    // GET /api/roles/:id - Fetch a single role by ID
-    router.get(
-        '/:id',
-        authenticateToken,
-        // authorizePermissions([PERMISSIONS.ROLE_READ]), // Optional: if you have a specific permission for reading roles
-        async (req, res) => {
-            try {
-                const { id } = req.params;
-                if (isNaN(parseInt(id))) {
-                    return res.status(400).json({ message: 'Role ID must be an integer.' });
-                }
+    // GET a single role by ID with its permissions
+    router.get('/:id', authenticateToken, /* authorizePermissions(['role:read']), */ async (req, res) => {
+        const { id } = req.params;
+        try {
+            const role = await knex('roles')
+                .select('id', 'name', 'display_name', 'description', 'is_system_role', 'created_at', 'updated_at')
+                .where({ id })
+                .first();
 
-                const role = await knex('roles')
-                    .select('id', 'name', 'display_name', 'description', 'created_at', 'updated_at')
-                    .where({ id: parseInt(id) })
-                    .first();
-
-                if (!role) {
-                    return res.status(404).json({ message: 'Role not found.' });
-                }
-                res.status(200).json(role);
-            } catch (error) {
-                console.error(`Error fetching role by ID ${req.params.id}:`, error);
-                res.status(500).json({ message: 'Failed to fetch role details.' });
+            if (!role) {
+                return res.status(404).json({ message: 'Role not found' });
             }
+
+            const permissions = await knex('role_permissions')
+                .where({ role_id: id })
+                .pluck('permission_id');
+
+            res.json({ ...role, permissions });
+        } catch (error) {
+            console.error(`Error fetching role ${id}:`, error);
+            res.status(500).json({ message: 'Failed to fetch role details' });
         }
-    );
-    // --- END OF ADDED ROUTE HANDLER ---
+    });
 
-    // POST /api/roles - Create a new role
-    router.post(
-        '/',
-        authenticateToken,
-        // authorizePermissions([PERMISSIONS.ROLE_MANAGE]), // Uncomment if you have role management permission
-        [
-            body('name')
-                .trim()
-                .notEmpty().withMessage('Machine-readable name is required.')
-                .isLength({ min: 3, max: 50 }).withMessage('Name must be between 3 and 50 characters.')
-                .matches(/^[a-z0-9_]+$/).withMessage('Name can only contain lowercase letters, numbers, and underscores.'),
-            body('display_name')
-                .trim()
-                .notEmpty().withMessage('Display name is required.')
-                .isLength({ min: 3, max: 100 }).withMessage('Display name must be between 3 and 100 characters.'),
-            body('description')
-                .optional({ checkFalsy: true }) // Allows empty string or null
-                .trim()
-                .isLength({ max: 255 }).withMessage('Description cannot exceed 255 characters.')
-        ],
-        async (req, res) => {
-            const errors = validationResult(req);
-            if (!errors.isEmpty()) {
-                return res.status(400).json({ errors: errors.array() });
-            }
+    // POST - Create a new role (permissions are NOT assigned here anymore)
+    router.post('/', authenticateToken, /* authorizePermissions(['role:create']), */ async (req, res) => {
+        const { name, display_name, description } = req.body; // No 'permissions' array here
 
-            const { name, display_name, description } = req.body;
-
-            try {
-                // Check if role name already exists (case-insensitive for machine name is good practice)
-                const existingRole = await knex('roles')
-                    .whereRaw('LOWER(name) = LOWER(?)', [name])
-                    .first();
-
-                if (existingRole) {
-                    return res.status(409).json({ message: `Role with machine name '${name}' already exists.` });
-                }
-
-                const [newRole] = await knex('roles')
-                    .insert({
-                        name: name.toLowerCase(), // Store machine name consistently (e.g., lowercase)
-                        display_name,
-                        description: description || null, // Ensure null if empty
-                        // created_at and updated_at are handled by DB defaults
-                    })
-                    .returning(['id', 'name', 'display_name', 'description', 'created_at', 'updated_at']); // Return the created role
-
-                res.status(201).json(newRole);
-            } catch (error) {
-                console.error('Error creating role:', error);
-                if (error.code === '23505') { // Unique violation (though we check above, this is a fallback)
-                    return res.status(409).json({ message: 'Role name or another unique field already exists.' });
-                }
-                res.status(500).json({ message: 'Failed to create role.' });
-            }
+        if (!name || !display_name) {
+            return res.status(400).json({ message: 'Role machine name and display name are required.' });
         }
-    );
+        if (!/^[a-z0-9_]+$/.test(name)) {
+            return res.status(400).json({ message: "Role machine name can only contain lowercase letters, numbers, and underscores." });
+        }
 
-    // You will also need PUT /api/roles/:id for updating roles
-    router.put(
-        '/:id',
-        authenticateToken,
-        // authorizePermissions([PERMISSIONS.ROLE_MANAGE]), // Or a specific 'role:update' permission
-        [ // Add validation for PUT request as well
-            body('name')
-                .optional() // Name might not always be updatable, or updatable with caution
-                .trim()
-                .isLength({ min: 3, max: 50 }).withMessage('Name must be between 3 and 50 characters.')
-                .matches(/^[a-z0-9_]+$/).withMessage('Name can only contain lowercase letters, numbers, and underscores.'),
-            body('display_name')
-                .optional() // Allow partial updates
-                .trim()
-                .notEmpty().withMessage('Display name cannot be empty if provided.')
-                .isLength({ min: 3, max: 100 }).withMessage('Display name must be between 3 and 100 characters.'),
-            body('description')
-                .optional({ checkFalsy: true })
-                .trim()
-                .isLength({ max: 255 }).withMessage('Description cannot exceed 255 characters.')
-        ],
-        async (req, res) => {
-            const errors = validationResult(req);
-            if (!errors.isEmpty()) {
-                return res.status(400).json({ errors: errors.array() });
+        try {
+            const [newRoleIdObj] = await knex('roles')
+                .insert({
+                    name: name.toLowerCase(),
+                    display_name,
+                    description: description || null, // Ensure description can be null
+                    is_system_role: false // Default for new roles, can be changed if needed
+                })
+                .returning('id');
+            
+            const roleId = newRoleIdObj.id || newRoleIdObj;
+            const newRole = await knex('roles').where({id: roleId}).first();
+
+            // New roles will have an empty permissions array by default
+            res.status(201).json({...newRole, permissions: [] }); 
+        } catch (error) {
+            console.error('Error creating role:', error);
+            if (error.code === '23505' && error.constraint === 'roles_name_unique') { // Check for unique constraint on 'name'
+                return res.status(409).json({ message: `Role machine name '${name}' already exists.` });
+            }
+            res.status(500).json({ message: 'Failed to create role' });
+        }
+    });
+
+    // PUT - Update an existing role (permissions are NOT updated here anymore)
+    router.put('/:id', authenticateToken, /* authorizePermissions(['role:update']), */ async (req, res) => {
+        const { id } = req.params;
+        const { name, display_name, description } = req.body; // No 'permissions' array here
+
+        if (!name && !display_name && description === undefined) {
+            return res.status(400).json({ message: 'No update data provided. At least one field (name, display_name, or description) is required.' });
+        }
+         if (name && !/^[a-z0-9_]+$/.test(name)) {
+            return res.status(400).json({ message: "Role machine name can only contain lowercase letters, numbers, and underscores." });
+        }
+
+        try {
+            const roleToUpdate = await knex('roles').where({ id }).first();
+            if (!roleToUpdate) {
+                return res.status(404).json({ message: 'Role not found' });
             }
 
-            const { id } = req.params;
-            if (isNaN(parseInt(id))) {
-                return res.status(400).json({ message: 'Role ID must be an integer.' });
-            }
-
-            const { name, display_name, description } = req.body;
-            const updatePayload = {};
-            if (name !== undefined) updatePayload.name = name.toLowerCase();
-            if (display_name !== undefined) updatePayload.display_name = display_name;
-            if (description !== undefined) updatePayload.description = description === '' ? null : description;
-
-
-            if (Object.keys(updatePayload).length === 0) {
-                return res.status(400).json({ message: 'No fields provided for update.' });
+            // Prevent changing name of system role, description is fine
+            if (roleToUpdate.is_system_role && name && name !== roleToUpdate.name) {
+                return res.status(403).json({ message: 'System role machine name cannot be changed.' });
             }
             
-            updatePayload.updated_at = knex.fn.now(); // Explicitly set updated_at
+            const updateData = {};
+            if (name) updateData.name = name.toLowerCase();
+            if (display_name) updateData.display_name = display_name;
+            if (description !== undefined) updateData.description = description;
 
-            try {
-                // Check if role exists before updating
-                const roleExists = await knex('roles').where({ id: parseInt(id) }).first();
-                if (!roleExists) {
-                    return res.status(404).json({ message: 'Role not found.' });
-                }
-
-                // If name is being updated, check for conflicts (excluding the current role)
-                if (name !== undefined) {
-                    const existingRoleWithNewName = await knex('roles')
-                        .whereRaw('LOWER(name) = LOWER(?)', [name])
-                        .whereNot({ id: parseInt(id) })
-                        .first();
-                    if (existingRoleWithNewName) {
-                        return res.status(409).json({ message: `Another role with machine name '${name}' already exists.` });
-                    }
-                }
-
-                const [updatedRole] = await knex('roles')
-                    .where({ id: parseInt(id) })
-                    .update(updatePayload)
-                    .returning(['id', 'name', 'display_name', 'description', 'created_at', 'updated_at']);
-                
-                if (!updatedRole) { // Should not happen if roleExists check passed, but good practice
-                    return res.status(404).json({ message: 'Role not found after update attempt.' });
-                }
-
-                res.status(200).json(updatedRole);
-            } catch (error) {
-                console.error(`Error updating role ID ${id}:`, error);
-                 if (error.code === '23505') { 
-                    return res.status(409).json({ message: 'Role name or another unique field already exists.' });
-                }
-                res.status(500).json({ message: 'Failed to update role.' });
+            if (Object.keys(updateData).length === 0) {
+                 return res.status(400).json({ message: 'No valid fields provided for update.' });
             }
+            updateData.updated_at = knex.fn.now();
+
+            const updatedCount = await knex('roles')
+                .where({ id })
+                .update(updateData);
+
+            if (updatedCount === 0 && Object.keys(updateData).length > 0) {
+                // This case might happen if the data provided is the same as existing data,
+                // but we've already checked if roleToUpdate exists.
+                // For simplicity, we assume if role exists and updateData is provided, an update should occur or data is identical.
+            }
+            
+            const updatedRole = await knex('roles').where({id}).first();
+            // Fetch current permissions for the response, even if not updated by this endpoint
+            const currentPermissions = await knex('role_permissions')
+                .where({ role_id: id })
+                .pluck('permission_id');
+
+            res.json({...updatedRole, permissions: currentPermissions });
+        } catch (error) {
+            console.error(`Error updating role ${id}:`, error);
+            if (error.code === '23505' && error.constraint === 'roles_name_unique') { // Check for unique constraint on 'name'
+                return res.status(409).json({ message: `Role machine name '${name}' already exists.` });
+            }
+            res.status(500).json({ message: 'Failed to update role' });
         }
-    );
+    });
 
+    // NEW ROUTE: Assign/Update permissions for a specific role
+    router.post('/:roleId/permissions', authenticateToken, /* authorizePermissions(['role:assign_permissions']), */ async (req, res) => {
+        const { roleId } = req.params;
+        const { permissionIds } = req.body;
 
-    // You will also need DELETE /api/roles/:id for deleting roles
-    router.delete(
-        '/:id',
-        authenticateToken,
-        // authorizePermissions([PERMISSIONS.ROLE_MANAGE]), // Or a specific 'role:delete' permission
-        async (req, res) => {
-            const { id } = req.params;
-            if (isNaN(parseInt(id))) {
-                return res.status(400).json({ message: 'Role ID must be an integer.' });
-            }
-
-            try {
-                 // Optional: Check if the role is assigned to any users before deleting
-                // const usersWithRole = await knex('user_roles').where({ role_id: parseInt(id) }).first();
-                // if (usersWithRole) {
-                //    return res.status(400).json({ message: 'Cannot delete role. It is currently assigned to one or more users.' });
-                // }
-
-                // Optional: Remove permissions associated with this role from role_permissions table
-                // await knex('role_permissions').where({ role_id: parseInt(id) }).del();
-
-
-                const numDeleted = await knex('roles')
-                    .where({ id: parseInt(id) })
-                    .del();
-
-                if (numDeleted === 0) {
-                    return res.status(404).json({ message: 'Role not found.' });
-                }
-
-                res.status(200).json({ message: `Role with ID ${id} deleted successfully.` }); // Or res.status(204).send();
-            } catch (error) {
-                console.error(`Error deleting role ID ${id}:`, error);
-                // Check for foreign key constraint errors if you don't manually check user_roles
-                if (error.code === '23503') { // Foreign key violation
-                     return res.status(400).json({ message: 'Cannot delete role. It is currently in use (e.g., assigned to users).' });
-                }
-                res.status(500).json({ message: 'Failed to delete role.' });
-            }
+        if (!Array.isArray(permissionIds)) {
+            return res.status(400).json({ message: 'permissionIds must be an array.' });
         }
-    );
+
+        try {
+            const role = await knex('roles').where({ id: roleId }).first();
+            if (!role) {
+                return res.status(404).json({ message: 'Role not found.' });
+            }
+
+            // Optional: Validate all permissionIds exist in the 'permissions' table
+            if (permissionIds.length > 0) {
+                const existingPermissionsCount = await knex('permissions').whereIn('id', permissionIds).count('* as count').first();
+                if (parseInt(existingPermissionsCount.count, 10) !== permissionIds.length) {
+                    // For simplicity, we'll just give a generic error. 
+                    // You could find which IDs are invalid if needed.
+                    return res.status(400).json({ message: 'One or more provided permission IDs are invalid.' });
+                }
+            }
+
+            await knex.transaction(async trx => {
+                await trx('role_permissions').where({ role_id: roleId }).del();
+
+                if (permissionIds.length > 0) {
+                    const newRolePermissions = permissionIds.map(permissionId => ({
+                        role_id: parseInt(roleId, 10),
+                        permission_id: parseInt(permissionId, 10)
+                    }));
+                    await trx('role_permissions').insert(newRolePermissions);
+                }
+            });
+
+            res.status(200).json({ message: `Permissions for role '${role.display_name}' updated successfully.` });
+
+        } catch (error) {
+            console.error(`Error updating permissions for role ${roleId}:`, error);
+            res.status(500).json({ message: 'Failed to update role permissions.' });
+        }
+    });
+
+    // DELETE a role
+    router.delete('/:id', authenticateToken, /* authorizePermissions(['role:delete']), */ async (req, res) => {
+        const { id } = req.params;
+        try {
+            const role = await knex('roles').where({ id }).first();
+            if (!role) {
+                return res.status(404).json({ message: 'Role not found' });
+            }
+            if (role.is_system_role) {
+                return res.status(403).json({ message: 'System roles cannot be deleted.' });
+            }
+
+            const usersWithRoleCount = await knex('user_roles').where({ role_id: id }).count('* as count').first();
+            if (usersWithRoleCount && parseInt(usersWithRoleCount.count, 10) > 0) {
+                return res.status(400).json({ message: `Cannot delete role. It is currently assigned to ${usersWithRoleCount.count} user(s). Please unassign it first.` });
+            }
+            
+            await knex.transaction(async trx => {
+                await trx('role_permissions').where({ role_id: id }).del();
+                await trx('roles').where({ id }).del();
+            });
+
+            res.status(200).json({ message: 'Role and its permission assignments deleted successfully' });
+        } catch (error) {
+            console.error(`Error deleting role ${id}:`, error);
+            res.status(500).json({ message: 'Failed to delete role' });
+        }
+    });
 
     return router;
 };

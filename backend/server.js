@@ -27,6 +27,8 @@ const createUsersRouter = require('./routes/users');
 const createWarrantiesRouter = require('./routes/warranties');
 const createRolesRouter = require('./routes/roles'); // Add roles router
 const createPermissionsRouter = require('./routes/permissions');
+const createPermissionCategoriesRouter = require('./routes/permissionCategories');
+
 const app = express();
 
 // --- Core Middleware ---
@@ -88,6 +90,7 @@ mountRouter('/api/users', createUsersRouter, authenticateToken);
 mountRouter('/api/warranties', createWarrantiesRouter, authenticateToken);
 mountRouter('/api/roles', createRolesRouter, authenticateToken);
 mountRouter('/api/permissions', createPermissionsRouter, authenticateToken);
+mountRouter('/api/permission-categories', createPermissionCategoriesRouter, authenticateToken);
 
 // --- Global Error Handler ---
 app.use((err, req, res, next) => {

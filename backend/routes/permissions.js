@@ -1,41 +1,157 @@
 const express = require('express');
-const { authenticateToken } = require('../middleware/authMiddleware'); // Adjust path if needed
+const { authenticateToken } = require('../middleware/authMiddleware');
 // const { authorizePermissions } = require('../middleware/authMiddleware');
 // const { PERMISSIONS } = require('../utils/roles'); // Or your permissions constants
 
 const createPermissionsRouter = (knex) => {
     const router = express.Router();
 
-    // GET /api/permissions - Fetch all available permissions
+    // GET /api/permissions - Fetch all available permissions STRUCTURED for AccessControl component
     router.get(
         '/',
         authenticateToken,
-        // authorizePermissions([PERMISSIONS.ROLE_MANAGE]), // Or a more specific permission like 'permission:read'
+        // authorizePermissions(['permission:read', 'role:assign_permissions']), // Broader access for reading structure
         async (req, res) => {
             try {
-                const permissions = await knex('permissions')
-                    .select('id', 'name', 'display_name', 'description', 'created_at', 'updated_at') // Ensure display_name is here
-                    .orderBy('display_name'); // Order by name, since 'group' doesn't exist
-                res.status(200).json(permissions);
+                const permissionsData = await knex('permissions as p')
+                    .join('permission_categories as pc', 'p.permission_category_id', 'pc.id')
+                    .select(
+                        'p.id as permission_id',
+                        'p.name as permission_name',
+                        'p.display_name as permission_display_name',
+                        'p.description as permission_description',
+                        'p.sub_group_key',
+                        'p.sub_group_display_name',
+                        'pc.id as category_id',
+                        'pc.name as category_name',
+                        'pc.display_order as category_display_order'
+                    )
+                    .orderBy(['pc.display_order', 'pc.name', 'p.sub_group_display_name', 'p.display_name']);
+
+                if (!permissionsData.length) {
+                    return res.json([]);
+                }
+
+                const structuredPermissions = permissionsData.reduce((acc, perm) => {
+                    let category = acc.find(cat => cat.categoryName === perm.category_name);
+                    if (!category) {
+                        category = {
+                            categoryName: perm.category_name,
+                            displayOrder: perm.category_display_order,
+                            subGroups: []
+                        };
+                        acc.push(category);
+                    }
+
+                    let subGroup = category.subGroups.find(sg => sg.subGroupName === perm.sub_group_display_name);
+                    if (!subGroup) {
+                        subGroup = {
+                            subGroupName: perm.sub_group_display_name,
+                            subGroupKey: perm.sub_group_key,
+                            permissions: []
+                        };
+                        category.subGroups.push(subGroup);
+                    }
+
+                    subGroup.permissions.push({
+                        id: perm.permission_id,
+                        name: perm.permission_name,
+                        display_name: perm.permission_display_name,
+                        description: perm.permission_description
+                    });
+                    return acc;
+                }, []);
+
+                structuredPermissions.sort((a, b) => a.displayOrder - b.displayOrder);
+                structuredPermissions.forEach(category => {
+                    if (category.subGroups) {
+                        category.subGroups.sort((a, b) => {
+                            if (a.subGroupName && b.subGroupName) {
+                                return a.subGroupName.localeCompare(b.subGroupName);
+                            }
+                            return 0; // Should not happen if data is consistent
+                        });
+                    }
+                });
+                res.status(200).json(structuredPermissions);
             } catch (error) {
-                console.error('Error fetching permissions:', error);
+                console.error('Error fetching structured permissions:', error);
                 res.status(500).json({ message: 'Failed to fetch permissions.' });
             }
         }
     );
 
-    // ADD THIS ROUTE: GET /api/permissions/:id - Fetch a single permission by ID
+    // GET /api/permissions/categories - Fetch all permission categories for forms
+    router.get(
+        '/categories',
+        authenticateToken,
+        // authorizePermissions(['permission:create', 'permission:update']), // Or a general admin permission
+        async (req, res) => {
+            try {
+                const categories = await knex('permission_categories')
+                    .select('id', 'name', 'display_order')
+                    .orderBy('display_order');
+                res.status(200).json(categories);
+            } catch (error) {
+                console.error('Error fetching permission categories:', error);
+                res.status(500).json({ message: 'Failed to fetch permission categories.' });
+            }
+        }
+    );
+    
+    // GET /api/permissions/list-all - Fetch all permissions as a flat list for management UI
+    router.get(
+        '/list-all',
+        authenticateToken,
+        // authorizePermissions(['permission:read']),
+        async (req, res) => {
+            try {
+                const permissions = await knex('permissions')
+                    .leftJoin('permission_categories', 'permissions.permission_category_id', 'permission_categories.id')
+                    .select(
+                        'permissions.id',
+                        'permissions.name',
+                        'permissions.display_name',
+                        'permissions.description',
+                        'permissions.permission_category_id',
+                        'permission_categories.name as category_name',
+                        'permissions.sub_group_key',
+                        'permissions.sub_group_display_name',
+                        'permissions.created_at',
+                        'permissions.updated_at'
+                    )
+                    .orderBy('permissions.display_name');
+                res.status(200).json(permissions);
+            } catch (error) {
+                console.error('Error fetching flat list of permissions:', error);
+                res.status(500).json({ message: 'Failed to fetch permissions list.' });
+            }
+        }
+    );
+
+
+    // GET /api/permissions/:id - Fetch a single permission by ID (including category and sub-group info)
     router.get(
         '/:id',
         authenticateToken,
-        // authorizePermissions([PERMISSIONS.ROLE_MANAGE]), // Or 'permission:read'
+        // authorizePermissions(['permission:read']),
         async (req, res) => {
             const { id } = req.params;
             try {
                 const permission = await knex('permissions')
-                    .select('id', 'name', 'display_name', 'description', 'created_at', 'updated_at')
+                    .select(
+                        'id',
+                        'name',
+                        'display_name',
+                        'description',
+                        'permission_category_id',
+                        'sub_group_key',
+                        'sub_group_display_name',
+                        'created_at',
+                        'updated_at'
+                    )
                     .where({ id })
-                    .first(); // Use .first() to get a single object or undefined
+                    .first();
 
                 if (!permission) {
                     return res.status(404).json({ message: 'Permission not found.' });
@@ -48,58 +164,98 @@ const createPermissionsRouter = (knex) => {
         }
     );
 
-    // You would also need POST, PUT, DELETE routes here for full CRUD
-    // For example, a basic POST route (ensure validation and proper permissions):
+    // POST /api/permissions - Create a new permission
     router.post(
         '/',
         authenticateToken,
-        // authorizePermissions(['permission:create']), // Add appropriate permission check
+        // authorizePermissions(['permission:create']),
         async (req, res) => {
-            const { name, display_name, description } = req.body;
-            // Add validation here (e.g., using express-validator)
-            if (!name || !display_name) {
-                return res.status(400).json({ message: 'Name and Display Name are required.' });
-            }
-            try {
-                const [newPermissionId] = await knex('permissions').insert({
-                    name,
-                    display_name,
-                    description
-                }).returning('id');
+            const {
+                name,
+                display_name,
+                description,
+                permission_category_id,
+                sub_group_key,
+                sub_group_display_name
+            } = req.body;
 
-                const newPermission = await knex('permissions').where({ id: newPermissionId.id || newPermissionId }).first(); // Knex returns object with id in PostgreSQL
+            if (!name || !display_name || !permission_category_id || !sub_group_key || !sub_group_display_name) {
+                return res.status(400).json({ message: 'Name, Display Name, Category ID, Sub-Group Key, and Sub-Group Display Name are required.' });
+            }
+            if (!/^[a-z0-9_:-]+$/.test(name.trim())) {
+                 return res.status(400).json({ message: 'Permission Name (code) can only contain lowercase letters, numbers, underscores, hyphens, and colons (e.g., user:create).' });
+            }
+
+            try {
+                // Optional: Validate if permission_category_id exists
+                const categoryExists = await knex('permission_categories').where({ id: permission_category_id }).first();
+                if (!categoryExists) {
+                    return res.status(400).json({ message: `Permission Category with ID ${permission_category_id} not found.` });
+                }
+
+                const [newPermissionIdObj] = await knex('permissions').insert({
+                    name: name.trim(),
+                    display_name: display_name.trim(),
+                    description: description ? description.trim() : null,
+                    permission_category_id: parseInt(permission_category_id, 10),
+                    sub_group_key: sub_group_key.trim(),
+                    sub_group_display_name: sub_group_display_name.trim()
+                }).returning('id');
+                
+                const newPermissionId = newPermissionIdObj.id || newPermissionIdObj; // Knex returns object with id in PostgreSQL, just id in SQLite
+
+                const newPermission = await knex('permissions').where({ id: newPermissionId }).first();
                 res.status(201).json(newPermission);
             } catch (error) {
                 console.error('Error creating permission:', error);
-                if (error.code === '23505') { // Unique constraint violation (e.g., for 'name')
+                if (error.code === '23505' && error.constraint === 'permissions_name_unique') { // Unique constraint violation for 'name'
                     return res.status(409).json({ message: `Permission with name '${name}' already exists.` });
+                }
+                // Foreign key violation for permission_category_id
+                if (error.code === '23503' && error.constraint && error.constraint.includes('permissions_permission_category_id_foreign')) {
+                    return res.status(400).json({ message: `Invalid Permission Category ID: ${permission_category_id}. Category does not exist.` });
                 }
                 res.status(500).json({ message: 'Failed to create permission.' });
             }
         }
     );
 
-    // Basic PUT route (ensure validation and proper permissions):
+    // PUT /api/permissions/:id - Update an existing permission
     router.put(
         '/:id',
         authenticateToken,
-        // authorizePermissions(['permission:update']), // Add appropriate permission check
+        // authorizePermissions(['permission:update']),
         async (req, res) => {
             const { id } = req.params;
-            const { display_name, description } = req.body; // Name (code) is typically not updatable
-            
-            // Add validation here
-            if (!display_name) {
-                return res.status(400).json({ message: 'Display Name is required.' });
+            const {
+                display_name,
+                description,
+                permission_category_id,
+                sub_group_key,
+                sub_group_display_name
+                // 'name' (code) is generally not updated
+            } = req.body;
+
+            if (!display_name || !permission_category_id || !sub_group_key || !sub_group_display_name) {
+                return res.status(400).json({ message: 'Display Name, Category ID, Sub-Group Key, and Sub-Group Display Name are required.' });
             }
 
             try {
+                 // Optional: Validate if permission_category_id exists
+                const categoryExists = await knex('permission_categories').where({ id: permission_category_id }).first();
+                if (!categoryExists) {
+                    return res.status(400).json({ message: `Permission Category with ID ${permission_category_id} not found.` });
+                }
+
                 const updatedCount = await knex('permissions')
                     .where({ id })
                     .update({
-                        display_name,
-                        description,
-                        updated_at: knex.fn.now() // Explicitly set updated_at
+                        display_name: display_name.trim(),
+                        description: description ? description.trim() : null,
+                        permission_category_id: parseInt(permission_category_id, 10),
+                        sub_group_key: sub_group_key.trim(),
+                        sub_group_display_name: sub_group_display_name.trim(),
+                        updated_at: knex.fn.now()
                     });
 
                 if (updatedCount === 0) {
@@ -109,20 +265,23 @@ const createPermissionsRouter = (knex) => {
                 res.status(200).json(updatedPermission);
             } catch (error) {
                 console.error(`Error updating permission with ID ${id}:`, error);
+                 // Foreign key violation for permission_category_id
+                if (error.code === '23503' && error.constraint && error.constraint.includes('permissions_permission_category_id_foreign')) {
+                    return res.status(400).json({ message: `Invalid Permission Category ID: ${permission_category_id}. Category does not exist.` });
+                }
                 res.status(500).json({ message: 'Failed to update permission.' });
             }
         }
     );
 
-    // Basic DELETE route (ensure proper permissions):
+    // DELETE /api/permissions/:id - Delete a permission
     router.delete(
         '/:id',
         authenticateToken,
-        // authorizePermissions(['permission:delete']), // Add appropriate permission check
+        // authorizePermissions(['permission:delete']),
         async (req, res) => {
             const { id } = req.params;
             try {
-                // Check if permission is in use by roles (optional but good practice)
                 const rolesUsingPermission = await knex('role_permissions').where({ permission_id: id }).count('* as count').first();
                 if (rolesUsingPermission && parseInt(rolesUsingPermission.count, 10) > 0) {
                     return res.status(400).json({ message: `Cannot delete permission. It is currently assigned to ${rolesUsingPermission.count} role(s). Please unassign it first.` });
@@ -132,7 +291,7 @@ const createPermissionsRouter = (knex) => {
                 if (deletedCount === 0) {
                     return res.status(404).json({ message: 'Permission not found.' });
                 }
-                res.status(200).json({ message: 'Permission deleted successfully.' }); // Or res.status(204).send();
+                res.status(200).json({ message: 'Permission deleted successfully.' });
             } catch (error) {
                 console.error(`Error deleting permission with ID ${id}:`, error);
                 res.status(500).json({ message: 'Failed to delete permission.' });

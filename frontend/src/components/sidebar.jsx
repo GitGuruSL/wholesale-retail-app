@@ -24,6 +24,8 @@ import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
 import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle'; // For user icon
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import SettingsApplicationsIcon from '@mui/icons-material/SettingsApplications';
 
 // --- Icons for new items ---
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
@@ -32,6 +34,7 @@ import PrecisionManufacturingIcon from '@mui/icons-material/PrecisionManufacturi
 import StraightenIcon from '@mui/icons-material/Straighten';
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest';
+
 
 const SubCategoryIcon = CategoryIcon; // Placeholder
 const BrandIcon = StoreIcon; // Placeholder
@@ -142,6 +145,8 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
                 { text: 'Users', icon: <PeopleIcon />, path: '/dashboard/users', requiredPermission: 'user:read_all' },
                 { text: 'Roles', icon: <AssignmentIndIcon />, path: '/dashboard/roles', requiredPermission: 'role:read' },
                 { text: 'Permissions', icon: <VpnKeyIcon />, path: '/dashboard/permissions', requiredPermission: 'permission:read' },
+                { text: 'Permission Categories', icon: <SettingsApplicationsIcon />, path: '/dashboard/permission-categories', requiredPermission: 'system:manage_permission_categories' },
+                { text: 'Access Control', icon: <AdminPanelSettingsIcon />, path: '/dashboard/access-control', requiredPermission: 'role:assign_permissions' },
             ]
         },
         {
