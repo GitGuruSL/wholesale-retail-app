@@ -95,6 +95,7 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
         { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard', requiredPermission: 'user:read_self' }, // Example permission
         { text: 'Stores', icon: <StoreIcon />, path: '/dashboard/stores', requiredPermission: 'store:read' },
         { text: 'Products', icon: <ListAltIcon />, path: '/dashboard/products', requiredPermission: 'product:read' },
+        { text: 'Customers', icon: <PeopleIcon />, path: '/dashboard/customers', requiredPermission: 'customer:read' },
         { text: 'Suppliers', icon: <SupplierIcon />, path: '/dashboard/suppliers', requiredPermission: 'supplier:read' },
     ];
 
