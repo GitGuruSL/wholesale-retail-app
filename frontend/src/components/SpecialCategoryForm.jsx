@@ -1,160 +1,235 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import apiInstance from '../services/api'; // Import apiInstance directly
+import {
+    Paper, Typography, TextField, Button, Box, Alert, CircularProgress, Grid, FormHelperText
+} from '@mui/material';
 
-const styles = {
-    container: { padding: '20px', maxWidth: '600px', margin: '40px auto', fontFamily: 'Arial, sans-serif', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', borderRadius: '8px', backgroundColor: '#fff' },
-    title: { marginBottom: '25px', color: '#333', textAlign: 'center', borderBottom: '1px solid #eee', paddingBottom: '15px' },
-    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
-    errorBox: { color: '#D8000C', border: '1px solid #FFBABA', padding: '10px 15px', marginBottom: '20px', borderRadius: '4px', backgroundColor: '#FFD2D2', textAlign: 'center' },
-    formSpecificErrorText: { color: 'red', fontSize: '0.9em', marginTop: '5px'},
-    formGroup: { marginBottom: '20px' },
-    label: { display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#555' },
-    input: { width: '100%', padding: '12px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1em' },
-    textarea: { width: '100%', padding: '12px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', minHeight: '80px', fontSize: '1em' },
-    buttonGroup: { marginTop: '30px', display: 'flex', justifyContent: 'flex-end', gap: '10px' },
-    buttonPrimary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
-    buttonSecondary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
-};
+const initialSpecialCategoryFormData = { name: '', description: '' };
 
 function SpecialCategoryForm() {
-    // Correctly use 'specialCategoryId' to match the route parameter
     const { specialCategoryId } = useParams();
     const navigate = useNavigate();
-    const { apiInstance, isAuthenticated, isLoading: authLoading } = useAuth();
-
-    // Use 'specialCategoryId' for isEditing check and throughout the component
+    const location = useLocation();
+    // apiInstance is imported directly. userCan for permissions.
+    const { isAuthenticated, isLoading: authLoading, userCan } = useAuth();
     const isEditing = Boolean(specialCategoryId);
 
-    const [name, setName] = useState('');
-    const [description, setDescription] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
+    const [formData, setFormData] = useState(initialSpecialCategoryFormData);
+    const [initialLoading, setInitialLoading] = useState(isEditing);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [pageError, setPageError] = useState(null);
-    const [formError, setFormError] = useState('');
+    const [formErrors, setFormErrors] = useState({});
+    const [feedback, setFeedback] = useState(null);
+
+    const requiredPermission = isEditing ? 'specialcategory:update' : 'specialcategory:create'; // Adjust
 
     const fetchSpecialCategoryDetails = useCallback(async () => {
-        // Use 'specialCategoryId' here
-        if (!isEditing || !apiInstance || !isAuthenticated || !specialCategoryId) return;
-
-        console.log(`[SpecialCategoryForm] Fetching details for ID: ${specialCategoryId}`);
-        setIsLoading(true);
+        if (!isEditing || !isAuthenticated || !specialCategoryId) {
+            setInitialLoading(false); // Ensure loading stops if conditions not met
+            return;
+        }
+        setInitialLoading(true);
         setPageError(null);
+        setFormErrors({});
+        setFeedback(null);
         try {
-            // Use 'specialCategoryId' in the API call
             const response = await apiInstance.get(`/special-categories/${specialCategoryId}`);
-            setName(response.data.name);
-            setDescription(response.data.description || '');
-            console.log("[SpecialCategoryForm] Data fetched:", response.data);
+            setFormData({
+                name: response.data.name || '',
+                description: response.data.description || ''
+            });
         } catch (err) {
             console.error("[SpecialCategoryForm] Failed to fetch special category:", err);
             setPageError(err.response?.data?.message || "Failed to load special category data.");
         } finally {
-            setIsLoading(false);
+            setInitialLoading(false);
         }
-    }, [specialCategoryId, apiInstance, isAuthenticated, isEditing]); // Add 'specialCategoryId' to dependencies
+    }, [specialCategoryId, isAuthenticated, isEditing]); // apiInstance not needed as dependency
 
     useEffect(() => {
-        if (isEditing && !authLoading && isAuthenticated && apiInstance) {
-            fetchSpecialCategoryDetails();
-        } else if (isEditing && !authLoading && !isAuthenticated) {
-            setPageError("Please log in to edit special categories.");
-        } else if (!isEditing) {
-            setName('');
-            setDescription('');
-            setPageError(null);
-            setFormError('');
+        if (!authLoading) {
+            if (!isAuthenticated) {
+                setPageError("Please log in to manage special categories.");
+                setInitialLoading(false);
+                return;
+            }
+            if (userCan && !userCan(requiredPermission)) {
+                setPageError(`You do not have permission to ${isEditing ? 'edit' : 'create'} special categories.`);
+                setInitialLoading(false);
+                return;
+            }
+            if (isEditing) {
+                fetchSpecialCategoryDetails();
+            } else {
+                setFormData(initialSpecialCategoryFormData);
+                setPageError(null);
+                setFormErrors({});
+                setInitialLoading(false); // Done "loading" for new form
+            }
         }
-    }, [isEditing, fetchSpecialCategoryDetails, authLoading, isAuthenticated, apiInstance]);
+    }, [isEditing, authLoading, isAuthenticated, userCan, requiredPermission, fetchSpecialCategoryDetails]);
+    
+    useEffect(() => {
+        if (location.state?.message) {
+            setFeedback({ message: location.state.message, type: location.state.type || 'success' });
+            navigate(location.pathname, { replace: true, state: {} });
+            const timer = setTimeout(() => setFeedback(null), 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [location.state, navigate, location.pathname]);
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+        if (formErrors[name]) {
+            setFormErrors(prev => ({ ...prev, [name]: null }));
+        }
+        if (feedback) setFeedback(null);
+        if (pageError) setPageError(null);
+    };
+
+    const validateForm = () => {
+        const errors = {};
+        if (!formData.name.trim()) {
+            errors.name = "Category name cannot be empty.";
+        }
+        setFormErrors(errors);
+        return Object.keys(errors).length === 0;
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!apiInstance || !isAuthenticated) {
-            setPageError("Authentication error. Please log in again.");
+        if (!isAuthenticated) {
+            setFeedback({ message: "Authentication error. Please log in again.", type: 'error' });
             return;
         }
-        if (!name.trim()) {
-            setFormError("Category name cannot be empty.");
+        if (userCan && !userCan(requiredPermission)) {
+            setFeedback({ message: `You do not have permission to ${isEditing ? 'update' : 'create'} this special category.`, type: 'error' });
             return;
         }
-        setFormError('');
-        setIsLoading(true);
+        if (!validateForm()) return;
+
+        setIsSubmitting(true);
+        setFeedback(null);
         setPageError(null);
 
         const categoryData = {
-            name: name.trim(),
-            description: description.trim() === '' ? null : description.trim(),
+            name: formData.name.trim(),
+            description: formData.description.trim() === '' ? null : formData.description.trim(),
         };
-        console.log("[SpecialCategoryForm] Submitting data:", categoryData);
 
         try {
             if (isEditing) {
-                // Use 'specialCategoryId' in the API call
                 await apiInstance.put(`/special-categories/${specialCategoryId}`, categoryData);
             } else {
                 await apiInstance.post('/special-categories', categoryData);
             }
             navigate('/dashboard/special-categories', {
                 state: {
-                    message: `Special Category "${name}" ${isEditing ? 'updated' : 'created'} successfully.`,
+                    message: `Special Category "${categoryData.name}" ${isEditing ? 'updated' : 'created'} successfully.`,
                     type: 'success'
                 }
             });
         } catch (err) {
             console.error("[SpecialCategoryForm] Error saving special category:", err);
             const errMsg = err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} special category.`;
-            setPageError(errMsg);
+            setFeedback({ message: errMsg, type: 'error' });
             if (err.response?.data?.errors) {
-                setFormError(Object.values(err.response.data.errors).join(', '));
+                const backendErrors = {};
+                err.response.data.errors.forEach(fieldError => {
+                    backendErrors[fieldError.path || fieldError.param || 'general'] = fieldError.msg;
+                });
+                setFormErrors(prev => ({ ...prev, ...backendErrors }));
             }
         } finally {
-            setIsLoading(false);
+            setIsSubmitting(false);
         }
     };
 
-    if (authLoading) return <p style={styles.centeredMessage}>Authenticating...</p>;
-    if (isLoading && isEditing && !name) return <p style={styles.centeredMessage}>Loading special category details...</p>;
+    if (authLoading || (initialLoading && isEditing && !pageError) ) { // Show loading if auth or fetching for edit
+        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+    }
+
+    if (pageError && !isSubmitting) {
+        return (
+            <Paper sx={{ p: 3, m: 2, maxWidth: 600, mx: 'auto' }}>
+                <Typography variant="h5" align="center" gutterBottom>
+                    {isEditing ? 'Edit Special Category' : 'Add New Special Category'}
+                </Typography>
+                <Alert severity="error">{pageError}</Alert>
+                <Button variant="outlined" sx={{ mt: 2 }} onClick={() => navigate('/dashboard/special-categories')}>
+                    Back to List
+                </Button>
+            </Paper>
+        );
+    }
 
     return (
-        <div style={styles.container}>
-            <h2 style={styles.title}>{isEditing ? `Edit Special Category (ID: ${specialCategoryId})` : 'Add New Special Category'}</h2>
-            {pageError && <p style={styles.errorBox}>{pageError}</p>}
-            <form onSubmit={handleSubmit}>
-                <div style={styles.formGroup}>
-                    <label htmlFor="categoryName" style={styles.label}>Category Name: *</label>
-                    <input
-                        type="text"
-                        id="categoryName"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        required
-                        style={styles.input}
-                        disabled={isLoading}
-                        placeholder="e.g., Featured, On Sale, New Arrivals"
-                    />
-                    {formError && <p style={styles.formSpecificErrorText}>{formError}</p>}
-                </div>
-                <div style={styles.formGroup}>
-                    <label htmlFor="categoryDescription" style={styles.label}>Description:</label>
-                    <textarea
-                        id="categoryDescription"
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        rows="3"
-                        style={styles.textarea}
-                        disabled={isLoading}
-                        placeholder="Optional: A brief description of the special category"
-                    />
-                </div>
-                <div style={styles.buttonGroup}>
-                    <button type="submit" disabled={isLoading} style={styles.buttonPrimary}>
-                        {isLoading ? 'Saving...' : (isEditing ? 'Update Category' : 'Create Category')}
-                    </button>
-                    <button type="button" onClick={() => navigate('/dashboard/special-categories')} style={styles.buttonSecondary} disabled={isLoading}>
+        <Paper sx={{ p: 3, m: 2, maxWidth: 600, mx: 'auto' }}>
+            <Typography variant="h5" align="center" gutterBottom>
+                {isEditing ? `Edit Special Category (ID: ${specialCategoryId})` : 'Add New Special Category'}
+            </Typography>
+            {feedback && (
+                <Alert severity={feedback.type === 'error' ? 'error' : 'success'} sx={{ mb: 2 }} onClose={() => setFeedback(null)}>
+                    {feedback.message}
+                </Alert>
+            )}
+            <Box component="form" onSubmit={handleSubmit} noValidate>
+                <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                        <TextField
+                            label="Category Name"
+                            name="name"
+                            value={formData.name}
+                            onChange={handleChange}
+                            required
+                            fullWidth
+                            disabled={isSubmitting || initialLoading}
+                            placeholder="e.g., Featured, On Sale, New Arrivals"
+                            error={Boolean(formErrors.name)}
+                            helperText={formErrors.name}
+                            autoFocus={!isEditing}
+                            sx={{ mb: 1 }}
+                        />
+                    </Grid>
+                    <Grid item xs={12}>
+                        <TextField
+                            label="Description (Optional)"
+                            name="description"
+                            value={formData.description}
+                            onChange={handleChange}
+                            fullWidth
+                            multiline
+                            rows={3}
+                            disabled={isSubmitting || initialLoading}
+                            placeholder="Optional: A brief description of the special category"
+                            error={Boolean(formErrors.description)}
+                            helperText={formErrors.description}
+                        />
+                    </Grid>
+                </Grid>
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 3 }}>
+                    <Button
+                        variant="outlined"
+                        color="secondary"
+                        onClick={() => navigate('/dashboard/special-categories')}
+                        disabled={isSubmitting}
+                    >
                         Cancel
-                    </button>
-                </div>
-            </form>
-        </div>
+                    </Button>
+                    <Button
+                        variant="contained"
+                        color="primary"
+                        type="submit"
+                        disabled={isSubmitting || initialLoading || (userCan && !userCan(requiredPermission))}
+                    >
+                        {isSubmitting ? <CircularProgress size={24} sx={{color: 'white'}} /> : (isEditing ? 'Update Category' : 'Create Category')}
+                    </Button>
+                </Box>
+            </Box>
+        </Paper>
     );
 }
 

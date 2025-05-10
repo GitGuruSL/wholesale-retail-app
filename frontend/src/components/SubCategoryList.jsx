@@ -1,155 +1,234 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-
-// You can reuse styles or define specific ones
-const styles = { // Using similar styles for consistency
-    container: { padding: '20px', fontFamily: 'Arial, sans-serif', maxWidth: '1000px', margin: '0 auto' },
-    title: { marginBottom: '20px', color: '#333', textAlign: 'center' },
-    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
-    errorText: { color: '#D8000C', fontWeight: 'bold' },
-    feedbackBox: { padding: '10px 15px', marginBottom: '15px', borderRadius: '4px', textAlign: 'center', border: '1px solid' },
-    feedbackSuccess: { borderColor: 'green', color: 'green', backgroundColor: '#e6ffed' },
-    feedbackError: { borderColor: 'red', color: 'red', backgroundColor: '#ffe6e6' },
-    addButtonLink: { textDecoration: 'none', display: 'block', textAlign: 'right', marginBottom: '15px' },
-    button: { padding: '8px 12px', margin: '0 5px 0 0', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9em' },
-    buttonAdd: { backgroundColor: '#28a745', color: 'white'},
-    buttonEdit: { backgroundColor: '#ffc107', color: '#000' },
-    buttonDelete: { backgroundColor: '#dc3545', color: 'white' },
-    table: { width: '100%', borderCollapse: 'collapse', marginTop: '0px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
-    tableHeader: { backgroundColor: '#e9ecef' },
-    tableCell: { padding: '12px 10px', textAlign: 'left', verticalAlign: 'middle', borderBottom: '1px solid #dee2e6' },
-    actionsCell: { whiteSpace: 'nowrap' },
-    tableRowOdd: { backgroundColor: '#fff' },
-    tableRowEven: { backgroundColor: '#f8f9fa' }
-};
+import apiInstance from '../services/api'; // Import apiInstance directly
+import {
+  Paper, Box, Typography, Table, TableHead, TableRow, TableCell,
+  TableBody, Button, Alert, CircularProgress, IconButton, Tooltip
+} from '@mui/material';
+import { FaEdit, FaTrashAlt, FaPlus } from 'react-icons/fa';
 
 function SubCategoryList() {
-    const [subCategories, setSubCategories] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [feedback, setFeedback] = useState({ message: null, type: null });
-    const navigate = useNavigate();
-    const { apiInstance, isAuthenticated, isLoading: authLoading } = useAuth();
+  const [subCategories, setSubCategories] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [pageError, setPageError] = useState(null);
+  const [feedback, setFeedback] = useState({ message: null, type: null });
 
-    const fetchSubCategories = useCallback(async () => {
-        if (!isAuthenticated || !apiInstance) {
-            setError("User not authenticated or API client not available.");
-            setLoading(false);
-            return;
-        }
-        setLoading(true);
-        setError(null);
-        setFeedback({ message: null, type: null });
-        try {
-            // Assuming your API endpoint for subcategories is /sub-categories
-            const response = await apiInstance.get('/sub-categories');
-            setSubCategories(response.data || []);
-        } catch (err) {
-            console.error("Error fetching sub-categories:", err);
-            const errorMsg = err.response?.data?.message || err.message || 'Failed to fetch sub-categories.';
-            setError(errorMsg);
-        } finally {
-            setLoading(false);
-        }
-    }, [apiInstance, isAuthenticated]);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { isAuthenticated, isLoading: authLoading, userCan } = useAuth();
 
-    useEffect(() => {
-        if (!authLoading && isAuthenticated && apiInstance) {
-            fetchSubCategories();
-        } else if (!authLoading && !isAuthenticated) {
-            setError("Please log in to view sub-categories.");
-            setLoading(false);
-        } else if (!authLoading && !apiInstance) {
-            setError("API client not available. Cannot fetch sub-categories.");
-            setLoading(false);
-        }
-    }, [authLoading, isAuthenticated, apiInstance, fetchSubCategories]);
+  console.log('[SubCategoryList] Auth State: isAuthenticated:', isAuthenticated, 'authLoading:', authLoading, 'userCan available:', !!userCan);
 
-    const handleDelete = async (subCategoryId, subCategoryName) => {
-        if (!apiInstance) {
-            setFeedback({ message: "API client not available.", type: 'error' });
-            return;
-        }
-        if (!window.confirm(`Are you sure you want to delete sub-category: "${subCategoryName}" (ID: ${subCategoryId})?`)) {
-            return;
-        }
-        setError(null);
-        try {
-            await apiInstance.delete(`/sub-categories/${subCategoryId}`);
-            setFeedback({ message: `Sub-category "${subCategoryName}" deleted successfully.`, type: 'success' });
-            setSubCategories(prevSubCategories => prevSubCategories.filter(sc => sc.id !== subCategoryId));
-        } catch (err) {
-            console.error(`Error deleting sub-category ${subCategoryId}:`, err);
-            const errorMsg = err.response?.data?.message || err.message || 'Failed to delete sub-category.';
-            setFeedback({ message: errorMsg, type: 'error' });
-        } finally {
-            setTimeout(() => setFeedback({ message: null, type: null }), 5000);
-        }
-    };
+  useEffect(() => {
+    if (location.state?.message) {
+      setFeedback({ message: location.state.message, type: location.state.type || 'success' });
+      navigate(location.pathname, { replace: true, state: {} });
+      const timer = setTimeout(() => setFeedback({ message: null, type: null }), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [location.state, navigate, location.pathname]);
 
-    if (authLoading) return <div style={styles.centeredMessage}>Authenticating...</div>;
-    if (loading) return <div style={styles.centeredMessage}>Loading sub-categories...</div>;
-    if (error && subCategories.length === 0) return <div style={{ ...styles.centeredMessage, ...styles.errorText }}>Error: {error}</div>;
+  const fetchSubCategories = useCallback(async () => {
+    if (!isAuthenticated) {
+      setPageError("User not authenticated. Cannot fetch sub-categories.");
+      setIsLoading(false);
+      setSubCategories([]);
+      return;
+    }
+    setIsLoading(true);
+    setPageError(null);
+    try {
+      console.log('[SubCategoryList] Fetching sub-categories with include=category...');
+      const response = await apiInstance.get('/sub-categories?include=category');
+      console.log('[SubCategoryList] API Response for sub-categories:', response.data);
+      const dataToSet = response.data?.data || response.data || [];
+      setSubCategories(dataToSet);
+      if (dataToSet.length > 0) {
+        console.log('[SubCategoryList] First sub-category data for inspection (parent category):', dataToSet[0]);
+      }
+    } catch (err) {
+      console.error("[SubCategoryList] Error fetching sub-categories:", err);
+      const errorMsg = err.response?.data?.message || err.message || 'Failed to fetch sub-categories.';
+      setPageError(errorMsg);
+      setSubCategories([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated]);
 
+  useEffect(() => {
+    if (!authLoading) {
+      if (isAuthenticated) {
+        fetchSubCategories();
+      } else {
+        setPageError("Please log in to view sub-categories.");
+        setIsLoading(false);
+        setSubCategories([]);
+      }
+    }
+  }, [authLoading, isAuthenticated, fetchSubCategories]);
+
+  const handleDelete = async (subCategoryId, subCategoryName) => {
+    // ... (keep existing handleDelete logic)
+    if (!isAuthenticated) {
+      setFeedback({ message: "Authentication error. Please log in again.", type: 'error' });
+      return;
+    }
+    if (userCan && !userCan('sub_category:delete')) {
+        setFeedback({ message: "You don't have permission to delete sub-categories.", type: 'error' });
+        setTimeout(() => setFeedback({ message: null, type: null }), 5000);
+        return;
+    }
+    if (window.confirm(`Are you sure you want to delete sub-category: "${subCategoryName}" (ID: ${subCategoryId})?`)) {
+      setPageError(null);
+      setIsLoading(true);
+      try {
+        await apiInstance.delete(`/sub-categories/${subCategoryId}`);
+        setFeedback({ message: `Sub-category "${subCategoryName}" deleted successfully.`, type: 'success' });
+        setSubCategories(prevSubCategories => prevSubCategories.filter(sc => sc.id !== subCategoryId));
+      } catch (err) {
+        console.error(`Error deleting sub-category ${subCategoryId}:`, err);
+        const errorMsg = err.response?.data?.message || err.message || 'Failed to delete sub-category.';
+        setFeedback({ message: errorMsg, type: 'error' });
+      } finally {
+        setIsLoading(false);
+        const timer = setTimeout(() => setFeedback({ message: null, type: null }), 5000);
+      }
+    }
+  };
+
+  const canCreate = userCan && userCan('subcategory:create');
+  const canEdit = userCan && userCan('subcategory:update');
+  const canDelete = userCan && userCan('subcategory:delete');
+
+  console.log('[SubCategoryList] Permissions: canCreate:', canCreate, 'canEdit:', canEdit, 'canDelete:', canDelete);
+
+  if (authLoading) {
+    return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /><Typography sx={{ml:1}}>Authenticating...</Typography></Box>;
+  }
+
+  if (isLoading && !pageError && subCategories.length === 0) {
+    return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /><Typography sx={{ml:1}}>Loading sub-categories...</Typography></Box>;
+  }
+
+  if (pageError && subCategories.length === 0) {
     return (
-        <div style={styles.container}>
-            <h2 style={styles.title}>Manage Sub-Categories</h2>
-            {feedback.message && (
-                <div style={{ ...styles.feedbackBox, ...(feedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError) }}>
-                    {feedback.message}
-                </div>
-            )}
-            {error && subCategories.length > 0 && !feedback.message && (
-                 <p style={{...styles.errorText, textAlign: 'center', marginBottom: '10px'}}>
-                    Warning: An operation failed. Error: {error}
-                 </p>
-            )}
-            <Link to="/dashboard/sub-categories/new" style={styles.addButtonLink}>
-                <button style={{...styles.button, ...styles.buttonAdd}}>Add New Sub-Category</button>
-            </Link>
-            {subCategories.length === 0 && !loading && !error ? (
-                <p style={styles.centeredMessage}>No sub-categories found. Click "Add New Sub-Category" to create one.</p>
-            ) : (
-                <table style={styles.table}>
-                    <thead style={styles.tableHeader}>
-                        <tr>
-                            <th style={styles.tableCell}>ID</th>
-                            <th style={styles.tableCell}>Name</th>
-                            {/* You might want to display the parent category name here */}
-                            {/* <th style={styles.tableCell}>Parent Category</th> */}
-                            <th style={styles.tableCell}>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {subCategories.map((subCategory, index) => (
-                            <tr key={subCategory.id} style={index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd}>
-                                <td style={styles.tableCell}>{subCategory.id}</td>
-                                <td style={styles.tableCell}>{subCategory.name}</td>
-                                {/* <td style={styles.tableCell}>{subCategory.category?.name || 'N/A'}</td> */}
-                                <td style={{...styles.tableCell, ...styles.actionsCell}}>
-                                    <button
-                                        onClick={() => navigate(`/dashboard/sub-categories/edit/${subCategory.id}`)}
-                                        style={{...styles.button, ...styles.buttonEdit}}
-                                        title="Edit Sub-Category"
-                                    >
-                                        Edit
-                                    </button>
-                                    <button
-                                        onClick={() => handleDelete(subCategory.id, subCategory.name)}
-                                        style={{...styles.button, ...styles.buttonDelete}}
-                                        title="Delete Sub-Category"
-                                    >
-                                        Delete
-                                    </button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            )}
-        </div>
+        <Paper sx={{ p: 3, m: 2 }}>
+            <Typography variant="h5" align="center" gutterBottom>Manage Sub-Categories</Typography>
+            <Alert severity="error" sx={{ mb: 2 }}>{pageError}</Alert>
+            {isAuthenticated && canCreate &&
+                <Box sx={{ textAlign: 'right', mb: 2 }}>
+                    <Button variant="contained" color="primary" component={RouterLink} to="/dashboard/sub-categories/new" startIcon={<FaPlus />}>
+                        Add New Sub-Category
+                    </Button>
+                </Box>
+            }
+        </Paper>
     );
+  }
+
+  return (
+    <Paper sx={{ p: 3, m: 2, overflowX: 'auto' }}>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h5">Manage Sub-Categories</Typography>
+        {isAuthenticated && canCreate && (
+          <Button
+            variant="contained"
+            color="primary"
+            component={RouterLink}
+            to="/dashboard/sub-categories/new"
+            startIcon={<FaPlus />}
+          >
+            Add New Sub-Category
+          </Button>
+        )}
+      </Box>
+
+      {feedback.message && (
+        <Alert severity={feedback.type === 'error' ? 'error' : 'success'} sx={{ mb: 2 }} onClose={() => setFeedback({ message: null, type: null })}>
+          {feedback.message}
+        </Alert>
+      )}
+      {pageError && subCategories.length > 0 && (
+         <Alert severity="warning" sx={{ mb: 2 }}>
+          {pageError}
+        </Alert>
+      )}
+
+      {!isLoading && subCategories.length === 0 && !pageError && (
+        <Alert severity="info" sx={{ textAlign: 'center' }}>
+          No sub-categories found.
+          {isAuthenticated && canCreate ? " Click 'Add New Sub-Category' to create one." : ""}
+        </Alert>
+      )}
+
+      {subCategories.length > 0 && (
+        <Table sx={{ minWidth: 650 }} aria-label="sub-categories table">
+          <TableHead sx={{ '& th': { fontWeight: 'bold' } }}>
+            <TableRow>
+              <TableCell>ID</TableCell>
+              <TableCell>Name</TableCell>
+              <TableCell>Parent Category</TableCell>
+              <TableCell align="center">Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {subCategories.map((subCategory) => {
+              // Log the subCategory object to inspect its structure, especially for the parent category
+             if (subCategories.indexOf(subCategory) === 0) { // Log only the first one to avoid flooding console
+                console.log('[SubCategoryList] Rendering subCategory item:', subCategory);
+              }
+              // Updated to use the direct field from your API response
+              const parentCategoryName = subCategory.category_name || 'N/A';
+
+              return (
+                <TableRow hover key={subCategory.id} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+                  <TableCell component="th" scope="row">{subCategory.id}</TableCell>
+                  <TableCell>{subCategory.name}</TableCell>
+                  <TableCell>{parentCategoryName}</TableCell>
+                  <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
+                    {/* This section will only render if canEdit and canDelete become true after fixing permissions */}
+                    {isAuthenticated && canEdit && (
+                      <Tooltip title="Edit Sub-Category">
+                        <IconButton
+                          color="primary"
+                          size="small"
+                          sx={{ mr: 0.5 }}
+                          onClick={() => navigate(`/dashboard/sub-categories/edit/${subCategory.id}`)}
+                        >
+                          <FaEdit />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                    {isAuthenticated && canDelete && (
+                      <Tooltip title="Delete Sub-Category">
+                        <IconButton
+                          color="error"
+                          size="small"
+                          onClick={() => handleDelete(subCategory.id, subCategory.name)}
+                          disabled={isLoading} // Disable during general loading state
+                        >
+                          <FaTrashAlt />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                    {/* Simplified "No actions" text condition */}
+                    {isAuthenticated && !canEdit && !canDelete && (
+                      <Typography variant="caption" color="text.secondary">No actions</Typography>
+                    )}
+                    {!isAuthenticated && ( // If not authenticated, show no actions
+                         <Typography variant="caption" color="text.secondary">Log in for actions</Typography>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      )}
+    </Paper>
+  );
 }
 
 export default SubCategoryList;

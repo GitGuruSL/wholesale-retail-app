@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Paper, TextField, Button, Typography } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
+import apiInstance from '../services/api';
 
 function CompanyProfile() {
   const { apiInstance } = useAuth();

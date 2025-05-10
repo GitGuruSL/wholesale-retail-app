@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
 import {
     Drawer, List, ListItem, ListItemIcon, ListItemText, Divider, IconButton,
-    Typography, Box, Collapse, Tooltip
+    Typography, Box, Collapse, Tooltip, ListItemButton
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -23,11 +23,9 @@ import BusinessIcon from '@mui/icons-material/Business';
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
 import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
-import AccountCircleIcon from '@mui/icons-material/AccountCircle'; // For user icon
+import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import SettingsApplicationsIcon from '@mui/icons-material/SettingsApplications';
-
-// --- Icons for new items ---
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import PrecisionManufacturingIcon from '@mui/icons-material/PrecisionManufacturing';
@@ -35,13 +33,13 @@ import StraightenIcon from '@mui/icons-material/Straighten';
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest';
 
+// Aliases for icons if needed
+const SubCategoryIcon = CategoryIcon; // Example, adjust as needed
+const BrandIcon = StoreIcon; // Example, adjust as needed
+const SpecialCategoryIcon = CategoryIcon; // Example, adjust as needed
+const SupplierIcon = PeopleIcon; // Example, adjust as needed
 
-const SubCategoryIcon = CategoryIcon; // Placeholder
-const BrandIcon = StoreIcon; // Placeholder
-const SpecialCategoryIcon = CategoryIcon; // Placeholder
-const SupplierIcon = PeopleIcon; // Placeholder
-
-import { useAuth } from '../context/AuthContext'; // Ensure path is correct
+import { useAuth } from '../context/AuthContext';
 
 const StyledDrawer = styled(Drawer, { shouldForwardProp: (prop) => prop !== 'open' && prop !== 'drawerWidth' })(
     ({ theme, open, drawerWidth }) => ({
@@ -71,28 +69,12 @@ const StyledDrawer = styled(Drawer, { shouldForwardProp: (prop) => prop !== 'ope
 
 const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
     const location = useLocation();
-    const { user, logout } = useAuth(); // Correctly destructure logout
+    const { user, logout, userCan } = useAuth();
     const [openSections, setOpenSections] = useState({});
 
-    useEffect(() => {
-        if (user) {
-            // console.log("Sidebar: User data:", JSON.stringify(user));
-            // console.log("Sidebar: User permissions:", JSON.stringify(user?.permissions));
-        }
-    }, [user]);
-
-    const hasPermission = (requiredPermission) => {
-        if (!requiredPermission) return true; // No permission needed
-        if (!user || !user.permissions) return false; // User or permissions not available
-        return user.permissions.includes(requiredPermission);
-    };
-
-    const handleMenuClick = (sectionId) => {
-        setOpenSections(prev => ({ ...prev, [sectionId]: !prev[sectionId] }));
-    };
-
+    // --- DEFINE MENU DATA STRUCTURES FIRST ---
     const mainMenuItems = [
-        { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard', requiredPermission: 'user:read_self' }, // Example permission
+        { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard', requiredPermission: 'user:read_self' },
         { text: 'Stores', icon: <StoreIcon />, path: '/dashboard/stores', requiredPermission: 'store:read' },
         { text: 'Products', icon: <ListAltIcon />, path: '/dashboard/products', requiredPermission: 'product:read' },
         { text: 'Customers', icon: <PeopleIcon />, path: '/dashboard/customers', requiredPermission: 'customer:read' },
@@ -101,7 +83,7 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
 
     const collapsibleSectionsData = [
         {
-            id: "productCatalog", label: "Product Catalog", icon: <CategoryIcon />, requiredPermission: 'product:read', // Broad permission for section
+            id: "productCatalog", label: "Product Catalog", icon: <CategoryIcon />, requiredPermission: 'product:read',
             items: [
                 { text: 'Categories', icon: <CategoryIcon />, path: '/dashboard/categories', requiredPermission: 'category:read' },
                 { text: 'Sub-Categories', icon: <SubCategoryIcon />, path: '/dashboard/sub-categories', requiredPermission: 'subcategory:read' },
@@ -166,6 +148,32 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
             ]
         },
     ];
+    // --- END OF MENU DATA DEFINITIONS ---
+
+    const hasPermission = useCallback((requiredPermission) => {
+        if (!requiredPermission) return true;
+        if (userCan) {
+            return userCan(requiredPermission);
+        }
+        if (!user || !user.permissions) return false;
+        return user.permissions.includes(requiredPermission);
+    }, [user, userCan]);
+
+    useEffect(() => {
+        // Pre-open sections if a sub-item is active and the sidebar is open
+        if (open && collapsibleSectionsData) { // Ensure collapsibleSectionsData is defined
+            const activeSection = collapsibleSectionsData.find(section =>
+                section.items.some(item => location.pathname.startsWith(item.path))
+            );
+            if (activeSection && !openSections[activeSection.id]) {
+                setOpenSections(prev => ({ ...prev, [activeSection.id]: true }));
+            }
+        }
+    }, [location.pathname, open, collapsibleSectionsData, openSections]); // collapsibleSectionsData is a dependency
+
+    const handleMenuClick = (sectionId) => {
+        setOpenSections(prev => ({ ...prev, [sectionId]: !prev[sectionId] }));
+    };
 
     const filteredMainMenuItems = mainMenuItems.filter(item => hasPermission(item.requiredPermission));
 
@@ -174,24 +182,25 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
             return null;
         }
         const filteredSubItems = section.items.filter(subItem => hasPermission(subItem.requiredPermission));
-        
-        if (section.path && filteredSubItems.length === 0) {
-             return (
+
+        if (section.path && filteredSubItems.length === 0) { // Section is a direct link with no visible sub-items
+            return (
                 <Tooltip title={!open ? section.label : ""} placement="right" key={section.id} disableHoverListener={open}>
-                    <ListItem
-                        button
-                        component={RouterLink}
-                        to={section.path}
-                        selected={location.pathname === section.path || location.pathname.startsWith(section.path + '/')}
-                    >
-                        <ListItemIcon>{section.icon}</ListItemIcon>
-                        {open && <ListItemText primary={section.label} />}
+                    <ListItem disablePadding>
+                        <ListItemButton
+                            component={RouterLink}
+                            to={section.path}
+                            selected={location.pathname === section.path || location.pathname.startsWith(section.path + '/')}
+                        >
+                            <ListItemIcon>{section.icon}</ListItemIcon>
+                            {open && <ListItemText primary={section.label} />}
+                        </ListItemButton>
                     </ListItem>
                 </Tooltip>
             );
         }
 
-        if (filteredSubItems.length === 0 && !section.path) {
+        if (filteredSubItems.length === 0 && !section.path) { // No sub-items and section is not a link itself
             return null;
         }
 
@@ -209,15 +218,15 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
                         <List component="div" disablePadding sx={{ pl: open ? 4 : 1 }}>
                             {filteredSubItems.map((item) => (
                                 <Tooltip title={!open ? item.text : ""} placement="right" key={item.text} disableHoverListener={open}>
-                                    <ListItem
-                                        button
-                                        component={RouterLink}
-                                        to={item.path}
-                                        selected={location.pathname === item.path || location.pathname.startsWith(item.path + '/')}
-                                        sx={{ py: open ? 1 : 1.5, pl: open ? 2 : 'auto' }}
-                                    >
-                                        <ListItemIcon>{item.icon}</ListItemIcon>
-                                        {open && <ListItemText primary={item.text} />}
+                                    <ListItem disablePadding sx={{ py: open ? 0 : 0.25 }}>
+                                        <ListItemButton
+                                            component={RouterLink}
+                                            to={item.path}
+                                            selected={location.pathname === item.path || location.pathname.startsWith(item.path + '/')}
+                                        >
+                                            <ListItemIcon>{item.icon}</ListItemIcon>
+                                            {open && <ListItemText primary={item.text} />}
+                                        </ListItemButton>
                                     </ListItem>
                                 </Tooltip>
                             ))}
@@ -234,17 +243,16 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
                 sx={(theme) => ({
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between', // Changed to space-between
-                    padding: theme.spacing(0, 1),
-                    ...theme.mixins.toolbar,
+                    justifyContent: 'space-between', // Distributes space
+                    padding: theme.spacing(0, 1), // Standard padding
+                    ...theme.mixins.toolbar, // Necessary for height
                 })}
             >
                 {open && (
-                    <Typography component="h1" variant="h6" color="inherit" noWrap sx={{ ml: 1 }}>
-                        App Name
+                    <Typography component="h1" variant="h6" color="inherit" noWrap sx={{ ml: 1, flexGrow: 1 }}>
+                        App Name {/* Or your dynamic app name/logo */}
                     </Typography>
                 )}
-                {/* {!open && <Box sx={{ flexGrow: 1 }} />} Removed to allow IconButton to be at the end */}
                 <IconButton onClick={handleDrawerToggle}>
                     {open ? <ChevronLeftIcon /> : <MenuIcon />}
                 </IconButton>
@@ -255,38 +263,38 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
                 <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
                     <AccountCircleIcon sx={{ fontSize: 40, mb: 1, color: 'text.secondary' }} />
                     <Typography variant="subtitle1" noWrap>
-                        {user.name || user.username || user.email || "User"}
+                        {user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : (user.username || user.email || "User")}
                     </Typography>
-                    {(user.role_display_name || user.role_name) && ( // Check for role_display_name first
+                    {(user.role_display_name || user.role_name) && (
                         <Typography variant="caption" color="text.secondary" noWrap>
-                            {user.role_display_name || user.role_name} {/* Use role_display_name, fallback to role_name */}
+                            {user.role_display_name || user.role_name}
                         </Typography>
                     )}
                 </Box>
             )}
             {open && user && <Divider sx={{ mb: 1 }} />}
 
-            <List component="nav" sx={{ pt: 0, pb: 0, flexGrow: 1, overflowY: 'auto' }}> {/* Added flexGrow and overflowY */}
+            <List component="nav" sx={{ pt: 0, pb: 0, flexGrow: 1, overflowY: 'auto' }}>
                 {filteredMainMenuItems.map((item) => (
                     <Tooltip title={!open ? item.text : ""} placement="right" key={item.text} disableHoverListener={open}>
-                        <ListItem
-                            button
-                            component={RouterLink}
-                            to={item.path}
-                            selected={item.path === '/dashboard' ? location.pathname === item.path : location.pathname.startsWith(item.path)}
-                        >
-                            <ListItemIcon>{item.icon}</ListItemIcon>
-                            {open && <ListItemText primary={item.text} />}
+                        <ListItem disablePadding>
+                            <ListItemButton
+                                component={RouterLink}
+                                to={item.path}
+                                selected={item.path === '/dashboard' ? location.pathname === item.path : location.pathname.startsWith(item.path)}
+                            >
+                                <ListItemIcon>{item.icon}</ListItemIcon>
+                                {open && <ListItemText primary={item.text} />}
+                            </ListItemButton>
                         </ListItem>
                     </Tooltip>
                 ))}
                 <Divider sx={{ my: 1 }} />
                 {collapsibleSectionsData.map(section => renderCollapsibleMenu(section))}
             </List>
-            {/* <Box sx={{ flexGrow: 1 }} /> Removed as List now handles flexGrow */}
             <Divider />
             <Tooltip title={!open ? "Logout" : ""} placement="right" disableHoverListener={open}>
-                <ListItem button onClick={logout}> {/* Corrected to use logout directly */}
+                <ListItem button onClick={logout}>
                     <ListItemIcon><LogoutIcon /></ListItemIcon>
                     {open && <ListItemText primary="Logout" />}
                 </ListItem>

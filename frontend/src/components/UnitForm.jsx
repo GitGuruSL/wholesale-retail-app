@@ -1,147 +1,221 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import apiInstance from '../services/api'; // Import apiInstance directly
+import {
+    Paper, Typography, TextField, Button, Box, Alert, CircularProgress, Grid
+} from '@mui/material';
 
-// Consistent styling (can be shared or component-specific)
-const styles = {
-    formContainer: { padding: '20px', maxWidth: '600px', margin: '20px auto', boxShadow: '0 0 10px rgba(0,0,0,0.1)', borderRadius: '8px', backgroundColor: '#fff' },
-    title: { textAlign: 'center', color: '#333', marginBottom: '25px'},
-    formGroup: { marginBottom: '20px' },
-    label: { display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#555' },
-    input: { width: '100%', padding: '12px', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box', fontSize: '1em' },
-    buttonContainer: { marginTop: '25px', textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: '10px' },
-    button: { padding: '10px 20px', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '1em', fontWeight: 'bold' },
-    buttonSave: { backgroundColor: '#28a745', color: 'white' },
-    buttonCancel: { backgroundColor: '#6c757d', color: 'white' },
-    errorText: { color: 'red', marginBottom: '15px', textAlign: 'center' },
-    formSpecificErrorText: { color: 'red', fontSize: '0.9em', marginTop: '5px'},
-    centeredMessage: { textAlign: 'center', padding: '30px', fontSize: '1.1em', color: '#666' }
-};
-
-const UnitForm = () => {
-    const { unitId } = useParams(); // For edit mode
+function UnitForm() {
+    const { unitId } = useParams();
     const navigate = useNavigate();
-    const { apiInstance, isAuthenticated, isLoading: authLoading } = useAuth(); // Using api.js via AuthContext
+    const { isAuthenticated, isLoading: authLoading, userCan } = useAuth();
+    const isEditing = Boolean(unitId);
 
-    const [name, setUnitName] = useState('');
-    // const [abbreviation, setAbbreviation] = useState(''); // If you have an abbreviation field
-
-    const [isLoading, setIsLoading] = useState(false); // For form submission and data fetching
+    const initialFormData = { name: '' /*, abbreviation: '' */ }; // Add abbreviation if needed
+    const [formData, setFormData] = useState(initialFormData);
+    const [initialLoading, setInitialLoading] = useState(isEditing); // For fetching existing data
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [pageError, setPageError] = useState(null);
-    const [formError, setFormError] = useState('');
+    const [formErrors, setFormErrors] = useState({}); // For field-specific errors
 
-    const isEditMode = Boolean(unitId);
+    const requiredPermission = isEditing ? 'unit:update' : 'unit:create';
 
     const fetchUnitDetails = useCallback(async () => {
-        if (!isEditMode || !apiInstance || !isAuthenticated) return;
+        if (!isEditing || !isAuthenticated || !unitId) return;
 
-        console.log(`[UnitForm] Fetching unit details for ID: ${unitId}`);
-        setIsLoading(true);
+        setInitialLoading(true);
         setPageError(null);
+        setFormErrors({});
         try {
             const response = await apiInstance.get(`/units/${unitId}`);
-            setUnitName(response.data.name);
-            // setAbbreviation(response.data.abbreviation || '');
-            console.log("[UnitForm] Unit data fetched:", response.data);
+            setFormData({
+                name: response.data.name || '',
+                // abbreviation: response.data.abbreviation || '' // Uncomment if using abbreviation
+            });
         } catch (err) {
             console.error("[UnitForm] Failed to fetch unit:", err);
-            setPageError(err.response?.data?.message || "Failed to load unit data. Please try again.");
+            setPageError(err.response?.data?.message || "Failed to load unit data. You may not have permission or the item does not exist.");
         } finally {
-            setIsLoading(false);
+            setInitialLoading(false);
         }
-    }, [unitId, apiInstance, isAuthenticated, isEditMode]);
+    }, [unitId, isAuthenticated, isEditing]);
 
     useEffect(() => {
-        if (isEditMode && !authLoading && isAuthenticated && apiInstance) {
-            fetchUnitDetails();
-        }
-    }, [isEditMode, fetchUnitDetails, authLoading, isAuthenticated, apiInstance]);
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (!apiInstance || !isAuthenticated) {
-            setPageError("Authentication error. Please log in again.");
-            return;
-        }
-        if (!name.trim()) {
-            setFormError("Unit name cannot be empty.");
-            return;
-        }
-        setFormError('');
-        setIsLoading(true);
-        setPageError(null);
-
-        const unitData = { name /*, abbreviation */ };
-        console.log("[UnitForm] Submitting data:", unitData);
-
-        try {
-            if (isEditMode) {
-                await apiInstance.put(`/units/${unitId}`, unitData);
-                console.log("[UnitForm] Unit updated successfully.");
+        if (!authLoading) {
+            if (!isAuthenticated) {
+                setPageError("Please log in to manage units.");
+                setInitialLoading(false);
+                return;
+            }
+            if (userCan && !userCan(requiredPermission)) {
+                setPageError(`You do not have permission to ${isEditing ? 'edit' : 'create'} units.`);
+                setInitialLoading(false);
+                return;
+            }
+            if (isEditing) {
+                fetchUnitDetails();
             } else {
-                await apiInstance.post('/units', unitData);
-                console.log("[UnitForm] Unit created successfully.");
+                // Reset form for 'create' mode
+                setFormData(initialFormData);
+                setPageError(null);
+                setFormErrors({});
+                setInitialLoading(false);
             }
-            navigate('/dashboard/units', { state: { message: `Unit "${name}" ${isEditMode ? 'updated' : 'created'} successfully.`, type: 'success' } });
-        } catch (err) {
-            console.error("[UnitForm] Failed to save unit:", err);
-            const errMsg = err.response?.data?.message || `Failed to ${isEditMode ? 'update' : 'create'} unit.`;
-            setPageError(errMsg);
-             if (err.response?.data?.errors) {
-                setFormError(Object.values(err.response.data.errors).join(', '));
-            }
-        } finally {
-            setIsLoading(false);
+        }
+    }, [isEditing, authLoading, isAuthenticated, userCan, requiredPermission, fetchUnitDetails]);
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+        if (formErrors[name]) {
+            setFormErrors(prev => ({ ...prev, [name]: null }));
         }
     };
 
-    if (authLoading) return <p style={styles.centeredMessage}>Authenticating...</p>;
-    if (!isAuthenticated) return <p style={styles.centeredMessage}>Please log in to manage units.</p>;
-    if (isLoading && isEditMode && !name) return <p style={styles.centeredMessage}>Loading unit data...</p>;
+    const validateForm = () => {
+        const errors = {};
+        if (!formData.name.trim()) {
+            errors.name = "Unit name cannot be empty.";
+        }
+        // Add validation for abbreviation if needed
+        setFormErrors(errors);
+        return Object.keys(errors).length === 0;
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!isAuthenticated) {
+            setPageError("Authentication error. Please log in again.");
+            return;
+        }
+        if (userCan && !userCan(requiredPermission)) {
+            setPageError(`You do not have permission to ${isEditing ? 'update' : 'create'} this unit.`);
+            return;
+        }
+        if (!validateForm()) {
+            return;
+        }
+
+        setIsSubmitting(true);
+        setPageError(null);
+
+        const unitDataPayload = {
+            name: formData.name.trim(),
+            // abbreviation: formData.abbreviation.trim() === '' ? null : formData.abbreviation.trim(), // Uncomment if using
+        };
+
+        try {
+            if (isEditing) {
+                await apiInstance.put(`/units/${unitId}`, unitDataPayload);
+            } else {
+                await apiInstance.post('/units', unitDataPayload);
+            }
+            navigate('/dashboard/units', {
+                state: {
+                    message: `Unit "${unitDataPayload.name}" ${isEditing ? 'updated' : 'created'} successfully.`,
+                    type: 'success'
+                }
+            });
+        } catch (err) {
+            console.error("[UnitForm] Error saving unit:", err);
+            const errMsg = err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} unit.`;
+            setPageError(errMsg);
+            if (err.response?.data?.errors) {
+                const backendErrors = {};
+                for (const key in err.response.data.errors) {
+                    backendErrors[key] = err.response.data.errors[key].join(', ');
+                }
+                setFormErrors(prev => ({ ...prev, ...backendErrors }));
+            }
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    if (authLoading) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+    }
+    if (initialLoading && isEditing) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+    }
+
+    if ((!isAuthenticated || (userCan && !userCan(requiredPermission))) && pageError) {
+        return (
+            <Paper sx={{ p: 3, m: 2, maxWidth: 600, mx: 'auto' }}>
+                <Typography variant="h5" align="center" gutterBottom>
+                    {isEditing ? 'Edit Unit' : 'Add New Unit'}
+                </Typography>
+                <Alert severity="error">{pageError}</Alert>
+                <Button variant="outlined" sx={{ mt: 2 }} onClick={() => navigate('/dashboard/units')}>
+                    Back to List
+                </Button>
+            </Paper>
+        );
+    }
 
     return (
-        <div style={styles.formContainer}>
-            <h2 style={styles.title}>{isEditMode ? 'Edit Unit' : 'Add New Unit'}</h2>
-            {pageError && <p style={styles.errorText}>{pageError}</p>}
-            <form onSubmit={handleSubmit}>
-                <div style={styles.formGroup}>
-                    <label htmlFor="unitName" style={styles.label}>Unit Name:</label>
-                    <input
-                        type="text"
-                        id="unitName"
-                        style={styles.input}
-                        value={name}
-                        onChange={(e) => setUnitName(e.target.value)}
-                        placeholder="e.g., Kilogram, Piece, Liter"
-                    />
-                    {formError && <p style={styles.formSpecificErrorText}>{formError}</p>}
-                </div>
-
-                {/* Example for abbreviation:
-                <div style={styles.formGroup}>
-                    <label htmlFor="abbreviation" style={styles.label}>Abbreviation (Optional):</label>
-                    <input
-                        type="text"
-                        id="abbreviation"
-                        style={styles.input}
-                        value={abbreviation}
-                        onChange={(e) => setAbbreviation(e.target.value)}
-                        placeholder="e.g., kg, pc, L"
-                    />
-                </div>
-                */}
-
-                <div style={styles.buttonContainer}>
-                     <button type="button" onClick={() => navigate('/dashboard/units')} style={{...styles.button, ...styles.buttonCancel}} disabled={isLoading}>
+        <Paper sx={{ p: 3, m: 2, maxWidth: 600, mx: 'auto' }}>
+            <Typography variant="h5" align="center" gutterBottom>
+                {isEditing ? `Edit Unit (ID: ${unitId})` : 'Add New Unit'}
+            </Typography>
+            {pageError && !Object.keys(formErrors).length &&
+                <Alert severity="error" sx={{ mb: 2 }}>{pageError}</Alert>
+            }
+            <Box component="form" onSubmit={handleSubmit} noValidate>
+                <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                        <TextField
+                            label="Unit Name"
+                            name="name"
+                            value={formData.name}
+                            onChange={handleChange}
+                            required
+                            fullWidth
+                            disabled={isSubmitting || initialLoading}
+                            placeholder="e.g., Kilogram, Piece, Liter"
+                            error={Boolean(formErrors.name)}
+                            helperText={formErrors.name}
+                            sx={{ mb: 1 }}
+                        />
+                    </Grid>
+                    {/* Uncomment if using abbreviation
+                    <Grid item xs={12}>
+                        <TextField
+                            label="Abbreviation (Optional)"
+                            name="abbreviation"
+                            value={formData.abbreviation}
+                            onChange={handleChange}
+                            fullWidth
+                            disabled={isSubmitting || initialLoading}
+                            placeholder="e.g., kg, pc, L"
+                            error={Boolean(formErrors.abbreviation)}
+                            helperText={formErrors.abbreviation}
+                        />
+                    </Grid>
+                    */}
+                </Grid>
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 3 }}>
+                    <Button
+                        variant="outlined"
+                        color="secondary"
+                        onClick={() => navigate('/dashboard/units')}
+                        disabled={isSubmitting}
+                    >
                         Cancel
-                    </button>
-                    <button type="submit" style={{...styles.button, ...styles.buttonSave}} disabled={isLoading}>
-                        {isLoading ? 'Saving...' : (isEditMode ? 'Update Unit' : 'Create Unit')}
-                    </button>
-                </div>
-            </form>
-        </div>
+                    </Button>
+                    <Button
+                        variant="contained"
+                        color="primary"
+                        type="submit"
+                        disabled={isSubmitting || initialLoading || (userCan && !userCan(requiredPermission))}
+                    >
+                        {isSubmitting ? <CircularProgress size={24} /> : (isEditing ? 'Update Unit' : 'Create Unit')}
+                    </Button>
+                </Box>
+            </Box>
+        </Paper>
     );
-};
+}
 
 export default UnitForm;

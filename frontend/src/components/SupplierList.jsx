@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import apiInstance from '../services/api';
+import {
+    Paper, Typography, Button, Table, TableHead, TableRow, TableCell,
+    TableBody, TableContainer, Box, Alert, CircularProgress
+} from '@mui/material';
+import { FaEdit, FaTrashAlt, FaPlus } from 'react-icons/fa';
 
 function SupplierList() {
     const [suppliers, setSuppliers] = useState([]);
@@ -9,19 +15,20 @@ function SupplierList() {
     const [feedback, setFeedback] = useState({ message: null, type: null });
     const navigate = useNavigate();
     const location = useLocation();
-    const { apiInstance, isAuthenticated, isLoading: authLoading } = useAuth();
+    const { isAuthenticated, isLoading: authLoading, userCan } = useAuth();
 
     useEffect(() => {
         if (location.state?.message) {
             setFeedback({ message: location.state.message, type: location.state.type || 'success' });
             navigate(location.pathname, { replace: true, state: {} });
-            setTimeout(() => setFeedback({ message: null, type: null }), 5000);
+            const timer = setTimeout(() => setFeedback({ message: null, type: null }), 5000);
+            return () => clearTimeout(timer);
         }
     }, [location, navigate]);
 
     const fetchSuppliers = useCallback(async () => {
-        if (!isAuthenticated || !apiInstance) {
-            setPageError("User not authenticated or API client not available.");
+        if (!isAuthenticated) {
+            setPageError("User not authenticated. Cannot fetch suppliers.");
             setIsLoading(false);
             return;
         }
@@ -32,28 +39,33 @@ function SupplierList() {
             setSuppliers(response.data || []);
         } catch (err) {
             console.error("[SupplierList] Error fetching suppliers:", err);
-            const errorMsg = err.response?.data?.message || 'Failed to fetch suppliers.';
-            setPageError(errorMsg);
+            setPageError(err.response?.data?.message || 'Failed to fetch suppliers.');
+            setSuppliers([]);
         } finally {
             setIsLoading(false);
         }
-    }, [apiInstance, isAuthenticated]);
+    }, [isAuthenticated]);
 
     useEffect(() => {
-        if (!authLoading && isAuthenticated && apiInstance) {
-            fetchSuppliers();
-        } else if (!authLoading && !isAuthenticated) {
-            setPageError("Please log in to view suppliers.");
-            setIsLoading(false);
-        } else if (!authLoading && !apiInstance) {
-            setPageError("API client not available. Cannot fetch suppliers.");
-            setIsLoading(false);
+        if (!authLoading) {
+            if (isAuthenticated) {
+                fetchSuppliers();
+            } else {
+                setPageError("Please log in to view suppliers.");
+                setIsLoading(false);
+                setSuppliers([]);
+            }
         }
-    }, [authLoading, isAuthenticated, apiInstance, fetchSuppliers]);
+    }, [authLoading, isAuthenticated, fetchSuppliers]);
 
     const handleDelete = async (supplierId, supplierName) => {
-        if (!apiInstance || !isAuthenticated) {
+        if (!isAuthenticated) {
             setFeedback({ message: "Authentication error. Please log in again.", type: 'error' });
+            return;
+        }
+        if (userCan && !userCan('supplier:delete')) {
+            setFeedback({ message: "You do not have permission to delete suppliers.", type: 'error' });
+            setTimeout(() => setFeedback({ message: null, type: null }), 5000);
             return;
         }
         if (!window.confirm(`Are you sure you want to delete supplier: "${supplierName}" (ID: ${supplierId})?\nThis might fail if the supplier is linked to products.`)) {
@@ -68,111 +80,120 @@ function SupplierList() {
             console.error(`[SupplierList] Error deleting supplier ${supplierId}:`, err);
             const errorMsg = err.response?.data?.message || 'Failed to delete supplier. It might be in use.';
             setFeedback({ message: errorMsg, type: 'error' });
-        } finally {
-            setTimeout(() => setFeedback({ message: null, type: null }), 5000);
         }
+        const timer = setTimeout(() => setFeedback({ message: null, type: null }), 5000);
     };
 
-    if (authLoading) return <div style={styles.centeredMessage}>Authenticating...</div>;
-    if (isLoading) return <div style={styles.centeredMessage}>Loading suppliers...</div>;
-    if (pageError && suppliers.length === 0) return <div style={{ ...styles.centeredMessage, ...styles.errorText }}>Error: {pageError}</div>;
+    if (authLoading) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+    }
+    if (isLoading && !pageError && suppliers.length === 0) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+    }
+
+    if (pageError && suppliers.length === 0) {
+        return (
+            <Paper sx={{ p: 3, m: 2, maxWidth: 1000, mx: 'auto' }}>
+                <Typography variant="h5" align="center" gutterBottom>Manage Suppliers</Typography>
+                <Alert severity="error" sx={{ mb: 2 }}>{pageError}</Alert>
+                {isAuthenticated && userCan && userCan('supplier:create') &&
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+                        <Button variant="contained" color="primary" component={RouterLink} to="/dashboard/suppliers/new" startIcon={<FaPlus />}>
+                            Add New Supplier
+                        </Button>
+                    </Box>
+                }
+            </Paper>
+        );
+    }
 
     return (
-        <div style={styles.container}>
-            <h2 style={styles.title}>Manage Suppliers</h2>
+        <Paper sx={{ p: 3, m: 2, maxWidth: 1000, mx: 'auto' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h5">Manage Suppliers</Typography>
+                {isAuthenticated && userCan && userCan('supplier:create') && (
+                    <Button variant="contained" color="primary" component={RouterLink} to="/dashboard/suppliers/new" startIcon={<FaPlus />}>
+                        Add New Supplier
+                    </Button>
+                )}
+            </Box>
 
             {feedback.message && (
-                <div style={{
-                   ...styles.feedbackBox,
-                   ...(feedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError)
-                }}>
+                <Alert severity={feedback.type === 'error' ? 'error' : 'success'} sx={{ mb: 2 }}>
                     {feedback.message}
-                </div>
+                </Alert>
             )}
-            {pageError && suppliers.length > 0 && !feedback.message && (
-                 <p style={{...styles.errorText, textAlign: 'center', marginBottom: '10px'}}>
-                    Warning: An operation failed. Error: {pageError}
-                 </p>
+            {pageError && suppliers.length > 0 && (
+                 <Alert severity="warning" sx={{ mb: 2, width: '100%' }}>
+                    {pageError}
+                </Alert>
             )}
-            {/* Ensure path matches App.jsx, e.g., /dashboard/suppliers/new */}
-            <Link to="/dashboard/suppliers/new" style={styles.addButtonLink}>
-                <button style={{...styles.button, ...styles.buttonAdd}}>Add New Supplier</button>
-            </Link>
 
-            {suppliers.length === 0 && !isLoading && !pageError ? (
-                <p style={styles.centeredMessage}>No suppliers found. Click "Add New Supplier" to create one.</p>
-            ) : (
-                <div style={{overflowX: 'auto'}}>
-                    <table style={styles.table}>
-                        <thead style={styles.tableHeader}>
-                            <tr>
-                                <th style={styles.tableCell}>ID</th>
-                                <th style={styles.tableCell}>Name</th>
-                                <th style={styles.tableCell}>Contact Person</th>
-                                <th style={styles.tableCell}>Email</th>
-                                <th style={styles.tableCell}>Telephone</th>
-                                <th style={styles.tableCell}>City</th>
-                                <th style={styles.tableCell}>Default?</th>
-                                <th style={styles.tableCell}>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {suppliers.map((supplier, index) => (
-                                <tr key={supplier.id} style={index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd}>
-                                    <td style={styles.tableCell}>{supplier.id}</td>
-                                    <td style={styles.tableCell}>{supplier.name}</td>
-                                    <td style={styles.tableCell}>{supplier.contact_person || '-'}</td>
-                                    <td style={styles.tableCell}>{supplier.email || '-'}</td>
-                                    <td style={styles.tableCell}>{supplier.telephone || '-'}</td>
-                                    <td style={styles.tableCell}>{supplier.city || '-'}</td>
-                                    <td style={styles.tableCell}>{supplier.is_default_supplier ? 'Yes' : 'No'}</td>
-                                    <td style={{...styles.tableCell, ...styles.actionsCell}}>
-                                        {/* Ensure path matches App.jsx, e.g., /dashboard/suppliers/edit/:id */}
-                                        <button
-                                            onClick={() => navigate(`/dashboard/suppliers/edit/${supplier.id}`)}
-                                            style={{...styles.button, ...styles.buttonEdit}}
-                                            title="Edit Supplier"
-                                        >
-                                            Edit
-                                        </button>
-                                        <button
-                                            onClick={() => handleDelete(supplier.id, supplier.name)}
-                                            style={{...styles.button, ...styles.buttonDelete}}
-                                            title="Delete Supplier"
-                                        >
-                                            Delete
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+            {isLoading && suppliers.length > 0 && <Box sx={{display: 'flex', justifyContent: 'center', my: 2}}><CircularProgress size={24} /><Typography sx={{ml:1}}>Updating list...</Typography></Box>}
+
+            {!isLoading && suppliers.length === 0 && !pageError && (
+                <Alert severity="info" sx={{ textAlign: 'center', mb: 2 }}>
+                    No suppliers found. {isAuthenticated && userCan && userCan('supplier:create') && "Click 'Add New Supplier' to create one."}
+                </Alert>
             )}
-        </div>
+
+            {suppliers.length > 0 && (
+                <TableContainer component={Paper} elevation={2}>
+                    <Table sx={{ minWidth: 750 }} aria-label="suppliers table">
+                        <TableHead sx={{ '& th': { fontWeight: 'bold' } }}>
+                            <TableRow>
+                                <TableCell>ID</TableCell>
+                                <TableCell>Name</TableCell>
+                                <TableCell>Contact Person</TableCell>
+                                <TableCell>Email</TableCell>
+                                <TableCell>Telephone</TableCell>
+                                <TableCell>City</TableCell>
+                                <TableCell>Default?</TableCell>
+                                <TableCell align="right">Actions</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {suppliers.map(supplier => (
+                                <TableRow hover key={supplier.id} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+                                    <TableCell component="th" scope="row">{supplier.id}</TableCell>
+                                    <TableCell>{supplier.name}</TableCell>
+                                    <TableCell>{supplier.contact_person || '-'}</TableCell>
+                                    <TableCell>{supplier.email || '-'}</TableCell>
+                                    <TableCell>{supplier.telephone || '-'}</TableCell>
+                                    <TableCell>{supplier.city || '-'}</TableCell>
+                                    <TableCell>{supplier.is_default_supplier ? 'Yes' : 'No'}</TableCell>
+                                    <TableCell align="right">
+                                        {isAuthenticated && userCan && userCan('supplier:update') && (
+                                            <Button
+                                                variant="outlined"
+                                                size="small"
+                                                onClick={() => navigate(`/dashboard/suppliers/edit/${supplier.id}`)}
+                                                sx={{ mr: 1 }}
+                                                startIcon={<FaEdit />}
+                                            >
+                                                Edit
+                                            </Button>
+                                        )}
+                                        {isAuthenticated && userCan && userCan('supplier:delete') && (
+                                            <Button
+                                                variant="outlined"
+                                                color="error"
+                                                size="small"
+                                                onClick={() => handleDelete(supplier.id, supplier.name)}
+                                                startIcon={<FaTrashAlt />}
+                                            >
+                                                Delete
+                                            </Button>
+                                        )}
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+            )}
+        </Paper>
     );
 }
-
-// Consistent List Styles
-const styles = {
-    container: { padding: '20px', fontFamily: 'Arial, sans-serif', maxWidth: '1200px', margin: '0 auto' },
-    title: { marginBottom: '20px', color: '#333', textAlign: 'center' },
-    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
-    errorText: { color: '#D8000C', fontWeight: 'bold' },
-    feedbackBox: { padding: '10px 15px', marginBottom: '15px', borderRadius: '4px', textAlign: 'center', border: '1px solid' },
-    feedbackSuccess: { borderColor: 'green', color: 'green', backgroundColor: '#e6ffed' },
-    feedbackError: { borderColor: 'red', color: 'red', backgroundColor: '#ffe6e6' },
-    addButtonLink: { textDecoration: 'none', display: 'block', textAlign: 'right', marginBottom: '15px' },
-    button: { padding: '8px 12px', margin: '0 5px 0 0', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9em' },
-    buttonAdd: { backgroundColor: '#28a745', color: 'white'},
-    buttonEdit: { backgroundColor: '#ffc107', color: '#000' },
-    buttonDelete: { backgroundColor: '#dc3545', color: 'white' },
-    table: { width: '100%', borderCollapse: 'collapse', marginTop: '0px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
-    tableHeader: { backgroundColor: '#e9ecef' },
-    tableCell: { padding: '10px 8px', textAlign: 'left', verticalAlign: 'middle', borderBottom: '1px solid #dee2e6' },
-    actionsCell: { whiteSpace: 'nowrap', textAlign: 'center' },
-    tableRowOdd: { backgroundColor: '#fff' },
-    tableRowEven: { backgroundColor: '#f8f9fa' }
-};
 
 export default SupplierList;

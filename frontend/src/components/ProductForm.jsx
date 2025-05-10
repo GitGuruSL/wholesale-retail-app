@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import apiInstance from '../services/api';
 import {
     Box,
     Paper,
@@ -66,7 +67,7 @@ function ProductForm() {
     const { productId } = useParams();
     const navigate = useNavigate();
     const isEditing = Boolean(productId);
-    const { apiInstance, isAuthenticated, isLoading: authLoading } = useAuth();
+   const { isAuthenticated, isLoading: authLoading, userCan } = useAuth();
 
     // Main form state
     const [formData, setFormData] = useState(initialProductFormData);

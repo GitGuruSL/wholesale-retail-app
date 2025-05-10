@@ -1,39 +1,45 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import {
+    Paper, Typography, TextField, Button, Box, Alert,
+    CircularProgress, Grid, TextareaAutosize
+} from '@mui/material';
 import { useAuth } from '../context/AuthContext';
+import apiInstance from '../services/api'; // Import apiInstance directly
 
 function ManufacturerForm() {
-    const { manufacturerId } = useParams(); // This is already correct
+    const { manufacturerId } = useParams();
     const navigate = useNavigate();
-    const { apiInstance, isAuthenticated, isLoading: authLoading } = useAuth();
+    const { isAuthenticated, isLoading: authLoading, userCan } = useAuth(); // Get userCan
     const isEditing = Boolean(manufacturerId);
 
-    console.log(`[ManufacturerForm] Initializing. Is Editing: ${isEditing}, Manufacturer ID: ${manufacturerId}`);
+    const initialFormData = {
+        name: '',
+        contact_info: '',
+        address: '',
+        city: '',
+        contact_person: '',
+        telephone: '',
+        fax: '',
+        email: '',
+        relationship_start_date: '', // YYYY-MM-DD
+        tax_details: '',
+        notes: '' // Added notes back
+    };
 
-    const [name, setName] = useState('');
-    const [contactInfo, setContactInfo] = useState('');
-    const [address, setAddress] = useState('');
-    const [city, setCity] = useState('');
-    const [contactPerson, setContactPerson] = useState('');
-    const [telephone, setTelephone] = useState('');
-    const [fax, setFax] = useState('');
-    const [email, setEmail] = useState('');
-    const [relationshipStartDate, setRelationshipStartDate] = useState('');
-    const [taxDetails, setTaxDetails] = useState('');
-    const [notes, setNotes] = useState('');
-
-    const [isLoading, setIsLoading] = useState(false); // Form-specific loading
+    const [formData, setFormData] = useState(initialFormData);
+    const [initialLoading, setInitialLoading] = useState(isEditing);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [pageError, setPageError] = useState(null);
-    const [formError, setFormError] = useState(null);
+    const [formErrors, setFormErrors] = useState({});
+
+    const requiredPermission = isEditing ? 'manufacturer:update' : 'manufacturer:create';
 
     const formatDateForInput = (dateString) => {
         if (!dateString) return '';
         try {
             const date = new Date(dateString);
-            const year = date.getFullYear();
-            const month = (date.getMonth() + 1).toString().padStart(2, '0');
-            const day = date.getDate().toString().padStart(2, '0');
-            return `${year}-${month}-${day}`;
+            return date.toISOString().split('T')[0];
         } catch (e) {
             console.error("[ManufacturerForm] Error formatting date:", dateString, e);
             return '';
@@ -41,229 +47,232 @@ function ManufacturerForm() {
     };
 
     const fetchManufacturerData = useCallback(async () => {
-        console.log(`[ManufacturerForm fetchManufacturerData] Called. isEditing: ${isEditing}, manufacturerId: ${manufacturerId}, apiInstance: ${!!apiInstance}, isAuthenticated: ${isAuthenticated}`);
-        if (!isEditing || !manufacturerId || !apiInstance || !isAuthenticated) {
-            console.warn("[ManufacturerForm fetchManufacturerData] Pre-conditions not met for fetching.");
-            if (!isEditing) console.warn(" - Not in edit mode.");
-            if (!manufacturerId) console.warn(" - No manufacturerId.");
-            if (!apiInstance) console.warn(" - apiInstance not available.");
-            if (!isAuthenticated) console.warn(" - Not authenticated.");
-            setIsLoading(false); // Ensure loading is stopped if we bail early
-            return;
-        }
-        console.log(`[ManufacturerForm fetchManufacturerData] Attempting to fetch details for ID: ${manufacturerId}`);
-        setIsLoading(true);
+        if (!isEditing || !isAuthenticated || !manufacturerId) return;
+
+        setInitialLoading(true);
         setPageError(null);
-        setFormError(null);
+        setFormErrors({});
         try {
             const response = await apiInstance.get(`/manufacturers/${manufacturerId}`);
             const data = response.data;
-            console.log("[ManufacturerForm fetchManufacturerData] Raw data received:", data);
-
-            setName(data.name || '');
-            setContactInfo(data.contact_info || '');
-            setAddress(data.address || '');
-            setCity(data.city || '');
-            setContactPerson(data.contact_person || '');
-            setTelephone(data.telephone || '');
-            setFax(data.fax || '');
-            setEmail(data.email || '');
-            setRelationshipStartDate(formatDateForInput(data.relationship_start_date));
-            setTaxDetails(data.tax_details || '');
-            setNotes(data.notes || '');
-            console.log("[ManufacturerForm fetchManufacturerData] State updated with fetched data.");
+            setFormData({
+                name: data.name || '',
+                contact_info: data.contact_info || '',
+                address: data.address || '',
+                city: data.city || '',
+                contact_person: data.contact_person || '',
+                telephone: data.telephone || '',
+                fax: data.fax || '',
+                email: data.email || '',
+                relationship_start_date: formatDateForInput(data.relationship_start_date),
+                tax_details: data.tax_details || '',
+                notes: data.notes || ''
+            });
         } catch (err) {
-            console.error("[ManufacturerForm fetchManufacturerData] Error fetching manufacturer details:", err.response || err.message || err);
-            const errorMsg = err.response?.data?.message || 'Failed to load manufacturer data.';
-            setPageError(errorMsg);
+            console.error("[ManufacturerForm] Failed to fetch manufacturer:", err);
+            setPageError(err.response?.data?.message || "Failed to load manufacturer data. You may not have permission or the item does not exist.");
         } finally {
-            setIsLoading(false);
-            console.log("[ManufacturerForm fetchManufacturerData] Fetch attempt finished.");
+            setInitialLoading(false);
         }
-    }, [manufacturerId, isEditing, apiInstance, isAuthenticated]); // Dependencies for useCallback
+    }, [manufacturerId, isAuthenticated, isEditing]);
 
     useEffect(() => {
-        console.log(`[ManufacturerForm useEffect] Running. AuthLoading: ${authLoading}, IsAuthenticated: ${isAuthenticated}, IsEditing: ${isEditing}, ManufacturerID: ${manufacturerId}, apiInstance: ${!!apiInstance}`);
-        if (authLoading) {
-            console.log("[ManufacturerForm useEffect] Auth is loading, returning.");
-            return;
-        }
-        if (!isAuthenticated) {
-            console.log("[ManufacturerForm useEffect] Not authenticated. Setting page error.");
-            setPageError("Authentication required. Please log in.");
-            setIsLoading(false); // Ensure loading is stopped
-            return;
-        }
-
-        if (isEditing) {
-            console.log("[ManufacturerForm useEffect] Edit mode. Checking if apiInstance exists.");
-            if (apiInstance && manufacturerId) { // Ensure manufacturerId is also present
-                console.log("[ManufacturerForm useEffect] apiInstance exists and manufacturerId present. Calling fetchManufacturerData.");
-                fetchManufacturerData();
-            } else if (!apiInstance) {
-                console.warn("[ManufacturerForm useEffect] apiInstance not available in edit mode (after auth check).");
-                setPageError("API client not available. Cannot fetch data.");
-                setIsLoading(false);
-            } else if (!manufacturerId) {
-                console.warn("[ManufacturerForm useEffect] manufacturerId not available in edit mode (after auth check).");
-                setPageError("Manufacturer ID missing. Cannot fetch data.");
-                setIsLoading(false);
+        if (!authLoading) {
+            if (!isAuthenticated) {
+                setPageError("Please log in to manage manufacturers.");
+                setInitialLoading(false);
+                return;
             }
-        } else { // Create mode
-            console.log("[ManufacturerForm useEffect] Create mode. Resetting form fields.");
-            setName('');
-            setContactInfo('');
-            setAddress('');
-            setCity('');
-            setContactPerson('');
-            setTelephone('');
-            setFax('');
-            setEmail('');
-            setRelationshipStartDate('');
-            setTaxDetails('');
-            setNotes('');
-            setPageError(null);
-            setFormError(null);
-            setIsLoading(false); // Ensure loading is false for create mode
+            if (userCan && !userCan(requiredPermission)) {
+                setPageError(`You do not have permission to ${isEditing ? 'edit' : 'create'} manufacturers.`);
+                setInitialLoading(false);
+                return;
+            }
+            if (isEditing) {
+                fetchManufacturerData();
+            } else {
+                setFormData(initialFormData);
+                setPageError(null);
+                setFormErrors({});
+                setInitialLoading(false);
+            }
         }
-    }, [isEditing, manufacturerId, authLoading, isAuthenticated, apiInstance, fetchManufacturerData]); // Added fetchManufacturerData
+    }, [isEditing, authLoading, isAuthenticated, userCan, requiredPermission, fetchManufacturerData]);
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+        if (formErrors[name]) {
+            setFormErrors(prev => ({ ...prev, [name]: null }));
+        }
+    };
+
+    const validateForm = () => {
+        const errors = {};
+        if (!formData.name.trim()) errors.name = "Manufacturer name is required.";
+        if (formData.email.trim() && !/\S+@\S+\.\S+/.test(formData.email.trim())) {
+            errors.email = "Please enter a valid email address.";
+        }
+        // Add other validations as needed
+        setFormErrors(errors);
+        return Object.keys(errors).length === 0;
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        console.log("[ManufacturerForm handleSubmit] Form submitted.");
-        if (!apiInstance || !isAuthenticated) {
-            setFormError("Authentication error or API not available. Please log in again.");
+        if (!isAuthenticated) {
+            setPageError("Authentication error. Please log in again.");
             return;
         }
-        if (!name.trim()) {
-            setFormError("Manufacturer name cannot be empty.");
-            return; // Don't set isLoading(false) here, let finally block handle it
-        }
-        if (email.trim() && !/\S+@\S+\.\S+/.test(email.trim())) {
-            setFormError("Please enter a valid email address or leave it blank.");
+        if (userCan && !userCan(requiredPermission)) {
+            setPageError(`You do not have permission to ${isEditing ? 'update' : 'create'} this manufacturer.`);
             return;
         }
+        if (!validateForm()) return;
 
-        setIsLoading(true);
+        setIsSubmitting(true);
         setPageError(null);
-        setFormError(null);
 
-        const manufacturerData = {
-            name: name.trim(),
-            contact_info: contactInfo.trim() === '' ? null : contactInfo.trim(),
-            address: address.trim() === '' ? null : address.trim(),
-            city: city.trim() === '' ? null : city.trim(),
-            contact_person: contactPerson.trim() === '' ? null : contactPerson.trim(),
-            telephone: telephone.trim() === '' ? null : telephone.trim(),
-            fax: fax.trim() === '' ? null : fax.trim(),
-            email: email.trim() === '' ? null : email.trim(),
-            relationship_start_date: relationshipStartDate.trim() === '' ? null : relationshipStartDate,
-            tax_details: taxDetails.trim() === '' ? null : taxDetails.trim(),
-            // notes: notes.trim() === '' ? null : notes.trim(), // REMOVE THIS LINE
+        const payload = {
+            ...formData,
+            contact_info: formData.contact_info.trim() === '' ? null : formData.contact_info.trim(),
+            address: formData.address.trim() === '' ? null : formData.address.trim(),
+            city: formData.city.trim() === '' ? null : formData.city.trim(),
+            contact_person: formData.contact_person.trim() === '' ? null : formData.contact_person.trim(),
+            telephone: formData.telephone.trim() === '' ? null : formData.telephone.trim(),
+            fax: formData.fax.trim() === '' ? null : formData.fax.trim(),
+            email: formData.email.trim() === '' ? null : formData.email.trim(),
+            relationship_start_date: formData.relationship_start_date.trim() === '' ? null : formData.relationship_start_date,
+            tax_details: formData.tax_details.trim() === '' ? null : formData.tax_details.trim(),
+            notes: formData.notes.trim() === '' ? null : formData.notes.trim(),
         };
-        console.log("[ManufacturerForm handleSubmit] Data to be sent:", manufacturerData);
 
         try {
             if (isEditing) {
-                console.log(`[ManufacturerForm handleSubmit] Updating manufacturer ID: ${manufacturerId}`);
-                await apiInstance.put(`/manufacturers/${manufacturerId}`, manufacturerData);
+                await apiInstance.put(`/manufacturers/${manufacturerId}`, payload);
             } else {
-                console.log("[ManufacturerForm handleSubmit] Creating new manufacturer.");
-                await apiInstance.post('/manufacturers', manufacturerData);
+                await apiInstance.post('/manufacturers', payload);
             }
             navigate('/dashboard/manufacturers', {
                 state: {
-                    message: `Manufacturer "${manufacturerData.name}" ${isEditing ? 'updated' : 'created'} successfully.`,
+                    message: `Manufacturer "${payload.name}" ${isEditing ? 'updated' : 'created'} successfully.`,
                     type: 'success'
                 }
             });
         } catch (err) {
-            console.error("[ManufacturerForm handleSubmit] Error saving manufacturer:", err.response || err.message || err);
-            const errorMsg = err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} manufacturer.`;
-            setFormError(errorMsg);
+            console.error("[ManufacturerForm] Error saving manufacturer:", err);
+            const errMsg = err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} manufacturer.`;
+            setPageError(errMsg);
+            if (err.response?.data?.errors) {
+                const backendErrors = {};
+                for (const key in err.response.data.errors) {
+                    backendErrors[key] = err.response.data.errors[key].join(', ');
+                }
+                setFormErrors(prev => ({ ...prev, ...backendErrors }));
+            }
         } finally {
-            setIsLoading(false);
-            console.log("[ManufacturerForm handleSubmit] Submit attempt finished.");
+            setIsSubmitting(false);
         }
     };
 
-    if (authLoading) return <p style={styles.centeredMessage}>Authenticating...</p>;
-    // Adjusted loading message conditions
-    if (isLoading && isEditing && !name && !pageError) return <p style={styles.centeredMessage}>Loading manufacturer details...</p>;
-    if (isLoading && !isEditing && !pageError) return <p style={styles.centeredMessage}>Preparing form...</p>;
+    if (authLoading) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+    }
+    if (initialLoading && isEditing) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+    }
 
+    if ((!isAuthenticated || (userCan && !userCan(requiredPermission))) && pageError) {
+        return (
+            <Paper sx={{ p: 3, m: 2, maxWidth: 800, mx: 'auto' }}>
+                <Typography variant="h5" align="center" gutterBottom>
+                    {isEditing ? 'Edit Manufacturer' : 'Add New Manufacturer'}
+                </Typography>
+                <Alert severity="error">{pageError}</Alert>
+                <Button variant="outlined" sx={{ mt: 2 }} onClick={() => navigate('/dashboard/manufacturers')}>
+                    Back to List
+                </Button>
+            </Paper>
+        );
+    }
 
     return (
-        <div style={styles.container}>
-            <h2 style={styles.title}>{isEditing ? `Edit Manufacturer (ID: ${manufacturerId})` : 'Add New Manufacturer'}</h2>
-            {pageError && <p style={styles.errorBox}>Page Error: {pageError}</p>}
-            {formError && <p style={{...styles.errorBox, backgroundColor: '#ffe6e6', borderColor: 'red', color: 'red'}}>Form Error: {formError}</p>}
-            <form onSubmit={handleSubmit}>
-                <div style={styles.formGroup}>
-                    <label htmlFor="manufacturerName" style={styles.label}>Manufacturer Name: *</label>
-                    <input type="text" id="manufacturerName" value={name} onChange={(e) => setName(e.target.value)} required style={styles.input} disabled={isLoading} placeholder="e.g., Sony, Samsung, Generic Corp"/>
-                </div>
-                <div style={styles.formGroup}>
-                    <label htmlFor="contactPerson" style={styles.label}>Contact Person:</label>
-                    <input type="text" id="contactPerson" value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} style={styles.input} disabled={isLoading} placeholder="e.g., John Doe"/>
-                </div>
-                <div style={styles.formGroup}>
-                    <label htmlFor="email" style={styles.label}>Email:</label>
-                    <input type="email" id="email" value={email} onChange={(e) => setEmail(e.target.value)} style={styles.input} disabled={isLoading} placeholder="e.g., contact@example.com"/>
-                </div>
-                <div style={styles.formGroup}>
-                    <label htmlFor="telephone" style={styles.label}>Telephone:</label>
-                    <input type="tel" id="telephone" value={telephone} onChange={(e) => setTelephone(e.target.value)} style={styles.input} disabled={isLoading} placeholder="e.g., +1-555-123-4567"/>
-                </div>
-                <div style={styles.formGroup}>
-                    <label htmlFor="fax" style={styles.label}>Fax:</label>
-                    <input type="tel" id="fax" value={fax} onChange={(e) => setFax(e.target.value)} style={styles.input} disabled={isLoading} placeholder="e.g., +1-555-765-4321"/>
-                </div>
-                <div style={styles.formGroup}>
-                    <label htmlFor="address" style={styles.label}>Address:</label>
-                    <textarea id="address" value={address} onChange={(e) => setAddress(e.target.value)} rows="3" style={styles.textarea} disabled={isLoading} placeholder="e.g., 123 Main St"/>
-                </div>
-                <div style={styles.formGroup}>
-                    <label htmlFor="city" style={styles.label}>City:</label>
-                    <input type="text" id="city" value={city} onChange={(e) => setCity(e.target.value)} style={styles.input} disabled={isLoading} placeholder="e.g., Anytown"/>
-                </div>
-                <div style={styles.formGroup}>
-                    <label htmlFor="relationshipStartDate" style={styles.label}>Relationship Start Date:</label>
-                    <input type="date" id="relationshipStartDate" value={relationshipStartDate} onChange={(e) => setRelationshipStartDate(e.target.value)} style={styles.input} disabled={isLoading}/>
-                </div>
-                <div style={styles.formGroup}>
-                    <label htmlFor="taxDetails" style={styles.label}>Tax Details:</label>
-                    <input type="text" id="taxDetails" value={taxDetails} onChange={(e) => setTaxDetails(e.target.value)} style={styles.input} disabled={isLoading} placeholder="e.g., VAT ID, Tax Reg No."/>
-                </div>
-                <div style={styles.formGroup}>
-                    <label htmlFor="contactInfo" style={styles.label}>General Contact Info/Internal Notes:</label>
-                    <textarea id="contactInfo" value={contactInfo} onChange={(e) => setContactInfo(e.target.value)} rows="3" style={styles.textarea} disabled={isLoading} placeholder="Additional contact details or internal notes..."/>
-                </div>
-                 <div style={styles.formGroup}>
-                    <label htmlFor="notes" style={styles.label}>Specific Notes (if different from above):</label>
-                    <textarea id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows="3" style={styles.textarea} disabled={isLoading} placeholder="Specific remarks or details..."/>
-                </div>
-                <div style={styles.buttonGroup}>
-                    <button type="submit" disabled={isLoading} style={styles.buttonPrimary}> {isLoading ? 'Saving...' : (isEditing ? 'Update Manufacturer' : 'Create Manufacturer')} </button>
-                    <button type="button" onClick={() => navigate('/dashboard/manufacturers')} style={styles.buttonSecondary} disabled={isLoading}> Cancel </button>
-                </div>
-            </form>
-        </div>
+        <Paper sx={{ p: 3, m: 2, maxWidth: 900, mx: 'auto' }}>
+            <Typography variant="h5" align="center" gutterBottom>
+                {isEditing ? `Edit Manufacturer (ID: ${manufacturerId})` : 'Add New Manufacturer'}
+            </Typography>
+            {pageError && !Object.keys(formErrors).length &&
+                <Alert severity="error" sx={{ mb: 2 }}>{pageError}</Alert>
+            }
+            <Box component="form" onSubmit={handleSubmit} noValidate>
+                <Grid container spacing={2}>
+                    <Grid item xs={12} sm={6}>
+                        <TextField label="Manufacturer Name" name="name" value={formData.name} onChange={handleChange} required fullWidth error={Boolean(formErrors.name)} helperText={formErrors.name} disabled={isSubmitting || initialLoading} />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                        <TextField label="Contact Person" name="contact_person" value={formData.contact_person} onChange={handleChange} fullWidth error={Boolean(formErrors.contact_person)} helperText={formErrors.contact_person} disabled={isSubmitting || initialLoading} />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                        <TextField label="Email" name="email" type="email" value={formData.email} onChange={handleChange} fullWidth error={Boolean(formErrors.email)} helperText={formErrors.email} disabled={isSubmitting || initialLoading} />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                        <TextField label="Telephone" name="telephone" value={formData.telephone} onChange={handleChange} fullWidth error={Boolean(formErrors.telephone)} helperText={formErrors.telephone} disabled={isSubmitting || initialLoading} />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                        <TextField label="Fax" name="fax" value={formData.fax} onChange={handleChange} fullWidth error={Boolean(formErrors.fax)} helperText={formErrors.fax} disabled={isSubmitting || initialLoading} />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                        <TextField label="City" name="city" value={formData.city} onChange={handleChange} fullWidth error={Boolean(formErrors.city)} helperText={formErrors.city} disabled={isSubmitting || initialLoading} />
+                    </Grid>
+                    <Grid item xs={12}>
+                        <TextField label="Address" name="address" value={formData.address} onChange={handleChange} fullWidth multiline minRows={2} error={Boolean(formErrors.address)} helperText={formErrors.address} disabled={isSubmitting || initialLoading} />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                        <TextField label="Relationship Start Date" name="relationship_start_date" type="date" value={formData.relationship_start_date} onChange={handleChange} InputLabelProps={{ shrink: true }} fullWidth error={Boolean(formErrors.relationship_start_date)} helperText={formErrors.relationship_start_date} disabled={isSubmitting || initialLoading} />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                        <TextField label="Tax Details" name="tax_details" value={formData.tax_details} onChange={handleChange} fullWidth error={Boolean(formErrors.tax_details)} helperText={formErrors.tax_details} disabled={isSubmitting || initialLoading} />
+                    </Grid>
+                    <Grid item xs={12}>
+                        <TextField
+                            label="General Contact Info / Internal Notes"
+                            name="contact_info"
+                            value={formData.contact_info}
+                            onChange={handleChange}
+                            fullWidth
+                            multiline
+                            minRows={3}
+                            error={Boolean(formErrors.contact_info)}
+                            helperText={formErrors.contact_info}
+                            disabled={isSubmitting || initialLoading}
+                        />
+                    </Grid>
+                    <Grid item xs={12}>
+                        <TextField
+                            label="Specific Notes"
+                            name="notes"
+                            value={formData.notes}
+                            onChange={handleChange}
+                            fullWidth
+                            multiline
+                            minRows={3}
+                            error={Boolean(formErrors.notes)}
+                            helperText={formErrors.notes}
+                            disabled={isSubmitting || initialLoading}
+                        />
+                    </Grid>
+                </Grid>
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 3 }}>
+                    <Button variant="outlined" color="secondary" onClick={() => navigate('/dashboard/manufacturers')} disabled={isSubmitting}>
+                        Cancel
+                    </Button>
+                    <Button variant="contained" type="submit" disabled={isSubmitting || initialLoading || (userCan && !userCan(requiredPermission))}>
+                        {isSubmitting ? <CircularProgress size={24} /> : (isEditing ? 'Update Manufacturer' : 'Create Manufacturer')}
+                    </Button>
+                </Box>
+            </Box>
+        </Paper>
     );
 }
-
-const styles = {
-    container: { padding: '20px', maxWidth: '700px', margin: '40px auto', fontFamily: 'Arial, sans-serif', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', borderRadius: '8px', backgroundColor: '#fff' },
-    title: { marginBottom: '25px', color: '#333', textAlign: 'center', borderBottom: '1px solid #eee', paddingBottom: '15px' },
-    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
-    errorBox: { color: '#D8000C', border: '1px solid #FFBABA', padding: '10px 15px', marginBottom: '20px', borderRadius: '4px', backgroundColor: '#FFD2D2', textAlign: 'center' },
-    formGroup: { marginBottom: '20px' },
-    label: { display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#555' },
-    input: { width: '100%', padding: '12px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1em' },
-    textarea: { width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', minHeight: '80px', fontSize: '1em' },
-    buttonGroup: { marginTop: '30px', display: 'flex', justifyContent: 'flex-end', gap: '10px' },
-    buttonPrimary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
-    buttonSecondary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
-};
 
 export default ManufacturerForm;

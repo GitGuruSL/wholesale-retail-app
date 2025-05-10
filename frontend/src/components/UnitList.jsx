@@ -1,168 +1,190 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-
-// --- Define styles object BEFORE the component ---
-const styles = {
-    container: { padding: '20px', fontFamily: 'Arial, sans-serif' },
-    title: { marginBottom: '20px', color: '#333', textAlign: 'center' },
-    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
-    errorText: { color: '#D8000C', fontWeight: 'bold' },
-    feedbackBox: { padding: '10px 15px', marginBottom: '15px', borderRadius: '4px', textAlign: 'center', border: '1px solid' },
-    feedbackSuccess: { borderColor: 'green', color: 'green', backgroundColor: '#e6ffed' },
-    feedbackError: { borderColor: 'red', color: 'red', backgroundColor: '#ffe6e6' },
-    addButtonLink: { textDecoration: 'none', display: 'inline-block', marginBottom: '15px' },
-    button: { padding: '8px 12px', margin: '0 5px 0 0', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9em' },
-    buttonAdd: { backgroundColor: '#28a745', color: 'white'},
-    buttonEdit: { backgroundColor: '#ffc107', color: '#000' },
-    buttonDelete: { backgroundColor: '#dc3545', color: 'white' },
-    table: { width: '100%', borderCollapse: 'collapse', marginTop: '0px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
-    tableHeader: { backgroundColor: '#e9ecef' },
-    tableCell: { padding: '12px 10px', textAlign: 'left', verticalAlign: 'top', borderBottom: '1px solid #dee2e6' },
-    actionsCell: { whiteSpace: 'nowrap' },
-    tableRowOdd: { backgroundColor: '#fff' },
-    tableRowEven: { backgroundColor: '#f8f9fa' }
-};
-
+import apiInstance from '../services/api'; // Import apiInstance directly
+import {
+    Paper, Typography, Button, Table, TableHead, TableRow, TableCell,
+    TableBody, TableContainer, Box, Alert, CircularProgress
+} from '@mui/material';
+import { FaEdit, FaTrashAlt, FaPlus } from 'react-icons/fa';
 
 function UnitList() {
     const [units, setUnits] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [pageError, setPageError] = useState(null);
     const [feedback, setFeedback] = useState({ message: null, type: null });
     const navigate = useNavigate();
-    // KEEP THIS DECLARATION (should be the only one inside UnitList function)
-    const { apiInstance, isAuthenticated, isLoading: authLoading } = useAuth();
+    const location = useLocation();
+    const { isAuthenticated, isLoading: authLoading, userCan } = useAuth();
+
+    useEffect(() => {
+        if (location.state?.message) {
+            setFeedback({ message: location.state.message, type: location.state.type || 'success' });
+            navigate(location.pathname, { replace: true, state: {} }); // Clear location state
+            const timer = setTimeout(() => setFeedback({ message: null, type: null }), 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [location, navigate]);
 
     const fetchUnits = useCallback(async () => {
-        if (!isAuthenticated || !apiInstance) {
-            setError("User not authenticated or API client not available.");
-            setLoading(false);
+        if (!isAuthenticated) {
+            setPageError("User not authenticated. Cannot fetch units.");
+            setIsLoading(false);
             return;
         }
-        setLoading(true);
-        setError(null);
-        setFeedback({ message: null, type: null });
+        setIsLoading(true);
+        setPageError(null);
         try {
-            console.log("[UnitList] Fetching units using apiInstance:", apiInstance ? 'Available' : 'Not Available');
             const response = await apiInstance.get('/units');
             setUnits(response.data || []);
         } catch (err) {
-            console.error("Error fetching units:", err);
-            const errorMsg = err.response?.data?.message || err.message || 'Failed to fetch units.';
-            if (err.response?.status === 401 || err.response?.status === 403) {
-                setError('Unauthorized: Could not fetch units. Your session may have expired.');
-            } else {
-                setError(errorMsg);
-            }
+            console.error("[UnitList] Error fetching units:", err);
+            setPageError(err.response?.data?.message || 'Failed to fetch units.');
+            setUnits([]);
         } finally {
-            setLoading(false);
+            setIsLoading(false);
         }
-    }, [apiInstance, isAuthenticated]);
+    }, [isAuthenticated]);
 
     useEffect(() => {
-        if (!authLoading && isAuthenticated && apiInstance) {
-            fetchUnits();
-        } else if (!authLoading && !isAuthenticated) {
-            setError("Please log in to view units.");
-            setLoading(false);
-        } else if (!authLoading && !apiInstance) {
-            setError("API client not available. Cannot fetch units.");
-            setLoading(false);
+        if (!authLoading) {
+            if (isAuthenticated) {
+                fetchUnits();
+            } else {
+                setPageError("Please log in to view units.");
+                setIsLoading(false);
+                setUnits([]);
+            }
         }
-    }, [authLoading, isAuthenticated, apiInstance, fetchUnits]);
+    }, [authLoading, isAuthenticated, fetchUnits]);
 
     const handleDelete = async (unitId, unitName) => {
-        if (!apiInstance) {
-            setFeedback({ message: "API client not available.", type: 'error' });
+        if (!isAuthenticated) {
+            setFeedback({ message: "Authentication error. Please log in again.", type: 'error' });
+            return;
+        }
+        if (userCan && !userCan('unit:delete')) {
+            setFeedback({ message: "You do not have permission to delete units.", type: 'error' });
+            setTimeout(() => setFeedback({ message: null, type: null }), 5000);
             return;
         }
         if (!window.confirm(`Are you sure you want to delete unit: "${unitName}" (ID: ${unitId})?\nThis might fail if it's linked to products.`)) {
             return;
         }
-        setError(null);
+        setPageError(null);
         try {
             await apiInstance.delete(`/units/${unitId}`);
             setFeedback({ message: `Unit "${unitName}" deleted successfully.`, type: 'success' });
-            setUnits(prevUnits => prevUnits.filter(unit => unit.id !== unitId));
+            setUnits(prevUnits => prevUnits.filter(u => u.id !== unitId));
         } catch (err) {
-            console.error(`Error deleting unit ${unitId}:`, err);
-            const errorMsg = err.response?.data?.message || err.message || 'Failed to delete unit.';
-            if (err.response?.status === 401 || err.response?.status === 403) {
-                setFeedback({ message: 'Unauthorized: Could not delete unit.', type: 'error' });
-            } else {
-                setFeedback({ message: errorMsg, type: 'error' });
-            }
-        } finally {
-            setTimeout(() => setFeedback({ message: null, type: null }), 5000);
+            console.error(`[UnitList] Error deleting unit ${unitId}:`, err);
+            const errorMsg = err.response?.data?.message || 'Failed to delete unit. It might be in use.';
+            setFeedback({ message: errorMsg, type: 'error' });
         }
+        const timer = setTimeout(() => setFeedback({ message: null, type: null }), 5000);
     };
 
-    // --- Render Logic ---
-    if (authLoading) return <div style={styles.centeredMessage}>Authenticating...</div>;
-    if (loading) return <div style={styles.centeredMessage}>Loading units...</div>;
-    if (error && units.length === 0) return <div style={{ ...styles.centeredMessage, ...styles.errorText }}>Error: {error}</div>;
+    if (authLoading) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+    }
+    if (isLoading && !pageError && units.length === 0) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+    }
+
+    if (pageError && units.length === 0) {
+        return (
+            <Paper sx={{ p: 3, m: 2, maxWidth: 800, mx: 'auto' }}>
+                <Typography variant="h5" align="center" gutterBottom>Manage Units</Typography>
+                <Alert severity="error" sx={{ mb: 2 }}>{pageError}</Alert>
+                {isAuthenticated && userCan && userCan('unit:create') &&
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+                        <Button variant="contained" color="primary" component={RouterLink} to="/dashboard/units/new" startIcon={<FaPlus />}>
+                            Add New Unit
+                        </Button>
+                    </Box>
+                }
+            </Paper>
+        );
+    }
 
     return (
-        <div style={styles.container}>
-            <h2 style={styles.title}>Manage Units</h2>
+        <Paper sx={{ p: 3, m: 2, maxWidth: 800, mx: 'auto' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h5">Manage Units</Typography>
+                {isAuthenticated && userCan && userCan('unit:create') && (
+                    <Button variant="contained" color="primary" component={RouterLink} to="/dashboard/units/new" startIcon={<FaPlus />}>
+                        Add New Unit
+                    </Button>
+                )}
+            </Box>
 
             {feedback.message && (
-                <div style={{
-                   ...styles.feedbackBox,
-                   ...(feedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError)
-                }}>
+                <Alert severity={feedback.type === 'error' ? 'error' : 'success'} sx={{ mb: 2 }}>
                     {feedback.message}
-                </div>
+                </Alert>
             )}
-             {error && units.length > 0 && !feedback.message && (
-                 <p style={{...styles.errorText, textAlign: 'center', marginBottom: '10px'}}>
-                    Warning: An operation failed. Error: {error}
-                 </p>
+            {pageError && units.length > 0 && (
+                 <Alert severity="warning" sx={{ mb: 2, width: '100%' }}>
+                    {pageError}
+                </Alert>
             )}
 
-            <Link to="/dashboard/units/new" style={styles.addButtonLink}>
-                <button style={{...styles.button, ...styles.buttonAdd}}>Add New Unit</button>
-            </Link>
+            {isLoading && units.length > 0 && <Box sx={{display: 'flex', justifyContent: 'center', my: 2}}><CircularProgress size={24} /><Typography sx={{ml:1}}>Updating list...</Typography></Box>}
 
-            {units.length === 0 && !loading && !error ? (
-                <p style={styles.centeredMessage}>No units found. Click "Add New Unit" to create one.</p>
-            ) : (
-                <table style={styles.table}>
-                    <thead style={styles.tableHeader}>
-                        <tr>
-                            <th style={styles.tableCell}>ID</th>
-                            <th style={styles.tableCell}>Name</th>
-                            <th style={styles.tableCell}>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {units.map((unit, index) => (
-                            <tr key={unit.id} style={index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd}>
-                                <td style={styles.tableCell}>{unit.id}</td>
-                                <td style={styles.tableCell}>{unit.name}</td>
-                                <td style={{...styles.tableCell, ...styles.actionsCell}}>
-                                    <button
-                                        onClick={() => navigate(`/dashboard/units/edit/${unit.id}`)}
-                                        style={{...styles.button, ...styles.buttonEdit}}
-                                        title="Edit Unit"
-                                    >
-                                        Edit
-                                    </button>
-                                    <button
-                                        onClick={() => handleDelete(unit.id, unit.name)}
-                                        style={{...styles.button, ...styles.buttonDelete}}
-                                        title="Delete Unit"
-                                    >
-                                        Delete
-                                    </button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+            {!isLoading && units.length === 0 && !pageError && (
+                <Alert severity="info" sx={{ textAlign: 'center', mb: 2 }}>
+                    No units found. {isAuthenticated && userCan && userCan('unit:create') && "Click 'Add New Unit' to create one."}
+                </Alert>
             )}
-        </div>
+
+            {units.length > 0 && (
+                <TableContainer component={Paper} elevation={2}>
+                    <Table sx={{ minWidth: 650 }} aria-label="units table">
+                        <TableHead sx={{ '& th': { fontWeight: 'bold' } }}>
+                            <TableRow>
+                                <TableCell>ID</TableCell>
+                                <TableCell>Name</TableCell>
+                                {/* <TableCell>Abbreviation</TableCell> Uncomment if using */}
+                                <TableCell align="right">Actions</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {units.map(unit => (
+                                <TableRow hover key={unit.id} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+                                    <TableCell component="th" scope="row">{unit.id}</TableCell>
+                                    <TableCell>{unit.name}</TableCell>
+                                    {/* <TableCell>{unit.abbreviation || '-'}</TableCell> Uncomment if using */}
+                                    <TableCell align="right">
+                                        {isAuthenticated && userCan && userCan('unit:update') && (
+                                            <Button
+                                                variant="outlined"
+                                                size="small"
+                                                onClick={() => navigate(`/dashboard/units/edit/${unit.id}`)}
+                                                sx={{ mr: 1 }}
+                                                startIcon={<FaEdit />}
+                                            >
+                                                Edit
+                                            </Button>
+                                        )}
+                                        {isAuthenticated && userCan && userCan('unit:delete') && (
+                                            <Button
+                                                variant="outlined"
+                                                color="error"
+                                                size="small"
+                                                onClick={() => handleDelete(unit.id, unit.name)}
+                                                startIcon={<FaTrashAlt />}
+                                            >
+                                                Delete
+                                            </Button>
+                                        )}
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+            )}
+        </Paper>
     );
 }
 

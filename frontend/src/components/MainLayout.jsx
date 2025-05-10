@@ -1,18 +1,29 @@
-// filepath: d:\Development\wholesale-retail-app\frontend\src\components\MainLayout.jsx
-import React, { useState } from 'react'; // Import useState
+import React, { useState } from 'react';
 import { Outlet, Navigate } from 'react-router-dom';
-import Sidebar from './sidebar';
+import Sidebar from './sidebar'; // Assuming Sidebar is correctly imported
 import { useAuth } from '../context/AuthContext';
+// import CircularProgress from '@mui/material/CircularProgress'; // Example for loading
+// import Box from '@mui/material/Box'; // Example for centering loading
 
-const drawerWidth = 240; // Define your desired drawer width
+const drawerWidth = 240;
 
 const MainLayout = () => {
-    const { isAuthenticated } = useAuth();
-    const [open, setOpen] = useState(true); // State for sidebar open/closed
+    const { isAuthenticated, isLoading: authIsLoading } = useAuth();
+    const [open, setOpen] = useState(true);
 
     const handleDrawerToggle = () => {
         setOpen(!open);
     };
+
+    if (authIsLoading) {
+        // Optional: Show a loading spinner or a blank page while auth state is being determined
+        // return (
+        //     <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        //         <CircularProgress />
+        //     </Box>
+        // );
+        return <div>Loading authentication...</div>; // Simple loading indicator
+    }
 
     if (!isAuthenticated) {
         return <Navigate to="/login" replace />;
@@ -26,15 +37,11 @@ const MainLayout = () => {
     const contentStyle = {
         flexGrow: 1,
         padding: '20px',
-        marginLeft: open ? `${drawerWidth}px` : `calc(1em * 7 + 1px)`, // Adjust based on collapsed width
-        transition: 'margin-left 0.2s ease-out', // Smooth transition for content
-        // overflowY: 'auto', 
+        marginLeft: open ? `${drawerWidth}px` : `calc(1em * 7 + 1px)`, // Adjust if your collapsed sidebar width is different
+        transition: 'margin-left 0.2s ease-out',
+        // overflowY: 'auto', // Consider if content might overflow
     };
     
-    // Style for the sidebar container itself to handle width transition
-    // This might be better handled within the Sidebar component using MUI's Drawer props
-    // but if Sidebar is a simple component, you might control its width here or via its own styles.
-
     return (
         <div style={layoutStyle}>
             <Sidebar 
@@ -43,7 +50,7 @@ const MainLayout = () => {
                 handleDrawerToggle={handleDrawerToggle} 
             />
             <main style={contentStyle}>
-                <Outlet />
+                <Outlet /> {/* Renders the matched child route's component */}
             </main>
         </div>
     );

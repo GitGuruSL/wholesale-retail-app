@@ -1,192 +1,188 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { Paper, Typography, TextField, Button, Box, Alert, CircularProgress } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
+import apiInstance from '../services/api'; // Import apiInstance directly
 
 function DiscountTypeForm() {
-    // Changed 'typeId' to 'discountTypeId' to match the route parameter name
-    const { discountTypeId } = useParams();
+    const { discountTypeId } = useParams(); // Matches route parameter
     const navigate = useNavigate();
-    const { apiInstance, isAuthenticated, isLoading: authLoading } = useAuth();
-
-    // Use 'discountTypeId' throughout this component instead of 'typeId' for the route param
+    // apiInstance is imported directly, userCan for permissions
+    const { isAuthenticated, isLoading: authLoading, userCan } = useAuth();
     const isEditing = Boolean(discountTypeId);
 
-    console.log(`[DiscountTypeForm] Initializing. Is Editing: ${isEditing}, Discount Type ID: ${discountTypeId}`);
-
     const [name, setName] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [formError, setFormError] = useState(null);
+    const [initialLoading, setInitialLoading] = useState(isEditing); // For fetching existing data
+    const [isSubmitting, setIsSubmitting] = useState(false); // For form submission
     const [pageError, setPageError] = useState(null);
+    const [formErrors, setFormErrors] = useState({}); // For field-specific errors
 
-    const fetchDiscountTypeData = useCallback(async () => {
-        console.log(`[fetchDiscountTypeData] Attempting to fetch. discountTypeId: ${discountTypeId}, apiInstance ready: ${!!apiInstance}`);
-        if (!discountTypeId || !apiInstance) {
-            if (!discountTypeId) console.warn("[fetchDiscountTypeData] No discountTypeId provided for editing.");
-            if (!apiInstance) console.warn("[fetchDiscountTypeData] API instance not available.");
-            setPageError(apiInstance ? "Discount Type ID is missing." : "API service not available.");
-            setLoading(false);
-            return;
-        }
+    const requiredPermission = isEditing ? 'discount_type:update' : 'discount_type:create';
 
-        setLoading(true);
+    const fetchDiscountTypeDetails = useCallback(async () => {
+        if (!isEditing || !isAuthenticated || !discountTypeId) return;
+
+        setInitialLoading(true);
         setPageError(null);
+        setFormErrors({});
         try {
-            console.log(`[fetchDiscountTypeData] Fetching discount type with ID: ${discountTypeId}`);
             const response = await apiInstance.get(`/discount-types/${discountTypeId}`);
-            console.log("[fetchDiscountTypeData] Raw data received:", response.data);
-
-            if (response.data && response.data.name !== undefined) {
-                setName(response.data.name);
-                console.log("[fetchDiscountTypeData] Name set:", response.data.name);
-            } else {
-                console.error("[fetchDiscountTypeData] 'name' not in response or data is invalid. Data:", response.data);
-                setPageError("Received invalid data for discount type.");
-            }
+            setName(response.data.name);
         } catch (err) {
-            console.error("[fetchDiscountTypeData] Error:", err.response || err.message || err);
-            const errorMsg = err.response?.data?.message || err.message || 'Failed to load discount type data.';
-            setPageError(errorMsg);
+            console.error("[DiscountTypeForm] Failed to fetch discount type:", err);
+            setPageError(err.response?.data?.message || "Failed to load discount type data. You may not have permission or the item does not exist.");
         } finally {
-            setLoading(false);
-            console.log("[fetchDiscountTypeData] Fetch attempt finished.");
+            setInitialLoading(false);
         }
-    }, [discountTypeId, apiInstance]);
+    }, [discountTypeId, isAuthenticated, isEditing]);
 
     useEffect(() => {
-        console.log(`[DiscountTypeForm useEffect] AuthLoading: ${authLoading}, IsAuthenticated: ${isAuthenticated}, IsEditing: ${isEditing}, DiscountTypeID: ${discountTypeId}`);
-        if (authLoading) {
-            console.log("[DiscountTypeForm useEffect] Auth is loading, returning.");
-            return;
-        }
-        if (!isAuthenticated) {
-            setPageError("Authentication required. Please log in.");
-            setLoading(false);
-            console.log("[DiscountTypeForm useEffect] Not authenticated.");
-            return;
-        }
-
-        if (isEditing) {
-            if (apiInstance) {
-                fetchDiscountTypeData();
-            } else if (!authLoading) {
-                setPageError("API client not available. Cannot fetch data.");
-                setLoading(false);
+        if (!authLoading) {
+            if (!isAuthenticated) {
+                setPageError("Please log in to manage discount types.");
+                setInitialLoading(false);
+                return;
             }
-        } else {
-            setName('');
-            setPageError(null);
-            setFormError(null);
-            setLoading(false);
-            console.log("[DiscountTypeForm useEffect] Create mode, form reset.");
+            if (userCan && !userCan(requiredPermission)) {
+                setPageError(`You do not have permission to ${isEditing ? 'edit' : 'create'} discount types.`);
+                setInitialLoading(false);
+                return;
+            }
+            if (isEditing) {
+                fetchDiscountTypeDetails();
+            } else {
+                // Reset form for 'create' mode
+                setName('');
+                setPageError(null);
+                setFormErrors({});
+                setInitialLoading(false);
+            }
         }
-    }, [isEditing, discountTypeId, authLoading, isAuthenticated, apiInstance, fetchDiscountTypeData]);
+    }, [isEditing, authLoading, isAuthenticated, userCan, requiredPermission, fetchDiscountTypeDetails]);
+
+    const validateForm = () => {
+        const errors = {};
+        if (!name.trim()) {
+            errors.name = "Discount type name cannot be empty.";
+        }
+        setFormErrors(errors);
+        return Object.keys(errors).length === 0;
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        console.log("[handleSubmit] Form submitted.");
-        if (!apiInstance || !isAuthenticated) {
-            setFormError("Authentication error or API not available. Please log in again.");
+        if (!isAuthenticated) {
+            setPageError("Authentication error. Please log in again.");
+            return;
+        }
+        if (userCan && !userCan(requiredPermission)) {
+            setPageError(`You do not have permission to ${isEditing ? 'update' : 'create'} this discount type.`);
+            return;
+        }
+        if (!validateForm()) {
             return;
         }
 
-        setFormError(null);
-        const typeData = { name: name.trim() };
-        if (!typeData.name) {
-            setFormError("Discount type name cannot be empty.");
-            return;
-        }
-        console.log("[handleSubmit] Data to be sent:", typeData);
-        setLoading(true);
+        setIsSubmitting(true);
+        setPageError(null);
+
+        const discountTypeData = { name: name.trim() };
 
         try {
             if (isEditing) {
-                console.log(`[handleSubmit] Updating discount type ID: ${discountTypeId}`);
-                await apiInstance.put(`/discount-types/${discountTypeId}`, typeData);
+                await apiInstance.put(`/discount-types/${discountTypeId}`, discountTypeData);
             } else {
-                console.log("[handleSubmit] Creating new discount type.");
-                await apiInstance.post('/discount-types', typeData);
+                await apiInstance.post('/discount-types', discountTypeData);
             }
             navigate('/dashboard/discount-types', {
                 state: {
-                    message: `Discount type "${typeData.name}" ${isEditing ? 'updated' : 'created'} successfully.`,
+                    message: `Discount Type "${discountTypeData.name}" ${isEditing ? 'updated' : 'created'} successfully.`,
                     type: 'success'
                 }
             });
         } catch (err) {
-            console.error("[handleSubmit] Error saving discount type:", err.response || err.message || err);
-            const errorMsg = err.response?.data?.message || err.message || `Failed to ${isEditing ? 'update' : 'create'} discount type.`;
-            setFormError(errorMsg);
+            console.error("[DiscountTypeForm] Error saving discount type:", err);
+            const errMsg = err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} discount type.`;
+            setPageError(errMsg);
+            if (err.response?.data?.errors) {
+                const backendErrors = {};
+                for (const key in err.response.data.errors) {
+                    backendErrors[key] = err.response.data.errors[key].join(', ');
+                }
+                setFormErrors(prev => ({ ...prev, ...backendErrors }));
+            }
         } finally {
-            setLoading(false);
+            setIsSubmitting(false);
         }
     };
 
-    if (authLoading) return <p style={styles.centeredMessage}>Authenticating...</p>;
-    if (loading && isEditing && !name) return <p style={styles.centeredMessage}>Loading discount type details...</p>;
-
-    if (pageError && isEditing) {
-        return (
-            <div style={styles.container}>
-                <h2 style={styles.title}>Edit Discount Type</h2>
-                <p style={styles.errorBox}>Page Error: {pageError}</p>
-                <button type="button" onClick={() => navigate('/dashboard/discount-types')} style={styles.buttonSecondary}>
-                    Back to List
-                </button>
-            </div>
-        );
+    if (authLoading) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
     }
-    if (pageError && !isEditing) {
-         return (
-            <div style={styles.container}>
-                <h2 style={styles.title}>Add New Discount Type</h2>
-                <p style={styles.errorBox}>Page Error: {pageError}</p>
-                 <button type="button" onClick={() => navigate('/dashboard/discount-types')} style={styles.buttonSecondary}>Back to List</button>
-            </div>
+    if (initialLoading && isEditing) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+    }
+
+    if ((!isAuthenticated || (userCan && !userCan(requiredPermission))) && pageError) {
+        return (
+            <Paper sx={{ p: 3, m: 2, maxWidth: 600, mx: 'auto' }}>
+                <Typography variant="h5" align="center" gutterBottom>
+                    {isEditing ? 'Edit Discount Type' : 'Add New Discount Type'}
+                </Typography>
+                <Alert severity="error">{pageError}</Alert>
+                <Button variant="outlined" sx={{ mt: 2 }} onClick={() => navigate('/dashboard/discount-types')}>
+                    Back to List
+                </Button>
+            </Paper>
         );
     }
 
     return (
-        <div style={styles.container}>
-            <h2 style={styles.title}>{isEditing ? `Edit Discount Type (ID: ${discountTypeId})` : 'Add New Discount Type'}</h2>
-            {formError && <p style={{...styles.errorBox, backgroundColor: '#ffe6e6', borderColor: 'red', color: 'red'}}>Form Error: {formError}</p>}
-            <form onSubmit={handleSubmit}>
-                <div style={styles.formGroup}>
-                    <label htmlFor="typeName" style={styles.label}>Type Name: *</label>
-                    <input
-                        type="text"
-                        id="typeName"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        required
-                        style={styles.input}
-                        disabled={loading}
-                        placeholder="e.g., Percentage, Fixed Amount"
-                    />
-                </div>
-                <div style={styles.buttonGroup}>
-                    <button type="submit" disabled={loading} style={styles.buttonPrimary}>
-                        {loading ? 'Saving...' : (isEditing ? 'Update Type' : 'Create Type')}
-                    </button>
-                    <button type="button" onClick={() => navigate('/dashboard/discount-types')} style={styles.buttonSecondary} disabled={loading}>
+        <Paper sx={{ p: 3, m: 2, maxWidth: 600, mx: 'auto' }}>
+            <Typography variant="h5" align="center" gutterBottom>
+                {isEditing ? `Edit Discount Type (ID: ${discountTypeId})` : 'Add New Discount Type'}
+            </Typography>
+            {pageError && !formErrors.name &&
+                <Alert severity="error" sx={{ mb: 2 }}>{pageError}</Alert>
+            }
+            <Box component="form" onSubmit={handleSubmit} noValidate>
+                <TextField
+                    label="Discount Type Name"
+                    variant="outlined"
+                    fullWidth
+                    required
+                    value={name}
+                    onChange={(e) => {
+                        setName(e.target.value);
+                        if (formErrors.name) setFormErrors(prev => ({ ...prev, name: null }));
+                    }}
+                    error={Boolean(formErrors.name)}
+                    helperText={formErrors.name}
+                    disabled={isSubmitting || initialLoading}
+                    placeholder="e.g., Percentage, Fixed Amount, Seasonal"
+                    sx={{ mb: 2 }}
+                />
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 2 }}>
+                    <Button
+                        variant="outlined"
+                        color="secondary"
+                        onClick={() => navigate('/dashboard/discount-types')}
+                        disabled={isSubmitting}
+                    >
                         Cancel
-                    </button>
-                </div>
-            </form>
-        </div>
+                    </Button>
+                    <Button
+                        variant="contained"
+                        color="primary"
+                        type="submit"
+                        disabled={isSubmitting || initialLoading || (userCan && !userCan(requiredPermission))}
+                    >
+                        {isSubmitting ? <CircularProgress size={24} /> : (isEditing ? 'Update Type' : 'Create Type')}
+                    </Button>
+                </Box>
+            </Box>
+        </Paper>
     );
 }
-
-const styles = {
-    container: { padding: '20px', maxWidth: '600px', margin: '40px auto', fontFamily: 'Arial, sans-serif', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', borderRadius: '8px', backgroundColor: '#fff' },
-    title: { marginBottom: '25px', color: '#333', textAlign: 'center', borderBottom: '1px solid #eee', paddingBottom: '15px' },
-    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
-    errorBox: { color: '#D8000C', border: '1px solid #FFBABA', padding: '10px 15px', marginBottom: '20px', borderRadius: '4px', backgroundColor: '#FFD2D2', textAlign: 'center' },
-    formGroup: { marginBottom: '20px' },
-    label: { display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#555' },
-    input: { width: '100%', padding: '12px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1em' },
-    buttonGroup: { marginTop: '30px', display: 'flex', justifyContent: 'flex-end', gap: '10px' },
-    buttonPrimary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
-    buttonSecondary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
-};
 
 export default DiscountTypeForm;

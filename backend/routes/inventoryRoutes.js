@@ -1,75 +1,84 @@
 const express = require('express');
 const router = express.Router();
-const inventoryService = require('../services/inventoryService'); // Adjust path
+const inventoryService = require('../services/inventoryService'); // Adjust path if needed
 
-// GET inventory for a specific product IN A SPECIFIC STORE
-// Expect storeId as a query parameter: /api/inventory/:productId?storeId=1
-router.get('/:productId', async (req, res, next) => { // Added next for error handling
-    try {
-        const { productId } = req.params;
-        const { storeId } = req.query; // Get storeId from query string
+// Helper to determine the store id based on user role.
+// Global admin (role === 'globaladmin') may supply a storeId (via query or body).
+// Otherwise, use the store_id assigned to the user.
+function getStoreId(req) {
+  if (req.user && req.user.role === 'globaladmin') {
+    // global admin can supply a storeId if desired; otherwise, null means “all” (if you extend the logic)
+    return req.query.storeId || req.body.storeId || null;
+  } else if (req.user && req.user.store_id) {
+    return req.user.store_id;
+  }
+  return null;
+}
 
-        if (!storeId) {
-            return res.status(400).json({ message: 'Store ID query parameter is required' });
-        }
-
-        const inventory = await inventoryService.getInventoryByProductAndStore(productId, storeId);
-
-        if (inventory) {
-            res.json(inventory);
-        } else {
-            // Return a default 0 quantity if no record exists yet for this product/store
-            res.json({
-                product_id: parseInt(productId),
-                store_id: parseInt(storeId),
-                quantity: 0,
-                low_stock_threshold: null
-            });
-        }
-    } catch (error) {
-        next(error); // Pass errors to the global error handler
+// GET inventory for a specific product in a store
+// For global admin, storeId can be provided; for store admin, use req.user.store_id.
+router.get('/:productId', async (req, res, next) => {
+  const { productId } = req.params;
+  const storeId = getStoreId(req);
+  if (!storeId) {
+    return res.status(400).json({ message: 'Store ID is required.' });
+  }
+  try {
+    const inventory = await inventoryService.getInventoryByProductAndStore(productId, storeId);
+    if (inventory) {
+      res.status(200).json(inventory);
+    } else {
+      // If no record exists, return a default record with quantity 0
+      res.status(200).json({
+        product_id: parseInt(productId, 10),
+        store_id: parseInt(storeId, 10),
+        quantity: 0,
+        low_stock_threshold: null
+      });
     }
+  } catch (err) {
+    next(err);
+  }
 });
 
-// PUT adjust inventory for a specific product IN A SPECIFIC STORE
-// Expect storeId in the request body: { "adjustment": 5, "storeId": 1 }
+// PUT adjust inventory for a product in a store
+// The adjustment value must be a nonzero number.
 router.put('/adjust/:productId', async (req, res, next) => {
-    try {
-        const { productId } = req.params;
-        const { adjustment, storeId } = req.body; // Get storeId from body
-
-        if (typeof adjustment !== 'number') {
-            return res.status(400).json({ message: 'Invalid adjustment value' });
-        }
-        if (!storeId) {
-            return res.status(400).json({ message: 'Store ID is required in the request body' });
-        }
-
-        const updatedInventory = await inventoryService.adjustInventory(productId, storeId, adjustment);
-        res.json(updatedInventory[0]); // adjustInventory returns an array
-    } catch (error) {
-        next(error);
-    }
+  const { productId } = req.params;
+  const adjValue = Number(req.body.adjustment);
+  const storeId = getStoreId(req);
+  if (isNaN(adjValue) || adjValue === 0) {
+    return res.status(400).json({ message: 'A non-zero numeric adjustment is required.' });
+  }
+  if (!storeId) {
+    return res.status(400).json({ message: 'Store ID is required.' });
+  }
+  try {
+    const updatedInventory = await inventoryService.adjustInventory(productId, storeId, adjValue);
+    // adjustInventory returns an array (using .returning('*'))
+    res.status(200).json(updatedInventory[0]);
+  } catch (error) {
+    next(error);
+  }
 });
 
- // POST create initial inventory record (less common now, adjustInventory handles creation)
- // Expect storeId in the request body: { "product_id": 10, "storeId": 1, "quantity": 50 }
- router.post('/', async (req, res, next) => {
-    try {
-        const { product_id, storeId, quantity, low_stock_threshold } = req.body;
-        if (!product_id || !storeId) {
-             return res.status(400).json({ message: 'Product ID and Store ID are required' });
-        }
-        const newInventory = await inventoryService.createInitialInventory(product_id, storeId, quantity, low_stock_threshold);
-        res.status(201).json(newInventory[0]);
-    } catch (error) {
-        // Handle potential unique constraint errors if record already exists
-       if (error.code === '23505') { // Example for PostgreSQL unique violation
-            return res.status(409).json({ message: 'Inventory record already exists for this product in this store.' });
-       }
-       next(error);
+// POST create an initial inventory record for a product in a store
+router.post('/', async (req, res, next) => {
+  const { product_id, quantity, low_stock_threshold } = req.body;
+  const storeId = getStoreId(req);
+  if (!product_id || !storeId) {
+    return res.status(400).json({ message: 'Product ID and Store ID are required.' });
+  }
+  try {
+    const newInventory = await inventoryService.createInitialInventory(product_id, storeId, quantity, low_stock_threshold);
+    res.status(201).json(newInventory[0]);
+  } catch (error) {
+    // Check for unique constraint violation (PostgreSQL code 23505)
+    if (error.code === '23505') {
+      return res.status(409).json({ message: 'Inventory record already exists for this product in this store.' });
     }
+    next(error);
+  }
 });
-
 
 module.exports = router;

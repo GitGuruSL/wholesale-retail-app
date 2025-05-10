@@ -1,57 +1,81 @@
 const express = require('express');
-const router = express.Router();
+const { body, validationResult } = require('express-validator');
+// Import any specific middleware or controllers if needed
+// const { authorize } = require('../middleware/authMiddleware'); // Example
 
+module.exports = (knex) => {
+  const router = express.Router();
 
-// Get company profile
-router.get('/company', async (req, res) => {
-  try {
-    const result = await db.query('SELECT name, address, contact FROM company_profile WHERE id = 1');
-    res.json(result.rows[0] || {});
-  } catch (err) {
-    console.error("Error fetching company profile:", err);
-    res.status(500).json({ message: 'Failed to load company profile' });
-  }
-});
+  // Example: Get all store settings (adjust to your actual needs)
+  router.get('/', async (req, res) => {
+    try {
+      // Assuming you have a 'store_settings' table
+      // And settings are perhaps scoped by store_id if applicable, or global
+      // For simplicity, let's assume a single set of settings or settings for the user's store
+      // This is a placeholder, adapt to your actual data model
+      const settings = await knex('store_settings').select('*').first(); // Example query
+      if (!settings) {
+        return res.status(404).json({ message: 'Settings not found.' });
+      }
+      res.json(settings);
+    } catch (error) {
+      console.error('Error fetching store settings:', error);
+      res.status(500).json({ message: 'Error fetching store settings', error: error.message });
+    }
+  });
 
-// Update company profile
-router.put('/company', async (req, res) => {
-  const { name, address, contact } = req.body;
-  try {
-    await db.query(
-      `UPDATE company_profile SET name = $1, address = $2, contact = $3, updated_at = CURRENT_TIMESTAMP WHERE id = 1`,
-      [name, address, contact]
-    );
-    res.json({ message: 'Company profile updated' });
-  } catch (err) {
-    console.error("Error updating company profile:", err);
-    res.status(500).json({ message: 'Failed to update company profile' });
-  }
-});
+  // Example: Update store settings
+  router.put('/', [
+    // Add validation rules as needed
+    body('setting_name').optional().isString().trim(),
+    body('setting_value').optional(),
+    // Add more specific validations based on your settings structure
+  ], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
 
-// Get store settings
-router.get('/store', async (req, res) => {
-  try {
-    const result = await db.query('SELECT default_store, currency FROM store_settings WHERE id = 1');
-    res.json(result.rows[0] || {});
-  } catch (err) {
-    console.error("Error fetching store settings:", err);
-    res.status(500).json({ message: 'Failed to load store settings' });
-  }
-});
+    try {
+      const { ...settingsUpdates } = req.body; // Get all settings from body
 
-// Update store settings
-router.put('/store', async (req, res) => {
-  const { defaultStore, currency } = req.body;
-  try {
-    await db.query(
-      `UPDATE store_settings SET default_store = $1, currency = $2, updated_at = CURRENT_TIMESTAMP WHERE id = 1`,
-      [defaultStore, currency]
-    );
-    res.json({ message: 'Store settings updated' });
-  } catch (err) {
-    console.error("Error updating store settings:", err);
-    res.status(500).json({ message: 'Failed to update store settings' });
-  }
-});
+      // Example: Update settings in a 'store_settings' table.
+      // This assumes you have a way to identify which settings record to update,
+      // e.g., by a primary key or a specific condition.
+      // If you have multiple rows for settings, you'll need a more complex logic.
+      // If it's a single row of settings (e.g., id = 1 or a specific store_id)
+      
+      // Placeholder: Find a way to identify the settings record.
+      // For this example, let's assume there's only one settings record or you update by a known ID.
+      const existingSettings = await knex('store_settings').first(); // Or .where({id: 1}) etc.
 
-module.exports = router;
+      if (!existingSettings) {
+        // Optionally create settings if they don't exist
+        // const [newSettingId] = await knex('store_settings').insert(settingsUpdates).returning('id');
+        // const newSettings = await knex('store_settings').where({ id: newSettingId }).first();
+        // return res.status(201).json(newSettings);
+        return res.status(404).json({ message: 'Settings record not found to update.' });
+      }
+      
+      const updatedCount = await knex('store_settings')
+        .where({ id: existingSettings.id }) // Or your specific condition
+        .update(settingsUpdates);
+
+      if (updatedCount === 0) {
+        return res.status(404).json({ message: 'Settings not found or no changes made.' });
+      }
+
+      const updatedSettings = await knex('store_settings').where({ id: existingSettings.id }).first();
+      res.json(updatedSettings);
+    } catch (error) {
+      console.error('Error updating store settings:', error);
+      res.status(500).json({ message: 'Error updating store settings', error: error.message });
+    }
+  });
+
+  // Add more specific setting routes as needed
+  // e.g., router.get('/:settingKey', ...);
+  // e.g., router.put('/:settingKey', ...);
+
+  return router; // Crucially, return the configured router instance
+};

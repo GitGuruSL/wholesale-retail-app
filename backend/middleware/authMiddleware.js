@@ -4,97 +4,77 @@ const knex = require('../db/knex.js'); // Ensure you have your knex instance con
 const authenticateToken = async (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
-
-    console.log(`AuthMiddleware: authenticateToken called for path: ${req.path}`);
-
-    if (token == null) {
-        console.warn("AuthMiddleware: No token provided.");
-        return res.status(401).json({ message: 'Unauthorized: No token provided.' });
+  
+    if (!token) {
+      console.warn("AuthMiddleware: No token provided.");
+      return res.status(401).json({ message: 'Unauthorized: No token provided.' });
     }
-
+  
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        console.log("AuthMiddleware: Token decoded:", decoded);
-
-        if (!decoded.userId) {
-            console.warn("AuthMiddleware: Token does not contain userId.");
-            return res.status(401).json({ message: 'Unauthorized: Invalid token payload.' });
-        }
-
-        const userDetails = await knex('users')
-            .leftJoin('roles', 'users.role_id', 'roles.id')
-            .where({ 'users.id': decoded.userId })
-            .select(
-                'users.id',
-                'users.username',
-                'users.employee_id',
-                'users.is_active',
-                'users.first_name',
-                'users.last_name',
-                'users.email',
-                'users.role_id',
-                // 'users.store_id', // REMOVED - store_id is not directly on users table
-                'roles.name as role_name'
-            )
-            .first();
-
-        if (!userDetails) {
-            console.warn(`AuthMiddleware: User not found for ID: ${decoded.userId}`);
-            return res.status(401).json({ message: 'Unauthorized: User not found.' });
-        }
-
-        if (!userDetails.is_active) {
-            console.warn(`AuthMiddleware: User ${userDetails.username} is not active.`);
-            return res.status(403).json({ message: 'Forbidden: User account is inactive.' });
-        }
-
-        // Fetch associated store IDs from user_stores table
-        const storeAssociations = await knex('user_stores')
-            .where({ user_id: userDetails.id })
-            .select('store_id');
-
-        userDetails.associated_store_ids = storeAssociations.map(sa => sa.store_id);
-        console.log(`AuthMiddleware: User ${userDetails.username} associated store IDs:`, userDetails.associated_store_ids);
-
-
-        const permissionsResult = await knex('role_permissions')
-            .join('permissions', 'role_permissions.permission_id', 'permissions.id')
-            .where({ role_id: userDetails.role_id })
-            .select('permissions.name as permission_name');
-
-        userDetails.permissions = permissionsResult.map(p => p.permission_name);
-        console.log(`AuthMiddleware: User ${userDetails.username} (Role: ${userDetails.role_name}) permissions:`, userDetails.permissions);
-
-        req.user = userDetails;
-        console.log("AuthMiddleware: Authentication successful. req.user populated.");
-        next();
-
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  
+      if (!decoded.userId) {
+        console.warn("AuthMiddleware: Token does not contain userId.");
+        return res.status(401).json({ message: 'Unauthorized: Invalid token payload.' });
+      }
+  
+      const userDetails = await knex('users')
+        .leftJoin('roles', 'users.role_id', 'roles.id')
+        .where({ 'users.id': decoded.userId })
+        .select(
+          'users.id',
+          'users.username',
+          'users.current_store_id',
+          'users.is_active',
+          'users.first_name',
+          'users.last_name',
+          'users.email',
+          'users.role_id', // Ensure role_id is selected
+          'roles.name as role_name' // Include role_name
+        )
+        .first();
+  
+      if (!userDetails) {
+        console.warn(`AuthMiddleware: User not found for ID: ${decoded.userId}`);
+        return res.status(401).json({ message: 'Unauthorized: User not found.' });
+      }
+  
+      if (!userDetails.is_active) {
+        console.warn(`AuthMiddleware: User ${userDetails.username} is not active.`);
+        return res.status(403).json({ message: 'Forbidden: User account is inactive.' });
+      }
+  
+      if (!userDetails.role_id) {
+        console.warn(`AuthMiddleware: User ${userDetails.username} does not have a role assigned.`);
+        return res.status(403).json({ message: 'Forbidden: User does not have a role assigned.' });
+      }
+  
+      console.log(`AuthMiddleware: User ${userDetails.username} has role_id: ${userDetails.role_id}`);
+  
+      // Fetch permissions for the user's role
+      const permissionsResult = await knex('role_permissions')
+        .join('permissions', 'role_permissions.permission_id', 'permissions.id')
+        .where({ role_id: userDetails.role_id })
+        .select('permissions.name as permission_name');
+  
+      userDetails.permissions = permissionsResult.map(p => p.permission_name);
+      console.log(`AuthMiddleware: User ${userDetails.username} (Role: ${userDetails.role_name}) permissions:`, userDetails.permissions);
+  
+      req.user = userDetails;
+      console.log("AuthMiddleware: Authentication successful. req.user populated.");
+      next();
     } catch (err) {
-        let status = 500;
-        let message = "Internal server error: Could not process authentication.";
-        let errorType = err.name || "UnknownError";
-
-        if (err instanceof jwt.JsonWebTokenError) {
-            status = 401; // Or 403 if preferred for token errors
-            message = `Unauthorized: ${err.message}`;
-            console.warn("AuthMiddleware: JWT Error -", err.message);
-        } else if (err.name === 'TokenExpiredError') {
-            status = 401;
-            message = 'Unauthorized: Token has expired.';
-            console.warn("AuthMiddleware: Token has expired.");
-        } else if (err.code && (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND')) { // Example DB connection errors
-            status = 503; // Service Unavailable
-            message = "Service unavailable: Could not connect to database.";
-            console.error("AuthMiddleware: Database connection error:", err);
-        } else {
-            // For other errors, including potential Knex/SQL errors not caught by specific checks
-            console.error("AuthMiddleware: Unhandled error during token processing or user/permission fetch:", err);
-            // Keep generic message for client, log specific error on server
-        }
-        
-        return res.status(status).json({ message: message, errorType: errorType });
+      console.error("AuthMiddleware: Error during authentication:", err);
+  
+      if (err instanceof jwt.JsonWebTokenError) {
+        return res.status(401).json({ message: `Unauthorized: ${err.message}` });
+      } else if (err.name === 'TokenExpiredError') {
+        return res.status(401).json({ message: 'Unauthorized: Token has expired.' });
+      } else {
+        return res.status(500).json({ message: 'Internal server error: Could not process authentication.' });
+      }
     }
-};
+  };
 
 // Function to check if user has ANY of the allowed roles
 const authorizeRole = (allowedRoles) => {

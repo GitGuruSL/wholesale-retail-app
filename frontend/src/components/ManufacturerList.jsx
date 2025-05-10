@@ -1,170 +1,195 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom'; // Ensure Link and useNavigate are imported
+import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
+import {
+    Paper, Typography, Button, Table, TableHead, TableRow, TableCell,
+    TableBody, TableContainer, Box, Alert, CircularProgress
+} from '@mui/material';
 import { useAuth } from '../context/AuthContext';
-import apiInstance from '../services/api'; // Assuming you use apiInstance directly or via useAuth
+import apiInstance from '../services/api'; // Import apiInstance directly
 
-// Make sure this function is named ManufacturerList
 function ManufacturerList() {
+    const [manufacturers, setManufacturers] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [pageError, setPageError] = useState(null);
+    const [feedback, setFeedback] = useState({ message: null, type: null });
     const navigate = useNavigate();
     const location = useLocation();
-    const { isAuthenticated, isLoading: authLoading, user } = useAuth(); // Or however you get apiInstance
-
-    const [manufacturers, setManufacturers] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [feedback, setFeedback] = useState({ message: '', type: '' });
-
-    // Callback to fetch manufacturers
-    const fetchManufacturers = useCallback(async () => {
-        if (!isAuthenticated || !apiInstance) {
-            setError("User not authenticated or API not available.");
-            setLoading(false);
-            return;
-        }
-        setLoading(true);
-        setError(null);
-        try {
-            const response = await apiInstance.get('/manufacturers');
-            setManufacturers(response.data || []);
-            console.log("[ManufacturerList] Manufacturers fetched:", response.data);
-        } catch (err) {
-            console.error("[ManufacturerList] Error fetching manufacturers:", err);
-            setError(err.response?.data?.message || "Failed to load manufacturers.");
-            setManufacturers([]); // Clear data on error
-        } finally {
-            setLoading(false);
-        }
-    }, [isAuthenticated, apiInstance]); // Dependencies for useCallback
+    const { isAuthenticated, isLoading: authLoading, userCan } = useAuth(); // Get userCan
 
     useEffect(() => {
         if (location.state?.message) {
             setFeedback({ message: location.state.message, type: location.state.type || 'success' });
-            // Clear the location state to prevent message from re-appearing on refresh
             navigate(location.pathname, { replace: true, state: {} });
+            const timer = setTimeout(() => setFeedback({ message: null, type: null }), 5000);
+            return () => clearTimeout(timer);
         }
-    }, [location.state, location.pathname, navigate]);
+    }, [location, navigate]);
 
-    useEffect(() => {
-        if (isAuthenticated && !authLoading) {
-            fetchManufacturers();
-        } else if (!authLoading && !isAuthenticated) {
-            setError("Please log in to view manufacturers.");
-            setLoading(false);
-        }
-    }, [isAuthenticated, authLoading, fetchManufacturers]);
-
-
-    const handleDelete = async (id, name) => {
-        if (!apiInstance) {
-            setFeedback({ message: "API service not available.", type: 'error' });
+    const fetchManufacturers = useCallback(async () => {
+        if (!isAuthenticated) {
+            setPageError("User not authenticated. Cannot fetch manufacturers.");
+            setIsLoading(false);
             return;
         }
-        if (window.confirm(`Are you sure you want to delete manufacturer "${name}" (ID: ${id})?`)) {
-            try {
-                await apiInstance.delete(`/manufacturers/${id}`);
-                setFeedback({ message: `Manufacturer "${name}" deleted successfully.`, type: 'success' });
-                fetchManufacturers(); // Refresh the list
-            } catch (err) {
-                console.error("[ManufacturerList] Error deleting manufacturer:", err);
-                setFeedback({ message: err.response?.data?.message || "Failed to delete manufacturer.", type: 'error' });
+        setIsLoading(true);
+        setPageError(null);
+        try {
+            const response = await apiInstance.get('/manufacturers');
+            setManufacturers(response.data || []);
+        } catch (err) {
+            console.error("[ManufacturerList] Error fetching manufacturers:", err);
+            setPageError(err.response?.data?.message || 'Failed to fetch manufacturers.');
+            setManufacturers([]);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [isAuthenticated]);
+
+    useEffect(() => {
+        if (!authLoading) {
+            if (isAuthenticated) {
+                fetchManufacturers();
+            } else {
+                setPageError("Please log in to view manufacturers.");
+                setIsLoading(false);
+                setManufacturers([]);
             }
         }
+    }, [authLoading, isAuthenticated, fetchManufacturers]);
+
+    const handleDelete = async (manufacturerId, manufacturerName) => {
+        if (!isAuthenticated) {
+            setFeedback({ message: "Authentication error. Please log in again.", type: 'error' });
+            return;
+        }
+        if (userCan && !userCan('manufacturer:delete')) {
+            setFeedback({ message: "You do not have permission to delete manufacturers.", type: 'error' });
+            setTimeout(() => setFeedback({ message: null, type: null }), 5000);
+            return;
+        }
+        if (!window.confirm(`Are you sure you want to delete manufacturer: "${manufacturerName}" (ID: ${manufacturerId})?`)) {
+            return;
+        }
+        setPageError(null);
+        try {
+            await apiInstance.delete(`/manufacturers/${manufacturerId}`);
+            setFeedback({ message: `Manufacturer "${manufacturerName}" deleted successfully.`, type: 'success' });
+            setManufacturers(prevManufacturers => prevManufacturers.filter(m => m.id !== manufacturerId));
+        } catch (err) {
+            console.error(`[ManufacturerList] Error deleting manufacturer ${manufacturerId}:`, err);
+            const errorMsg = err.response?.data?.message || 'Failed to delete manufacturer.';
+            setFeedback({ message: errorMsg, type: 'error' });
+        }
+        const timer = setTimeout(() => setFeedback({ message: null, type: null }), 5000);
     };
 
-    if (authLoading || loading) {
-        return <p style={styles.centeredMessage}>Loading manufacturers...</p>;
+    if (authLoading) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+    }
+    if (isLoading && !pageError && manufacturers.length === 0) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
     }
 
-    // Render error state if error exists and feedback message is not set (to avoid duplicate error display)
-    if (error && !feedback.message) {
-        return <p style={{ ...styles.errorText, textAlign: 'center' }}>Error: {error}</p>;
+    if (pageError && manufacturers.length === 0) {
+        return (
+            <Paper sx={{ p: 3, m: 2, maxWidth: 900, mx: 'auto' }}>
+                <Typography variant="h5" align="center" gutterBottom>Manage Manufacturers</Typography>
+                <Alert severity="error" sx={{ mb: 2 }}>{pageError}</Alert>
+                {isAuthenticated && userCan && userCan('manufacturer:create') &&
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+                        <Button variant="contained" color="primary" component={RouterLink} to="/dashboard/manufacturers/new">
+                            Add New Manufacturer
+                        </Button>
+                    </Box>
+                }
+            </Paper>
+        );
     }
-
 
     return (
-        <div style={styles.container}>
-            <h2 style={styles.title}>Manage Manufacturers</h2>
+        <Paper sx={{ p: 3, m: 2, maxWidth: 1000, mx: 'auto' }}>
+            <Typography variant="h5" align="center" gutterBottom>
+                Manage Manufacturers
+            </Typography>
             {feedback.message && (
-                <div style={{
-                    ...styles.feedbackBox,
-                    ...(feedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError)
-                }}>
+                <Alert severity={feedback.type === 'success' ? 'success' : 'error'} sx={{ mb: 2, width: '100%' }}>
                     {feedback.message}
-                </div>
+                </Alert>
             )}
-            {/* Corrected Link path */}
-            <Link to="/dashboard/manufacturers/new" style={styles.addButtonLink}>
-                <button style={{...styles.button, ...styles.buttonAdd}}>Add New Manufacturer</button>
-            </Link>
-
-            {manufacturers.length === 0 && !loading && !error ? (
-                <p style={styles.centeredMessage}>No manufacturers found. Click "Add New Manufacturer" to create one.</p>
-            ) : (
-                <table style={styles.table}>
-                    <thead style={styles.tableHeader}>
-                        <tr>
-                            <th style={styles.tableCell}>ID</th>
-                            <th style={styles.tableCell}>Name</th>
-                            <th style={styles.tableCell}>Contact Person</th>
-                            <th style={styles.tableCell}>Email</th>
-                            <th style={styles.tableCell}>Telephone</th>
-                            <th style={styles.tableCell}>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {manufacturers.map((manufacturer, index) => (
-                            <tr key={manufacturer.id} style={index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd}>
-                                <td style={styles.tableCell}>{manufacturer.id}</td>
-                                <td style={styles.tableCell}>{manufacturer.name}</td>
-                                <td style={styles.tableCell}>{manufacturer.contact_person || 'N/A'}</td>
-                                <td style={styles.tableCell}>{manufacturer.email || 'N/A'}</td>
-                                <td style={styles.tableCell}>{manufacturer.telephone || 'N/A'}</td>
-                                <td style={{ ...styles.tableCell, ...styles.actionsCell }}>
-                                    {/* Corrected navigate path */}
-                                    <button
-                                        onClick={() => navigate(`/dashboard/manufacturers/edit/${manufacturer.id}`)}
-                                        style={{ ...styles.button, ...styles.buttonEdit }}
-                                        title="Edit Manufacturer"
-                                    >
-                                        Edit
-                                    </button>
-                                    <button
-                                        onClick={() => handleDelete(manufacturer.id, manufacturer.name)}
-                                        style={{ ...styles.button, ...styles.buttonDelete }}
-                                        title="Delete Manufacturer"
-                                    >
-                                        Delete
-                                    </button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+            {pageError && manufacturers.length > 0 && (
+                 <Alert severity="warning" sx={{ mb: 2, width: '100%' }}>
+                    {pageError}
+                </Alert>
             )}
-        </div>
+            {isAuthenticated && userCan && userCan('manufacturer:create') &&
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+                    <Button variant="contained" color="primary" component={RouterLink} to="/dashboard/manufacturers/new">
+                        Add New Manufacturer
+                    </Button>
+                </Box>
+            }
+            {!isLoading && manufacturers.length === 0 && !pageError && (
+                <Typography align="center" sx={{ p: 2 }}>
+                    No manufacturers found. {isAuthenticated && userCan && userCan('manufacturer:create') && "Try adding one!"}
+                </Typography>
+            )}
+            {manufacturers.length > 0 && (
+                <TableContainer component={Paper} elevation={2}>
+                    <Table sx={{ minWidth: 750 }} aria-label="manufacturers table">
+                        <TableHead sx={{ '& th': { fontWeight: 'bold' } }}>
+                            <TableRow>
+                                <TableCell>ID</TableCell>
+                                <TableCell>Name</TableCell>
+                                <TableCell>Contact Person</TableCell>
+                                <TableCell>Email</TableCell>
+                                <TableCell>Telephone</TableCell>
+                                <TableCell align="right">Actions</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {manufacturers.map((manufacturer) => (
+                                <TableRow
+                                    hover
+                                    key={manufacturer.id}
+                                    sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
+                                >
+                                    <TableCell component="th" scope="row">{manufacturer.id}</TableCell>
+                                    <TableCell>{manufacturer.name}</TableCell>
+                                    <TableCell>{manufacturer.contact_person || '-'}</TableCell>
+                                    <TableCell>{manufacturer.email || '-'}</TableCell>
+                                    <TableCell>{manufacturer.telephone || '-'}</TableCell>
+                                    <TableCell align="right">
+                                        {isAuthenticated && userCan && userCan('manufacturer:update') &&
+                                            <Button
+                                                variant="outlined"
+                                                color="primary"
+                                                component={RouterLink}
+                                                to={`/dashboard/manufacturers/edit/${manufacturer.id}`}
+                                                sx={{ mr: 1 }}
+                                                size="small"
+                                            >
+                                                Edit
+                                            </Button>
+                                        }
+                                        {isAuthenticated && userCan && userCan('manufacturer:delete') &&
+                                            <Button
+                                                variant="outlined"
+                                                color="error"
+                                                onClick={() => handleDelete(manufacturer.id, manufacturer.name)}
+                                                size="small"
+                                            >
+                                                Delete
+                                            </Button>
+                                        }
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+            )}
+        </Paper>
     );
 }
 
-const styles = {
-    container: { padding: '20px', fontFamily: 'Arial, sans-serif', maxWidth: '1200px', margin: '0 auto' },
-    title: { marginBottom: '20px', color: '#333', textAlign: 'center' },
-    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
-    errorText: { color: '#D8000C', fontWeight: 'bold' },
-    feedbackBox: { padding: '10px 15px', marginBottom: '15px', borderRadius: '4px', textAlign: 'center', border: '1px solid' },
-    feedbackSuccess: { borderColor: 'green', color: 'green', backgroundColor: '#e6ffed' },
-    feedbackError: { borderColor: 'red', color: 'red', backgroundColor: '#ffe6e6' },
-    addButtonLink: { textDecoration: 'none', display: 'block', textAlign: 'right', marginBottom: '15px' },
-    button: { padding: '8px 12px', margin: '0 5px 0 0', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9em' },
-    buttonAdd: { backgroundColor: '#28a745', color: 'white'},
-    buttonEdit: { backgroundColor: '#ffc107', color: '#000' },
-    buttonDelete: { backgroundColor: '#dc3545', color: 'white' },
-    table: { width: '100%', borderCollapse: 'collapse', marginTop: '0px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
-    tableHeader: { backgroundColor: '#e9ecef' },
-    tableCell: { padding: '10px 8px', textAlign: 'left', verticalAlign: 'middle', borderBottom: '1px solid #dee2e6', wordBreak: 'break-word', fontSize: '0.9em' },
-    actionsCell: { whiteSpace: 'nowrap', textAlign: 'center' },
-    tableRowOdd: { backgroundColor: '#fff' },
-    tableRowEven: { backgroundColor: '#f8f9fa' }
-};
-
-// Ensure this is ManufacturerList
 export default ManufacturerList;

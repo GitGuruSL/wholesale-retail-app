@@ -1,49 +1,49 @@
 import React, { useState, useEffect, useCallback } from 'react';
-// import axios from 'axios'; // REMOVE THIS
 import { useParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext'; // Import useAuth
-
-// const API_BASE_URL = 'http://localhost:5001/api'; // REMOVE THIS
+import { useAuth } from '../context/AuthContext';
+import apiInstance from '../services/api';
+import {
+    Paper, Typography, TextField, Button, Box, Alert, CircularProgress, Grid,
+    FormControl, InputLabel, Select, MenuItem, Checkbox, FormControlLabel, FormHelperText
+} from '@mui/material';
 
 function SupplierForm() {
     const { supplierId } = useParams();
     const navigate = useNavigate();
-    const { apiInstance, isAuthenticated, isLoading: authLoading } = useAuth(); // Use AuthContext
-
+    const { isAuthenticated, isLoading: authLoading, userCan } = useAuth();
     const isEditing = Boolean(supplierId);
 
     const initialFormData = {
-        name: '', address: '', city: '',
-        contact_person: '', telephone: '', fax: '', email: '',
-        since_date: '', main_category_id: '', tax_invoice_details: '',
+        name: '', address: '', city: '', contact_person: '', telephone: '', fax: '',
+        email: '', since_date: '', main_category_id: '', tax_invoice_details: '',
         default_discount_percent: '0', credit_limit: '0.00', credit_days: '0',
         is_default_supplier: false,
     };
     const [formData, setFormData] = useState(initialFormData);
-    const [categories, setCategories] = useState([]);
-    const [isLoading, setIsLoading] = useState(false); // Renamed from 'loading'
-    const [pageError, setPageError] = useState(null);   // Renamed from 'error'
-    const [formError, setFormError] = useState(''); // For specific field validation
-    const [loadingCategoriesError, setLoadingCategoriesError] = useState(null); // Specific error for categories
+    const [categories, setCategories] = useState([]); // For main_category_id dropdown
+    const [initialLoading, setInitialLoading] = useState(true);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [pageError, setPageError] = useState(null);
+    const [formErrors, setFormErrors] = useState({});
 
-    const fetchCategories = useCallback(async () => {
-        if (!apiInstance || !isAuthenticated) return;
-        setLoadingCategoriesError(null);
+    const requiredPermission = isEditing ? 'supplier:update' : 'supplier:create';
+
+    const fetchMainCategories = useCallback(async () => {
+        if (!isAuthenticated) return;
         try {
-            const response = await apiInstance.get('/categories');
-            setCategories(response.data || []);
+            const response = await apiInstance.get('/categories?limit=all');
+            setCategories(response.data?.data || response.data || []);
         } catch (err) {
-            console.error("[SupplierForm] Error fetching categories:", err);
-            const errorMsg = err.response?.data?.message || 'Failed to load categories for dropdown.';
-            setLoadingCategoriesError(errorMsg);
+            console.error("[SupplierForm] Error fetching main categories:", err);
+            setPageError("Could not load main categories for selection. Please try refreshing.");
             setCategories([]);
         }
-    }, [apiInstance, isAuthenticated]);
+    }, [isAuthenticated]);
 
-    const fetchSupplierData = useCallback(async () => {
-        if (!isEditing || !apiInstance || !isAuthenticated) return;
-        setIsLoading(true);
+    const fetchSupplierDetails = useCallback(async () => {
+        if (!isEditing || !isAuthenticated || !supplierId) return;
         setPageError(null);
+        setFormErrors({});
         try {
             const response = await apiInstance.get(`/suppliers/${supplierId}`);
             const data = response.data;
@@ -66,184 +66,175 @@ function SupplierForm() {
             });
         } catch (err) {
             console.error("[SupplierForm] Error fetching supplier details:", err);
-            const errorMsg = err.response?.data?.message || 'Failed to load supplier data.';
-            setPageError(errorMsg);
-        } finally {
-            setIsLoading(false);
+            setPageError(err.response?.data?.message || "Failed to load supplier data.");
         }
-    }, [isEditing, supplierId, apiInstance, isAuthenticated]);
+    }, [supplierId, isAuthenticated, isEditing]);
 
     useEffect(() => {
-        if (!authLoading && isAuthenticated && apiInstance) {
-            setIsLoading(true); // General loading for initial setup
-            fetchCategories().finally(() => {
+        const loadData = async () => {
+            if (!authLoading) {
+                if (!isAuthenticated) {
+                    setPageError("Please log in to manage suppliers.");
+                    setInitialLoading(false);
+                    return;
+                }
+                if (userCan && !userCan(requiredPermission)) {
+                    setPageError(`You do not have permission to ${isEditing ? 'edit' : 'create'} suppliers.`);
+                    setInitialLoading(false);
+                    return;
+                }
+                setInitialLoading(true);
+                await fetchMainCategories();
                 if (isEditing) {
-                    fetchSupplierData(); // This will set its own loading
+                    await fetchSupplierDetails();
                 } else {
                     setFormData(initialFormData);
-                    setPageError(null);
-                    setFormError('');
-                    setIsLoading(false); // Stop general loading if not editing
+                    setFormErrors({});
                 }
-            });
-        } else if (!authLoading && !isAuthenticated) {
-            setPageError('Authentication required. Please log in.');
-            setIsLoading(false);
-        }
-    }, [authLoading, isAuthenticated, apiInstance, fetchCategories, fetchSupplierData, isEditing]);
+                setInitialLoading(false);
+            }
+        };
+        loadData();
+    }, [isEditing, authLoading, isAuthenticated, userCan, requiredPermission, fetchMainCategories, fetchSupplierDetails]);
 
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            [name]: type === 'checkbox' ? checked : value
-        }));
-        if (formError) setFormError(''); // Clear form error on change
+        setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+        if (formErrors[name]) setFormErrors(prev => ({ ...prev, [name]: null }));
+    };
+
+    const validateForm = () => {
+        const errors = {};
+        if (!formData.name.trim()) errors.name = "Supplier name cannot be empty.";
+        if (formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
+            errors.email = "Invalid email format.";
+        }
+        const discount = parseFloat(formData.default_discount_percent);
+        if (formData.default_discount_percent.trim() && (isNaN(discount) || discount < 0 || discount > 100)) {
+            errors.default_discount_percent = "Discount must be between 0 and 100.";
+        }
+        const creditLimit = parseFloat(formData.credit_limit);
+        if (formData.credit_limit.trim() && (isNaN(creditLimit) || creditLimit < 0)) {
+            errors.credit_limit = "Credit limit must be a non-negative number.";
+        }
+        const creditDays = parseInt(formData.credit_days, 10);
+        if (formData.credit_days.trim() && (isNaN(creditDays) || creditDays < 0)) {
+            errors.credit_days = "Credit days must be a non-negative integer.";
+        }
+        setFormErrors(errors);
+        return Object.keys(errors).length === 0;
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!apiInstance || !isAuthenticated) {
+        if (!isAuthenticated) {
             setPageError("Authentication error. Please log in again.");
             return;
         }
-        setIsLoading(true);
-        setPageError(null);
-        setFormError('');
+        if (userCan && !userCan(requiredPermission)) {
+            setPageError(`You do not have permission to ${isEditing ? 'update' : 'create'} this supplier.`);
+            return;
+        }
+        if (!validateForm()) return;
 
-        const supplierData = { ...formData };
-        const fieldsToNullifyIfEmpty = [
-            'city', 'contact_person', 'telephone', 'fax', 'email',
-            'since_date', 'main_category_id', 'tax_invoice_details', 'address',
-        ];
-        Object.keys(supplierData).forEach(key => {
-            if (typeof supplierData[key] === 'string') {
-                supplierData[key] = supplierData[key].trim();
-            }
-            if (fieldsToNullifyIfEmpty.includes(key) && supplierData[key] === '') {
-                supplierData[key] = null;
-            }
+        setIsSubmitting(true);
+        setPageError(null);
+
+        const payload = { ...formData };
+        const fieldsToNullifyIfEmpty = ['address', 'city', 'contact_person', 'telephone', 'fax', 'email', 'since_date', 'main_category_id', 'tax_invoice_details'];
+        fieldsToNullifyIfEmpty.forEach(field => {
+            if (payload[field] === '' || payload[field] === null) payload[field] = null;
         });
 
-        supplierData.default_discount_percent = supplierData.default_discount_percent ? parseFloat(supplierData.default_discount_percent) : null;
-        supplierData.credit_limit = supplierData.credit_limit ? parseFloat(supplierData.credit_limit) : null;
-        supplierData.credit_days = supplierData.credit_days ? parseInt(supplierData.credit_days, 10) : null;
-        supplierData.main_category_id = supplierData.main_category_id ? parseInt(supplierData.main_category_id, 10) : null;
-        supplierData.is_default_supplier = Boolean(supplierData.is_default_supplier);
+        payload.default_discount_percent = payload.default_discount_percent === null || payload.default_discount_percent === '' ? null : parseFloat(payload.default_discount_percent);
+        payload.credit_limit = payload.credit_limit === null || payload.credit_limit === '' ? null : parseFloat(payload.credit_limit);
+        payload.credit_days = payload.credit_days === null || payload.credit_days === '' ? null : parseInt(payload.credit_days, 10);
+        payload.main_category_id = payload.main_category_id === null || payload.main_category_id === '' ? null : parseInt(payload.main_category_id, 10);
+        payload.is_default_supplier = Boolean(payload.is_default_supplier);
 
-        if (!supplierData.name) { setFormError("Supplier name cannot be empty."); setIsLoading(false); return; }
-        if (supplierData.default_discount_percent !== null && (isNaN(supplierData.default_discount_percent) || supplierData.default_discount_percent < 0 || supplierData.default_discount_percent > 100)) { setFormError("Default discount must be between 0 and 100."); setIsLoading(false); return; }
-        if (supplierData.credit_limit !== null && (isNaN(supplierData.credit_limit) || supplierData.credit_limit < 0)) { setFormError("Credit limit must be a non-negative number."); setIsLoading(false); return; }
-        if (supplierData.credit_days !== null && (isNaN(supplierData.credit_days) || supplierData.credit_days < 0)) { setFormError("Credit days must be a non-negative integer."); setIsLoading(false); return; }
 
         try {
             if (isEditing) {
-                await apiInstance.put(`/suppliers/${supplierId}`, supplierData);
+                await apiInstance.put(`/suppliers/${supplierId}`, payload);
             } else {
-                await apiInstance.post('/suppliers', supplierData);
+                await apiInstance.post('/suppliers', payload);
             }
-            // Ensure path matches App.jsx, e.g., /dashboard/suppliers
             navigate('/dashboard/suppliers', {
-                state: {
-                    message: `Supplier "${supplierData.name}" ${isEditing ? 'updated' : 'created'} successfully.`,
-                    type: 'success'
-                }
+                state: { message: `Supplier "${payload.name}" ${isEditing ? 'updated' : 'created'} successfully.`, type: 'success' }
             });
         } catch (err) {
             console.error("[SupplierForm] Error saving supplier:", err);
             const errMsg = err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} supplier.`;
             setPageError(errMsg);
             if (err.response?.data?.errors) {
-                setFormError(Object.values(err.response.data.errors).join(', '));
+                setFormErrors(prev => ({ ...prev, ...err.response.data.errors }));
             }
         } finally {
-            setIsLoading(false);
+            setIsSubmitting(false);
         }
     };
 
-    if (authLoading) return <p style={styles.centeredMessage}>Authenticating...</p>;
-    if (isLoading && !formData.name && isEditing) return <p style={styles.centeredMessage}>Loading supplier details...</p>;
-    if (isLoading && !isEditing && categories.length === 0 && !loadingCategoriesError) return <p style={styles.centeredMessage}>Loading form...</p>;
-    if (loadingCategoriesError) return <p style={styles.errorBox}>Error loading categories: {loadingCategoriesError}</p>;
-
+    if (authLoading || initialLoading) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+    }
+    if ((!isAuthenticated || (userCan && !userCan(requiredPermission))) && pageError) {
+        return (
+            <Paper sx={{ p: 3, m: 2, maxWidth: 700, mx: 'auto' }}>
+                <Typography variant="h5" align="center" gutterBottom>{isEditing ? 'Edit Supplier' : 'Add New Supplier'}</Typography>
+                <Alert severity="error">{pageError}</Alert>
+                <Button variant="outlined" sx={{ mt: 2 }} onClick={() => navigate('/dashboard/suppliers')}>Back to List</Button>
+            </Paper>
+        );
+    }
 
     return (
-        <div style={styles.container}>
-            <h2 style={styles.title}>{isEditing ? 'Edit Supplier' : 'Add New Supplier'}</h2>
-            {pageError && <p style={styles.errorBox}>{pageError}</p>}
-            {formError && <p style={{...styles.errorBox, backgroundColor: '#ffe6e6', borderColor: 'red', color: 'red'}}>{formError}</p>}
+        <Paper sx={{ p: 3, m: 2, maxWidth: 700, mx: 'auto' }}>
+            <Typography variant="h5" align="center" gutterBottom>{isEditing ? `Edit Supplier (ID: ${supplierId})` : 'Add New Supplier'}</Typography>
+            {pageError && !Object.keys(formErrors).length && <Alert severity="error" sx={{ mb: 2 }}>{pageError}</Alert>}
 
-
-            <form onSubmit={handleSubmit}>
-                <fieldset style={styles.fieldset}>
-                    <legend style={styles.legend}>Basic Information</legend>
-                    <div style={{...styles.formGroup, alignItems: 'flex-start', marginBottom: '20px' }}>
-                        <label htmlFor="is_default_supplier" style={{...styles.label, display:'flex', alignItems:'center', fontWeight:'normal', cursor:'pointer'}}>
-                            <input type="checkbox" id="is_default_supplier" name="is_default_supplier" checked={formData.is_default_supplier} onChange={handleChange} disabled={isLoading} style={{marginRight:'8px', transform: 'scale(1.1)'}}/> Default Supplier?
-                        </label>
-                    </div>
-                    <div style={styles.formGroup}> <label htmlFor="name" style={styles.label}>Name: *</label> <input type="text" id="name" name="name" value={formData.name} onChange={handleChange} required style={styles.input} disabled={isLoading} /> </div>
-                    <div style={styles.formGroup}> <label htmlFor="address" style={styles.label}>Address:</label> <textarea id="address" name="address" value={formData.address} onChange={handleChange} rows="3" style={styles.textarea} disabled={isLoading} /> </div>
-                    <div style={styles.formGroup}> <label htmlFor="city" style={styles.label}>City:</label> <input type="text" id="city" name="city" value={formData.city} onChange={handleChange} style={styles.input} disabled={isLoading} /> </div>
-                </fieldset>
-
-                <fieldset style={styles.fieldset}>
-                    <legend style={styles.legend}>Contact Information</legend>
-                    <div style={styles.formGroup}> <label htmlFor="contact_person" style={styles.label}>Contact Person:</label> <input type="text" id="contact_person" name="contact_person" value={formData.contact_person} onChange={handleChange} style={styles.input} disabled={isLoading} /> </div>
-                    <div style={styles.formRow}>
-                        <div style={styles.formGroup}> <label htmlFor="telephone" style={styles.label}>Telephone No.:</label> <input type="tel" id="telephone" name="telephone" value={formData.telephone} onChange={handleChange} style={styles.input} disabled={isLoading} /> </div>
-                        <div style={styles.formGroup}> <label htmlFor="fax" style={styles.label}>Fax:</label> <input type="tel" id="fax" name="fax" value={formData.fax} onChange={handleChange} style={styles.input} disabled={isLoading} /> </div>
-                    </div>
-                    <div style={styles.formGroup}> <label htmlFor="email" style={styles.label}>Email:</label> <input type="email" id="email" name="email" value={formData.email} onChange={handleChange} style={styles.input} disabled={isLoading} /> </div>
-                </fieldset>
-
-                 <fieldset style={styles.fieldset}>
-                    <legend style={styles.legend}>Office Use</legend>
-                     <div style={styles.formRow}>
-                        <div style={styles.formGroup}> <label htmlFor="since_date" style={styles.label}>Supplier Since:</label> <input type="date" id="since_date" name="since_date" value={formData.since_date} onChange={handleChange} style={styles.input} disabled={isLoading} /> </div>
-                        <div style={styles.formGroup}> <label htmlFor="main_category_id" style={styles.label}>Main Category:</label> <select id="main_category_id" name="main_category_id" value={formData.main_category_id} onChange={handleChange} style={styles.input} disabled={isLoading || categories.length === 0}> <option value="">-- Select Category --</option> {categories.map(cat => <option key={cat.id} value={cat.id.toString()}>{cat.name}</option>)} </select> </div>
-                    </div>
-                     <div style={styles.formGroup}> <label htmlFor="tax_invoice_details" style={styles.label}>Tax Invoice # / Details:</label> <input type="text" id="tax_invoice_details" name="tax_invoice_details" value={formData.tax_invoice_details} onChange={handleChange} style={styles.input} disabled={isLoading} /> </div>
-                     <div style={styles.formRow}>
-                        <div style={styles.formGroup}> <label htmlFor="default_discount_percent" style={styles.label}>Discount %:</label> <input type="number" id="default_discount_percent" name="default_discount_percent" value={formData.default_discount_percent} onChange={handleChange} style={styles.input} disabled={isLoading} step="0.01" min="0" max="100"/> </div>
-                        <div style={styles.formGroup}> <label htmlFor="credit_limit" style={styles.label}>Credit Limit:</label> <input type="number" id="credit_limit" name="credit_limit" value={formData.credit_limit} onChange={handleChange} style={styles.input} disabled={isLoading} step="0.01" min="0"/> </div>
-                     </div>
-                     <div style={styles.formRow}>
-                        <div style={styles.formGroup}> <label htmlFor="credit_days" style={styles.label}>Credit Days:</label> <input type="number" id="credit_days" name="credit_days" value={formData.credit_days} onChange={handleChange} style={styles.input} disabled={isLoading} step="1" min="0"/> </div>
-                        <div style={styles.formGroup}> {/* Empty div for spacing if needed */} </div>
-                     </div>
-                </fieldset>
-
-                <div style={styles.buttonGroup}>
-                    <button type="submit" disabled={isLoading} style={styles.buttonPrimary}>
-                        {isLoading ? 'Saving...' : (isEditing ? 'Update Supplier' : 'Create Supplier')}
-                    </button>
-                    {/* Ensure path matches App.jsx, e.g., /dashboard/suppliers */}
-                    <button type="button" onClick={() => navigate('/dashboard/suppliers')} style={styles.buttonSecondary} disabled={isLoading}>
-                        Cancel
-                    </button>
-                </div>
-            </form>
-        </div>
+            <Box component="form" onSubmit={handleSubmit} noValidate>
+                <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                        <TextField label="Supplier Name *" name="name" value={formData.name} onChange={handleChange} required fullWidth disabled={isSubmitting || initialLoading} error={Boolean(formErrors.name)} helperText={formErrors.name} />
+                    </Grid>
+                    <Grid item xs={12}>
+                        <TextField label="Address" name="address" value={formData.address} onChange={handleChange} fullWidth multiline rows={2} disabled={isSubmitting || initialLoading} error={Boolean(formErrors.address)} helperText={formErrors.address} />
+                    </Grid>
+                    <Grid item xs={12} sm={6}><TextField label="City" name="city" value={formData.city} onChange={handleChange} fullWidth disabled={isSubmitting || initialLoading} error={Boolean(formErrors.city)} helperText={formErrors.city} /></Grid>
+                    <Grid item xs={12} sm={6}><TextField label="Contact Person" name="contact_person" value={formData.contact_person} onChange={handleChange} fullWidth disabled={isSubmitting || initialLoading} error={Boolean(formErrors.contact_person)} helperText={formErrors.contact_person} /></Grid>
+                    <Grid item xs={12} sm={6}><TextField label="Telephone" name="telephone" value={formData.telephone} onChange={handleChange} fullWidth disabled={isSubmitting || initialLoading} error={Boolean(formErrors.telephone)} helperText={formErrors.telephone} /></Grid>
+                    <Grid item xs={12} sm={6}><TextField label="Fax" name="fax" value={formData.fax} onChange={handleChange} fullWidth disabled={isSubmitting || initialLoading} error={Boolean(formErrors.fax)} helperText={formErrors.fax} /></Grid>
+                    <Grid item xs={12}><TextField label="Email" name="email" type="email" value={formData.email} onChange={handleChange} fullWidth disabled={isSubmitting || initialLoading} error={Boolean(formErrors.email)} helperText={formErrors.email} /></Grid>
+                    <Grid item xs={12} sm={6}>
+                        <TextField label="Supplier Since" name="since_date" type="date" value={formData.since_date} onChange={handleChange} fullWidth InputLabelProps={{ shrink: true }} disabled={isSubmitting || initialLoading} error={Boolean(formErrors.since_date)} helperText={formErrors.since_date} />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                        <FormControl fullWidth error={Boolean(formErrors.main_category_id)} disabled={isSubmitting || initialLoading || categories.length === 0}>
+                            <InputLabel id="main-category-label">Main Category</InputLabel>
+                            <Select labelId="main-category-label" name="main_category_id" value={formData.main_category_id} label="Main Category" onChange={handleChange}>
+                                <MenuItem value=""><em>-- Select Category --</em></MenuItem>
+                                {categories.map(cat => (<MenuItem key={cat.id} value={cat.id.toString()}>{cat.name}</MenuItem>))}
+                            </Select>
+                            {formErrors.main_category_id && <FormHelperText>{formErrors.main_category_id}</FormHelperText>}
+                        </FormControl>
+                    </Grid>
+                    <Grid item xs={12}><TextField label="Tax Invoice Details" name="tax_invoice_details" value={formData.tax_invoice_details} onChange={handleChange} fullWidth disabled={isSubmitting || initialLoading} error={Boolean(formErrors.tax_invoice_details)} helperText={formErrors.tax_invoice_details} /></Grid>
+                    <Grid item xs={12} sm={4}><TextField label="Default Discount %" name="default_discount_percent" type="number" value={formData.default_discount_percent} onChange={handleChange} fullWidth inputProps={{ min: 0, max: 100, step: "0.01" }} disabled={isSubmitting || initialLoading} error={Boolean(formErrors.default_discount_percent)} helperText={formErrors.default_discount_percent} /></Grid>
+                    <Grid item xs={12} sm={4}><TextField label="Credit Limit" name="credit_limit" type="number" value={formData.credit_limit} onChange={handleChange} fullWidth inputProps={{ min: 0, step: "0.01" }} disabled={isSubmitting || initialLoading} error={Boolean(formErrors.credit_limit)} helperText={formErrors.credit_limit} /></Grid>
+                    <Grid item xs={12} sm={4}><TextField label="Credit Days" name="credit_days" type="number" value={formData.credit_days} onChange={handleChange} fullWidth inputProps={{ min: 0, step: 1 }} disabled={isSubmitting || initialLoading} error={Boolean(formErrors.credit_days)} helperText={formErrors.credit_days} /></Grid>
+                    <Grid item xs={12}>
+                        <FormControlLabel control={<Checkbox name="is_default_supplier" checked={formData.is_default_supplier} onChange={handleChange} disabled={isSubmitting || initialLoading} />} label="Set as Default Supplier" />
+                    </Grid>
+                </Grid>
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 3 }}>
+                    <Button variant="outlined" color="secondary" onClick={() => navigate('/dashboard/suppliers')} disabled={isSubmitting}>Cancel</Button>
+                    <Button type="submit" variant="contained" color="primary" disabled={isSubmitting || initialLoading || (userCan && !userCan(requiredPermission))}>
+                        {isSubmitting ? <CircularProgress size={24} /> : (isEditing ? 'Update Supplier' : 'Create Supplier')}
+                    </Button>
+                </Box>
+            </Box>
+        </Paper>
     );
 }
-
-// Consistent Form Styles
-const styles = {
-    container: { padding: '20px', maxWidth: '750px', margin: '40px auto', fontFamily: 'Arial, sans-serif', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', borderRadius: '8px', backgroundColor: '#fff' },
-    title: { marginBottom: '25px', color: '#333', textAlign: 'center', borderBottom: '1px solid #eee', paddingBottom: '15px' },
-    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
-    errorBox: { color: '#D8000C', border: '1px solid #FFBABA', padding: '10px 15px', marginBottom: '20px', borderRadius: '4px', backgroundColor: '#FFD2D2', textAlign: 'center' },
-    fieldset: { border: '1px solid #ddd', padding: '15px 20px 20px 20px', borderRadius: '5px', marginBottom: '25px' },
-    legend: { fontWeight: 'bold', padding: '0 10px', marginLeft: '5px', color: '#333', fontSize: '1.1em' },
-    formRow: { display: 'flex', flexWrap: 'wrap', gap: '20px', marginBottom: '0px' }, // Reduced bottom margin
-    formGroup: { display: 'flex', flexDirection: 'column', flex: '1 1 calc(50% - 10px)', minWidth: '250px', marginBottom: '15px' },
-    label: { marginBottom: '8px', fontWeight: 'bold', color: '#555', fontSize: '0.9em' },
-    input: { width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1em' },
-    textarea: { width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', minHeight: '80px', fontSize: '1em' },
-    buttonGroup: { marginTop: '30px', display: 'flex', justifyContent: 'flex-end', gap: '10px' },
-    buttonPrimary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
-    buttonSecondary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
-};
 
 export default SupplierForm;

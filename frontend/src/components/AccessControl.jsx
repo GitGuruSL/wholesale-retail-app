@@ -14,6 +14,7 @@ import {
 import { FaPlus } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import apiInstance from '../services/api'; // Step 1: Import apiInstance directly
 
 function AccessControl() {
   const [allPermissions, setAllPermissions] = useState([]); // All available permissions
@@ -23,7 +24,7 @@ function AccessControl() {
   const [roleAssignments, setRoleAssignments] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const { apiInstance, userCan } = useAuth();
+ const { isAuthenticated, isLoading: authLoading, userCan } = useAuth();
 
   // Fetch all permissions
   useEffect(() => {

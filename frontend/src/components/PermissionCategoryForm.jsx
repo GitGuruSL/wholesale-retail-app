@@ -1,132 +1,102 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext'; // Keep for isAuthenticated and userCan if needed
+import apiInstance from '../services/api'; // Import apiInstance directly
 import {
   Paper,
   Box,
   Typography,
   TextField,
   Button,
-  MenuItem,
-  Select,
-  InputLabel,
-  FormControl,
-  FormHelperText
+  Alert,
+  CircularProgress,
+  FormHelperText,
+  FormControl
 } from '@mui/material';
 
-function PermissionForm() {
-  const { permissionId } = useParams();
-  const navigate = useNavigate();
-  const { apiInstance } = useAuth();
-  const isEditing = Boolean(permissionId);
+const initialCategoryFormData = {
+  name: '',
+  display_order: '',
+  description: '',
+};
 
-  const [formData, setFormData] = useState({
-    name: '',
-    display_name: '',
-    description: '',
-    permission_category_id: '',
-    sub_group_key: '',
-    sub_group_display_name: ''
-  });
-  const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+function PermissionCategoryForm() {
+  const { categoryId } = useParams();
+  const navigate = useNavigate();
+  // Get isAuthenticated from useAuth. apiInstance is now imported directly.
+  const { isAuthenticated, userCan, isLoading: authLoading } = useAuth();
+  const isEditing = Boolean(categoryId);
+
+  const [formData, setFormData] = useState(initialCategoryFormData);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [pageError, setPageError] = useState(null); // Renamed error to pageError for clarity
   const [formErrors, setFormErrors] = useState({});
 
-  const fetchCategories = useCallback(async () => {
-    try {
-      const response = await apiInstance.get('/permissions/categories');
-      setCategories(response.data || []);
-    } catch (err) {
-      console.error('Failed to fetch permission categories:', err);
-      setError('Failed to load permission categories.');
-      setCategories([]);
-    }
-  }, [apiInstance]);
+  // Permission check (adjust permission strings as needed)
+ const requiredPermission = 'system:manage_permission_categories';
 
-  const fetchPermission = useCallback(async (id) => {
-    setLoading(true);
-    setError(null);
+  const fetchPermissionCategoryDetails = useCallback(async (id) => {
+    // apiInstance is now from direct import, always available if module loads
+    setLoadingDetails(true);
+    setPageError(null);
     try {
-      const response = await apiInstance.get(`/permissions/${id}`);
-      const permissionData = response.data;
-      let categoryIdToSet = '';
-      if (permissionData.permission_category_id !== null && permissionData.permission_category_id !== undefined) {
-        const parsedId = parseInt(permissionData.permission_category_id, 10);
-        if (!isNaN(parsedId)) {
-          categoryIdToSet = parsedId;
-        }
-      }
+      const response = await apiInstance.get(`/permission-categories/${id}`);
+      const categoryData = response.data?.data || response.data; // Adjust if your API wraps data
       setFormData({
-        name: permissionData.name || '',
-        display_name: permissionData.display_name || '',
-        description: permissionData.description || '',
-        permission_category_id: categoryIdToSet,
-        sub_group_key: permissionData.sub_group_key || '',
-        sub_group_display_name: permissionData.sub_group_display_name || ''
+        name: categoryData.name || '',
+        display_order: categoryData.display_order !== null && categoryData.display_order !== undefined ? String(categoryData.display_order) : '',
+        description: categoryData.description || '',
       });
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to fetch permission details.');
-      console.error('Error fetching permission:', err);
+      console.error('[PermissionCategoryForm] Error fetching permission category details:', err);
+      setPageError(err.response?.data?.message || 'Failed to fetch category details.');
     } finally {
-      setLoading(false);
+      setLoadingDetails(false);
     }
-  }, [apiInstance]);
+  }, []); // apiInstance from direct import is stable, not needed as dependency
 
   useEffect(() => {
-    const loadInitialData = async () => {
-      setLoading(true);
-      await fetchCategories();
-      if (isEditing && permissionId) {
-        await fetchPermission(permissionId);
-      } else {
-        setFormData({
-          name: '',
-          display_name: '',
-          description: '',
-          permission_category_id: '',
-          sub_group_key: '',
-          sub_group_display_name: ''
-        });
-        setLoading(false);
-      }
-    };
-    loadInitialData();
-  }, [isEditing, permissionId, fetchCategories, fetchPermission]);
+    if (authLoading) { // Wait for authentication to resolve
+        return;
+    }
+    if (!isAuthenticated) {
+        setPageError("Please log in to manage permission categories.");
+        return;
+    }
+    if (userCan && !userCan(requiredPermission)) {
+        setPageError(`You do not have permission to ${isEditing ? 'edit' : 'create'} permission categories.`);
+        return;
+    }
+
+    if (isEditing && categoryId) {
+      fetchPermissionCategoryDetails(categoryId);
+    } else if (!isEditing) {
+      setFormData(initialCategoryFormData);
+      setPageError(null);
+      setFormErrors({});
+    }
+  }, [isEditing, categoryId, fetchPermissionCategoryDetails, isAuthenticated, authLoading, userCan, requiredPermission]);
+
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    let processedValue = value;
-    if (name === 'permission_category_id' && value !== '') {
-      const numValue = parseInt(value, 10);
-      if (!isNaN(numValue)) {
-        processedValue = numValue;
-      }
-    }
-    setFormData(prev => ({ ...prev, [name]: processedValue }));
+    setFormData(prev => ({ ...prev, [name]: value }));
     if (formErrors[name]) {
       setFormErrors(prev => ({ ...prev, [name]: null }));
     }
+    if (pageError) setPageError(null); // Clear page error on interaction
   };
 
   const validateForm = () => {
     const errors = {};
-    if (!isEditing && !formData.name.trim()) {
-      errors.name = 'Permission name (code) is required.';
-    } else if (!isEditing && !/^[a-z0-9_:-]+$/.test(formData.name.trim())) {
-      errors.name = 'Name can only contain lowercase letters, numbers, underscores, hyphens, and colons (e.g., user:create).';
+    if (!formData.name.trim()) {
+      errors.name = 'Category name is required.';
     }
-    if (!formData.display_name.trim()) {
-      errors.display_name = 'Display name is required.';
-    }
-    if (formData.permission_category_id === '' || formData.permission_category_id === undefined || formData.permission_category_id === null) {
-      errors.permission_category_id = 'Permission category is required.';
-    }
-    if (!formData.sub_group_key.trim()) {
-      errors.sub_group_key = 'Sub-group key is required (e.g., user, product_core).';
-    }
-    if (!formData.sub_group_display_name.trim()) {
-      errors.sub_group_display_name = 'Sub-group display name is required (e.g., User Management).';
+    if (formData.display_order && isNaN(parseInt(formData.display_order, 10))) {
+      errors.display_order = 'Display order must be a number.';
+    } else if (formData.display_order && parseInt(formData.display_order, 10) < 0) {
+      errors.display_order = 'Display order cannot be negative.';
     }
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -134,161 +104,143 @@ function PermissionForm() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!isAuthenticated || (userCan && !userCan(requiredPermission))) {
+        setPageError("You do not have permission to perform this action or you are not logged in.");
+        return;
+    }
     if (!validateForm()) return;
-    setLoading(true);
-    setError(null);
+
+    setSubmitting(true);
+    setPageError(null);
+    const payload = {
+      name: formData.name.trim(),
+      display_order: formData.display_order.trim() === '' ? null : parseInt(formData.display_order, 10),
+      description: formData.description.trim() === '' ? null : formData.description.trim(),
+    };
+
     try {
-      const payload = {
-        display_name: formData.display_name.trim(),
-        description: formData.description.trim() || null,
-        permission_category_id: parseInt(formData.permission_category_id, 10),
-        sub_group_key: formData.sub_group_key.trim(),
-        sub_group_display_name: formData.sub_group_display_name.trim()
-      };
-      if (!isEditing) {
-        payload.name = formData.name.trim();
-      }
       if (isEditing) {
-        await apiInstance.put(`/permissions/${permissionId}`, payload);
+        await apiInstance.put(`/permission-categories/${categoryId}`, payload);
       } else {
-        await apiInstance.post('/permissions', payload);
+        await apiInstance.post('/permission-categories', payload);
       }
-      navigate('/dashboard/permissions', { state: { message: `Permission ${isEditing ? 'updated' : 'created'} successfully!` } });
+      navigate('/dashboard/permission-categories', {
+        state: { message: `Permission category "${payload.name}" ${isEditing ? 'updated' : 'created'} successfully.`, type: 'success' }
+      });
     } catch (err) {
-      const apiError = err.response?.data;
-      if (apiError?.errors && Array.isArray(apiError.errors)) {
-        const backendErrors = apiError.errors.reduce((acc, curr) => {
-          acc[curr.path || curr.param] = curr.msg;
-          return acc;
-        }, {});
-        setFormErrors(prev => ({ ...prev, ...backendErrors }));
-        setError("Please correct the errors in the form.");
-      } else {
-        setError(apiError?.message || `Failed to ${isEditing ? 'update' : 'create'} permission.`);
+      console.error('[PermissionCategoryForm] Error submitting form:', err);
+      const errMsg = err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} category.`;
+      setPageError(errMsg);
+      if (err.response?.data?.errors) {
+        const backendFieldErrors = {};
+        err.response.data.errors.forEach(fieldError => {
+          backendFieldErrors[fieldError.path || fieldError.param || 'general'] = fieldError.msg;
+        });
+        setFormErrors(prev => ({ ...prev, ...backendFieldErrors }));
       }
-      console.error('Error submitting permission form:', err);
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
-  if (loading && isEditing && !formData.name) {
+  if (authLoading) {
     return (
-      <Box sx={{ p: 3, m: 2, textAlign: 'center' }}>
-        <Typography>Loading permission details...</Typography>
-      </Box>
+      <Paper sx={{ p: 3, m: 2, textAlign: 'center' }}>
+        <CircularProgress />
+        <Typography sx={{ mt: 1 }}>Authenticating...</Typography>
+      </Paper>
     );
   }
-  if (loading && categories.length === 0) {
+
+  // Page error takes precedence if it's a permission issue or login issue
+  if (pageError && (!isAuthenticated || (userCan && !userCan(requiredPermission)))) {
     return (
-      <Box sx={{ p: 3, m: 2, textAlign: 'center' }}>
-        <Typography>Loading categories...</Typography>
-      </Box>
+      <Paper sx={{ p: 3, m: 2 }}>
+        <Typography variant="h5" gutterBottom sx={{ mb: 3 }}>
+          {isEditing ? `Edit Permission Category` : 'Create New Permission Category'}
+        </Typography>
+        <Alert severity="error">{pageError}</Alert>
+         <Button sx={{mt: 2}} variant="outlined" onClick={() => navigate('/dashboard/permission-categories')}>
+            Back to List
+        </Button>
+      </Paper>
+    );
+  }
+
+
+  if (loadingDetails && isEditing) {
+    return (
+      <Paper sx={{ p: 3, m: 2, textAlign: 'center' }}>
+        <CircularProgress />
+        <Typography sx={{ mt: 1 }}>Loading category details...</Typography>
+      </Paper>
     );
   }
 
   return (
     <Paper sx={{ p: 3, m: 2 }}>
-      <Typography variant="h5" gutterBottom>
-        {isEditing ? 'Edit Permission' : 'Create New Permission'}
+      <Typography variant="h5" gutterBottom sx={{ mb: 3 }}>
+        {isEditing ? `Edit Permission Category (ID: ${categoryId})` : 'Create New Permission Category'}
       </Typography>
-      {error && (
-        <Box sx={{ bgcolor: '#f8d7da', color: '#721c24', p: 2, border: '1px solid #f5c6cb', borderRadius: 1, mb: 2 }}>
-          Error: {error}
-        </Box>
+      {pageError && ( // Display other page errors (like fetch failure)
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setPageError(null)}>
+          {pageError}
+        </Alert>
       )}
-      <form onSubmit={handleSubmit}>
-        <FormControl fullWidth sx={{ mb: 2 }}>
+      <Box component="form" onSubmit={handleSubmit} noValidate>
+        <FormControl fullWidth sx={{ mb: 2 }} error={Boolean(formErrors.name)}>
           <TextField
-            label="Permission Name (Code)"
+            label="Category Name"
             name="name"
             value={formData.name}
             onChange={handleChange}
-            placeholder="e.g., user:create, product:edit"
-            disabled={isEditing}
-            error={Boolean(formErrors.name)}
-            helperText={formErrors.name || (isEditing && 'The permission name (code) cannot be changed after creation.')}
+            required
+            disabled={submitting || (loadingDetails && isEditing)}
+            autoFocus={!isEditing}
           />
+          {formErrors.name && <FormHelperText>{formErrors.name}</FormHelperText>}
         </FormControl>
-        <FormControl fullWidth sx={{ mb: 2 }}>
+
+        <FormControl fullWidth sx={{ mb: 2 }} error={Boolean(formErrors.display_order)}>
           <TextField
-            label="Display Name"
-            name="display_name"
-            value={formData.display_name}
+            label="Display Order"
+            name="display_order"
+            type="number"
+            value={formData.display_order}
             onChange={handleChange}
-            placeholder="e.g., Create Users, Edit Products"
-            error={Boolean(formErrors.display_name)}
-            helperText={formErrors.display_name}
+            disabled={submitting || (loadingDetails && isEditing)}
+            placeholder="e.g., 10 (lower numbers appear first)"
+            InputProps={{ inputProps: { min: 0 } }}
           />
+          {formErrors.display_order ? <FormHelperText>{formErrors.display_order}</FormHelperText> : <FormHelperText>Controls the order in lists.</FormHelperText>}
         </FormControl>
-        <FormControl fullWidth sx={{ mb: 2 }} error={Boolean(formErrors.permission_category_id)}>
-          <InputLabel id="permission-category-label">Permission Category</InputLabel>
-          <Select
-            labelId="permission-category-label"
-            name="permission_category_id"
-            value={formData.permission_category_id}
-            onChange={handleChange}
-            label="Permission Category"
-          >
-            <MenuItem value="">
-              <em>-- Select a Category --</em>
-            </MenuItem>
-            {categories.map(category => (
-              <MenuItem key={category.id} value={category.id}>
-                {category.name}
-              </MenuItem>
-            ))}
-          </Select>
-          {formErrors.permission_category_id && (
-            <FormHelperText>{formErrors.permission_category_id}</FormHelperText>
-          )}
-        </FormControl>
-        <FormControl fullWidth sx={{ mb: 2 }}>
-          <TextField
-            label="Sub-Group Key"
-            name="sub_group_key"
-            value={formData.sub_group_key}
-            onChange={handleChange}
-            placeholder="e.g., user, product_core, tax_settings"
-            error={Boolean(formErrors.sub_group_key)}
-            helperText={formErrors.sub_group_key}
-          />
-        </FormControl>
-        <FormControl fullWidth sx={{ mb: 2 }}>
-          <TextField
-            label="Sub-Group Display Name"
-            name="sub_group_display_name"
-            value={formData.sub_group_display_name}
-            onChange={handleChange}
-            placeholder="e.g., User Management, Product Core Setup"
-            error={Boolean(formErrors.sub_group_display_name)}
-            helperText={formErrors.sub_group_display_name}
-          />
-        </FormControl>
+
         <FormControl fullWidth sx={{ mb: 2 }}>
           <TextField
             label="Description (Optional)"
             name="description"
             value={formData.description}
             onChange={handleChange}
-            placeholder="Briefly describe what this permission allows"
+            disabled={submitting || (loadingDetails && isEditing)}
             multiline
             rows={3}
           />
         </FormControl>
-        <Box display="flex" gap={2} mt={2}>
-          <Button type="submit" variant="contained" color="primary" disabled={loading}>
-            {loading
+
+        <Box display="flex" gap={2} mt={3}>
+          <Button type="submit" variant="contained" color="primary" disabled={submitting || (loadingDetails && isEditing) || (userCan && !userCan(requiredPermission))}>
+            {submitting
               ? (isEditing ? 'Updating...' : 'Creating...')
-              : (isEditing ? 'Update Permission' : 'Create Permission')}
+              : (isEditing ? 'Update Category' : 'Create Category')}
+            {(submitting) && <CircularProgress size={20} sx={{ ml: 1, color: 'white' }} />}
           </Button>
-          <Button variant="outlined" onClick={() => navigate('/dashboard/permissions')} disabled={loading}>
+          <Button variant="outlined" onClick={() => navigate('/dashboard/permission-categories')} disabled={submitting || (loadingDetails && isEditing)}>
             Cancel
           </Button>
         </Box>
-      </form>
+      </Box>
     </Paper>
   );
 }
 
-export default PermissionForm;
+export default PermissionCategoryForm;

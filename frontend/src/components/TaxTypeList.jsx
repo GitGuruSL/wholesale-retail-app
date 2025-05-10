@@ -1,63 +1,71 @@
 import React, { useState, useEffect, useCallback } from 'react';
-// import axios from 'axios'; // REMOVE THIS
-import { Link, useNavigate, useLocation } from 'react-router-dom'; // Added useLocation
-import { useAuth } from '../context/AuthContext'; // Import useAuth
-
-// const API_BASE_URL = 'http://localhost:5001/api'; // REMOVE THIS
+import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import apiInstance from '../services/api';
+import {
+    Paper, Typography, Button, Table, TableHead, TableRow, TableCell,
+    TableBody, TableContainer, Box, Alert, CircularProgress
+} from '@mui/material';
+import { FaEdit, FaTrashAlt, FaPlus } from 'react-icons/fa';
 
 function TaxTypeList() {
     const [taxTypes, setTaxTypes] = useState([]);
-    const [isLoading, setIsLoading] = useState(true); // Renamed from 'loading'
-    const [pageError, setPageError] = useState(null);   // Renamed from 'error'
+    const [isLoading, setIsLoading] = useState(true);
+    const [pageError, setPageError] = useState(null);
     const [feedback, setFeedback] = useState({ message: null, type: null });
     const navigate = useNavigate();
-    const location = useLocation(); // For receiving feedback from form
-    const { apiInstance, isAuthenticated, isLoading: authLoading } = useAuth(); // Use AuthContext
+    const location = useLocation();
+    const { isAuthenticated, isLoading: authLoading, userCan } = useAuth();
 
     useEffect(() => {
         if (location.state?.message) {
             setFeedback({ message: location.state.message, type: location.state.type || 'success' });
-            navigate(location.pathname, { replace: true, state: {} }); // Clear state after showing
-            setTimeout(() => setFeedback({ message: null, type: null }), 5000);
+            navigate(location.pathname, { replace: true, state: {} });
+            const timer = setTimeout(() => setFeedback({ message: null, type: null }), 5000);
+            return () => clearTimeout(timer);
         }
     }, [location, navigate]);
 
     const fetchTaxTypes = useCallback(async () => {
-        if (!isAuthenticated || !apiInstance) {
-            setPageError("User not authenticated or API client not available.");
+        if (!isAuthenticated) {
+            setPageError("User not authenticated. Cannot fetch tax types.");
             setIsLoading(false);
             return;
         }
         setIsLoading(true);
         setPageError(null);
-        // setFeedback({ message: null, type: null }); // Keep existing feedback
         try {
             const response = await apiInstance.get('/tax-types');
             setTaxTypes(response.data || []);
         } catch (err) {
             console.error("[TaxTypeList] Error fetching tax types:", err);
-            const errorMsg = err.response?.data?.message || 'Failed to fetch tax types.';
-            setPageError(errorMsg);
+            setPageError(err.response?.data?.message || 'Failed to fetch tax types.');
+            setTaxTypes([]);
         } finally {
             setIsLoading(false);
         }
-    }, [apiInstance, isAuthenticated]);
+    }, [isAuthenticated]);
 
     useEffect(() => {
-        if (!authLoading && isAuthenticated && apiInstance) {
-            fetchTaxTypes();
-        } else if (!authLoading && !isAuthenticated) {
-            setPageError("Please log in to view tax types.");
-            setIsLoading(false);
-        } else if (!authLoading && !apiInstance) {
-            setPageError("API client not available. Cannot fetch tax types.");
-            setIsLoading(false);
+        if (!authLoading) {
+            if (isAuthenticated) {
+                fetchTaxTypes();
+            } else {
+                setPageError("Please log in to view tax types.");
+                setIsLoading(false);
+                setTaxTypes([]);
+            }
         }
-    }, [authLoading, isAuthenticated, apiInstance, fetchTaxTypes]);
+    }, [authLoading, isAuthenticated, fetchTaxTypes]);
 
     const handleDelete = async (typeId, typeName) => {
-        if (!apiInstance || !isAuthenticated) {
+        if (!isAuthenticated) {
             setFeedback({ message: "Authentication error. Please log in again.", type: 'error' });
+            return;
+        }
+        if (userCan && !userCan('tax_type:delete')) {
+            setFeedback({ message: "You do not have permission to delete tax types.", type: 'error' });
+            setTimeout(() => setFeedback({ message: null, type: null }), 5000);
             return;
         }
         if (!window.confirm(`Are you sure you want to delete tax type: "${typeName}" (ID: ${typeId})?\nThis might fail if it's linked to taxes.`)) {
@@ -72,99 +80,110 @@ function TaxTypeList() {
             console.error(`[TaxTypeList] Error deleting tax type ${typeId}:`, err);
             const errorMsg = err.response?.data?.message || 'Failed to delete tax type. It might be in use.';
             setFeedback({ message: errorMsg, type: 'error' });
-        } finally {
-            setTimeout(() => setFeedback({ message: null, type: null }), 5000);
         }
+        const timer = setTimeout(() => setFeedback({ message: null, type: null }), 5000);
     };
 
-    if (authLoading) return <div style={styles.centeredMessage}>Authenticating...</div>;
-    if (isLoading) return <div style={styles.centeredMessage}>Loading tax types...</div>;
-    if (pageError && taxTypes.length === 0) return <div style={{ ...styles.centeredMessage, ...styles.errorText }}>Error: {pageError}</div>;
+    if (authLoading) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+    }
+    if (isLoading && !pageError && taxTypes.length === 0) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+    }
+
+    if (pageError && taxTypes.length === 0) {
+        return (
+            <Paper sx={{ p: 3, m: 2, maxWidth: 800, mx: 'auto' }}>
+                <Typography variant="h5" align="center" gutterBottom>Manage Tax Types</Typography>
+                <Alert severity="error" sx={{ mb: 2 }}>{pageError}</Alert>
+                {isAuthenticated && userCan && userCan('tax_type:create') &&
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+                        <Button variant="contained" color="primary" component={RouterLink} to="/dashboard/tax-types/new" startIcon={<FaPlus />}>
+                            Add New Tax Type
+                        </Button>
+                    </Box>
+                }
+            </Paper>
+        );
+    }
 
     return (
-        <div style={styles.container}>
-            <h2 style={styles.title}>Manage Tax Types</h2>
+        <Paper sx={{ p: 3, m: 2, maxWidth: 800, mx: 'auto' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h5">Manage Tax Types</Typography>
+                {isAuthenticated && userCan && userCan('tax_type:create') && (
+                    <Button variant="contained" color="primary" component={RouterLink} to="/dashboard/tax-types/new" startIcon={<FaPlus />}>
+                        Add New Tax Type
+                    </Button>
+                )}
+            </Box>
 
             {feedback.message && (
-                <div style={{
-                   ...styles.feedbackBox,
-                   ...(feedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError)
-                }}>
+                <Alert severity={feedback.type === 'error' ? 'error' : 'success'} sx={{ mb: 2 }}>
                     {feedback.message}
-                </div>
+                </Alert>
             )}
-            {pageError && taxTypes.length > 0 && !feedback.message && (
-                 <p style={{...styles.errorText, textAlign: 'center', marginBottom: '10px'}}>
-                    Warning: An operation failed. Error: {pageError}
-                 </p>
+            {pageError && taxTypes.length > 0 && (
+                 <Alert severity="warning" sx={{ mb: 2, width: '100%' }}>
+                    {pageError}
+                </Alert>
             )}
-            {/* Ensure path matches App.jsx, e.g., /dashboard/tax-types/new */}
-            <Link to="/dashboard/tax-types/new" style={styles.addButtonLink}>
-                <button style={{...styles.button, ...styles.buttonAdd}}>Add New Tax Type</button>
-            </Link>
 
-            {taxTypes.length === 0 && !isLoading && !pageError ? (
-                <p style={styles.centeredMessage}>No tax types found. Click "Add New Tax Type" to create one.</p>
-            ) : (
-                <table style={styles.table}>
-                    <thead style={styles.tableHeader}>
-                        <tr>
-                            <th style={styles.tableCell}>ID</th>
-                            <th style={styles.tableCell}>Name</th>
-                            <th style={styles.tableCell}>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {taxTypes.map((type, index) => (
-                            <tr key={type.id} style={index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd}>
-                                <td style={styles.tableCell}>{type.id}</td>
-                                <td style={styles.tableCell}>{type.name}</td>
-                                <td style={{...styles.tableCell, ...styles.actionsCell}}>
-                                    {/* Ensure path matches App.jsx, e.g., /dashboard/tax-types/edit/:id */}
-                                    <button
-                                        onClick={() => navigate(`/dashboard/tax-types/edit/${type.id}`)}
-                                        style={{...styles.button, ...styles.buttonEdit}}
-                                        title="Edit Tax Type"
-                                    >
-                                        Edit
-                                    </button>
-                                    <button
-                                        onClick={() => handleDelete(type.id, type.name)}
-                                        style={{...styles.button, ...styles.buttonDelete}}
-                                        title="Delete Tax Type"
-                                    >
-                                        Delete
-                                    </button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+            {isLoading && taxTypes.length > 0 && <Box sx={{display: 'flex', justifyContent: 'center', my: 2}}><CircularProgress size={24} /><Typography sx={{ml:1}}>Updating list...</Typography></Box>}
+
+            {!isLoading && taxTypes.length === 0 && !pageError && (
+                <Alert severity="info" sx={{ textAlign: 'center', mb: 2 }}>
+                    No tax types found. {isAuthenticated && userCan && userCan('tax_type:create') && "Click 'Add New Tax Type' to create one."}
+                </Alert>
             )}
-        </div>
+
+            {taxTypes.length > 0 && (
+                <TableContainer component={Paper} elevation={2}>
+                    <Table sx={{ minWidth: 650 }} aria-label="tax types table">
+                        <TableHead sx={{ '& th': { fontWeight: 'bold' } }}>
+                            <TableRow>
+                                <TableCell>ID</TableCell>
+                                <TableCell>Name</TableCell>
+                                <TableCell align="right">Actions</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {taxTypes.map(type => (
+                                <TableRow hover key={type.id} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+                                    <TableCell component="th" scope="row">{type.id}</TableCell>
+                                    <TableCell>{type.name}</TableCell>
+                                    <TableCell align="right">
+                                        {isAuthenticated && userCan && userCan('tax_type:update') && (
+                                            <Button
+                                                variant="outlined"
+                                                size="small"
+                                                onClick={() => navigate(`/dashboard/tax-types/edit/${type.id}`)}
+                                                sx={{ mr: 1 }}
+                                                startIcon={<FaEdit />}
+                                            >
+                                                Edit
+                                            </Button>
+                                        )}
+                                        {isAuthenticated && userCan && userCan('tax_type:delete') && (
+                                            <Button
+                                                variant="outlined"
+                                                color="error"
+                                                size="small"
+                                                onClick={() => handleDelete(type.id, type.name)}
+                                                startIcon={<FaTrashAlt />}
+                                            >
+                                                Delete
+                                            </Button>
+                                        )}
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+            )}
+        </Paper>
     );
 }
-
-// Consistent List Styles
-const styles = {
-    container: { padding: '20px', fontFamily: 'Arial, sans-serif', maxWidth: '800px', margin: '0 auto' }, // Adjusted maxWidth
-    title: { marginBottom: '20px', color: '#333', textAlign: 'center' },
-    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
-    errorText: { color: '#D8000C', fontWeight: 'bold' },
-    feedbackBox: { padding: '10px 15px', marginBottom: '15px', borderRadius: '4px', textAlign: 'center', border: '1px solid' },
-    feedbackSuccess: { borderColor: 'green', color: 'green', backgroundColor: '#e6ffed' },
-    feedbackError: { borderColor: 'red', color: 'red', backgroundColor: '#ffe6e6' },
-    addButtonLink: { textDecoration: 'none', display: 'block', textAlign: 'right', marginBottom: '15px' }, // Changed to block for better layout
-    button: { padding: '8px 12px', margin: '0 5px 0 0', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9em' },
-    buttonAdd: { backgroundColor: '#28a745', color: 'white'},
-    buttonEdit: { backgroundColor: '#ffc107', color: '#000' },
-    buttonDelete: { backgroundColor: '#dc3545', color: 'white' },
-    table: { width: '100%', borderCollapse: 'collapse', marginTop: '0px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
-    tableHeader: { backgroundColor: '#e9ecef' },
-    tableCell: { padding: '12px 10px', textAlign: 'left', verticalAlign: 'middle', borderBottom: '1px solid #dee2e6' }, // Changed verticalAlign to middle
-    actionsCell: { whiteSpace: 'nowrap', textAlign: 'center' }, // Added textAlign center for actions
-    tableRowOdd: { backgroundColor: '#fff' },
-    tableRowEven: { backgroundColor: '#f8f9fa' },
-};
 
 export default TaxTypeList;

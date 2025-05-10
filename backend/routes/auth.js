@@ -18,17 +18,18 @@ function createAuthRouter(knex) {
             const user = await knex('users')
                 .leftJoin('roles', 'users.role_id', 'roles.id')
                 .select(
-                    'users.id as user_id', // Aliasing to user_id for consistency if frontend expects that
+                    'users.id as user_id',
                     'users.username',
                     'users.password_hash',
                     'users.role_id',
                     'roles.name as role_name',
-                    'roles.display_name as role_display_name', // <<< ADD THIS LINE
+                    'roles.display_name as role_display_name',
                     'users.employee_id',
                     'users.first_name',
                     'users.last_name',
                     'users.email',
-                    'users.is_active'
+                    'users.is_active',
+                    'users.current_store_id as store_id' // <<< ADD THIS LINE
                 )
                 .whereRaw('LOWER(users.username) = LOWER(?)', [username])
                 .first();
@@ -49,7 +50,6 @@ function createAuthRouter(knex) {
                 return res.status(401).json({ message: 'Invalid username or password.' });
             }
 
-            // Fetch user's permissions
             const permissionsData = await knex('role_permissions')
                 .select('permissions.name as permission_name')
                 .join('permissions', 'role_permissions.permission_id', 'permissions.id')
@@ -57,14 +57,14 @@ function createAuthRouter(knex) {
 
             const userPermissions = permissionsData.map(p => p.permission_name);
 
-            // Create JWT Payload
             const jwtPayload = {
-                userId: user.user_id, // Use the aliased user_id
+                userId: user.user_id,
                 username: user.username,
                 roleId: user.role_id,
                 roleName: user.role_name,
-                roleDisplayName: user.role_display_name, // <<< ADD THIS TO JWT if needed by authenticateToken
-                permissions: userPermissions
+                roleDisplayName: user.role_display_name,
+                permissions: userPermissions,
+                storeId: user.store_id // <<< ADD store_id TO JWT PAYLOAD if needed by middleware or other services
             };
 
             if (!process.env.JWT_SECRET) {
@@ -74,22 +74,22 @@ function createAuthRouter(knex) {
 
             const token = jwt.sign(jwtPayload, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '1h' });
 
-            // Prepare user object for the response (without password_hash)
             const userResponse = {
-                user_id: user.user_id, // Use the aliased user_id
+                user_id: user.user_id,
                 username: user.username,
                 role_id: user.role_id,
                 role_name: user.role_name,
-                role_display_name: user.role_display_name, // <<< INCLUDE IN RESPONSE
+                role_display_name: user.role_display_name,
                 employee_id: user.employee_id,
                 first_name: user.first_name,
                 last_name: user.last_name,
                 email: user.email,
                 is_active: user.is_active,
-                permissions: userPermissions
+                permissions: userPermissions,
+                store_id: user.store_id // <<< INCLUDE store_id IN RESPONSE
             };
 
-            console.log(`Login successful: User ${user.username} (ID: ${user.user_id}, Role: ${user.role_name})`);
+            console.log(`Login successful: User ${user.username} (ID: ${user.user_id}, Role: ${user.role_name}, Store ID: ${user.store_id})`);
             res.json({
                 message: 'Login successful',
                 token,
@@ -104,12 +104,9 @@ function createAuthRouter(knex) {
 
 
     // --- GET /api/auth/profile --- Get current user's profile (requires token)
+    // This route is often named /api/auth/me
     router.get('/profile', authenticateToken, async (req, res, next) => {
-        // req.user is populated by authenticateToken.
-        // We need to ensure authenticateToken also fetches/provides role_display_name
-        // or we re-fetch here. For simplicity, let's re-fetch.
-
-        if (!req.user || !req.user.userId) { // Check for userId from token
+        if (!req.user || !req.user.userId) {
             return res.status(401).json({ message: 'Authentication required.' });
         }
 
@@ -121,12 +118,13 @@ function createAuthRouter(knex) {
                     'users.username',
                     'users.role_id',
                     'roles.name as role_name',
-                    'roles.display_name as role_display_name', // <<< ADD THIS LINE
+                    'roles.display_name as role_display_name',
                     'users.employee_id',
                     'users.first_name',
                     'users.last_name',
                     'users.email',
-                    'users.is_active'
+                    'users.is_active',
+                    'users.current_store_id as store_id' // <<< ADD THIS LINE
                 )
                 .where('users.id', req.user.userId)
                 .first();
@@ -135,7 +133,6 @@ function createAuthRouter(knex) {
                 return res.status(404).json({ message: 'User profile not found.' });
             }
 
-            // Fetch permissions again for the profile (or ensure authenticateToken provides them consistently)
             const permissionsData = await knex('role_permissions')
                 .select('permissions.name as permission_name')
                 .join('permissions', 'role_permissions.permission_id', 'permissions.id')
@@ -143,20 +140,20 @@ function createAuthRouter(knex) {
             const userPermissions = permissionsData.map(p => p.permission_name);
 
             const userProfileResponse = {
-                ...userProfileData,
+                ...userProfileData, // This will now include store_id from the select alias
                 permissions: userPermissions
             };
             
-            // If employee_id exists, fetch employee details
             if (userProfileResponse.employee_id) {
                 const employeeDetails = await knex('employees')
-                    .select('first_name as emp_first_name', 'last_name as emp_last_name', 'employee_code', 'email as emp_email', 'phone as emp_phone') // Adjust columns as needed
+                    .select('first_name as emp_first_name', 'last_name as emp_last_name', 'employee_code', 'email as emp_email', 'phone as emp_phone')
                     .where({ id: userProfileResponse.employee_id })
                     .first();
                 if (employeeDetails) {
                     userProfileResponse.employee_details = employeeDetails;
                 }
             }
+            console.log(`Profile fetched for user ${userProfileResponse.username} (ID: ${userProfileResponse.user_id}, Store ID: ${userProfileResponse.store_id})`);
             res.json(userProfileResponse);
 
         } catch (err) {
@@ -165,7 +162,7 @@ function createAuthRouter(knex) {
         }
     });
 
-    // ... (logout and change-password routes remain the same) ...
+// ...existing code...
     // --- POST /api/auth/logout --- User Logout (conceptual - client-side token removal)
     router.post('/logout', (req, res) => {
         res.json({ message: 'Logout successful. Please clear your token.' });

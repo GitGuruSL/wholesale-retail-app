@@ -29,6 +29,7 @@ const createRolesRouter = require('./routes/roles'); // Add roles router
 const createPermissionsRouter = require('./routes/permissions');
 const createPermissionCategoriesRouter = require('./routes/permissionCategories');
 const createStoreSettingsRoutes = require('./routes/settings');
+const createCustomersRouter = require('./routes/customers');
 
 const app = express();
 
@@ -93,6 +94,7 @@ mountRouter('/api/roles', createRolesRouter, authenticateToken);
 mountRouter('/api/permissions', createPermissionsRouter, authenticateToken);
 mountRouter('/api/permission-categories', createPermissionCategoriesRouter, authenticateToken);
 mountRouter('/api/settings', createStoreSettingsRoutes, authenticateToken);
+mountRouter('/api/customers', createCustomersRouter, authenticateToken);
 
 // --- Global Error Handler ---
 app.use((err, req, res, next) => {

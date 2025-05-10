@@ -1,56 +1,60 @@
-const knex = require('../db/knex'); // Adjust path if needed
-
+const knex = require('../db/knex');
 const TABLE_NAME = 'inventory';
 
-// Now requires storeId
+// Get inventory record for a specific product and store.
 function getInventoryByProductAndStore(productId, storeId) {
-    return knex(TABLE_NAME)
-        .where({ product_id: productId, store_id: storeId }) // Filter by both
-        .first();
+  return knex(TABLE_NAME)
+    .where({ product_id: productId, store_id: storeId })
+    .first();
 }
 
-// Now requires storeId
+// Get all inventory records for a store.
+function getInventoryByStore(storeId) {
+    return knex(TABLE_NAME)
+      .where({ store_id: storeId });
+  }
+
+// Update inventory record with a new quantity.
 function updateInventory(productId, storeId, quantity) {
-    return knex(TABLE_NAME)
-        .where({ product_id: productId, store_id: storeId }) // Filter by both
-        .update({ quantity: quantity, updated_at: knex.fn.now() })
-        .returning('*'); // Return the updated record
+  return knex(TABLE_NAME)
+    .where({ product_id: productId, store_id: storeId })
+    .update({ quantity: quantity, updated_at: knex.fn.now() })
+    .returning('*');
 }
 
-// Now requires storeId
+// Adjust inventory by an adjustment value (positive or negative).
 async function adjustInventory(productId, storeId, adjustment) {
-    const currentInventory = await getInventoryByProductAndStore(productId, storeId);
-    if (!currentInventory) {
-        // Create a new inventory record if none exists for this product/store combo
-         return knex(TABLE_NAME)
-            .insert({
-                product_id: productId,
-                store_id: storeId, // Include storeId
-                quantity: Math.max(0, adjustment) // Ensure quantity doesn't go below 0 on initial adjustment
-            })
-            .returning('*');
-    }
-    const newQuantity = Math.max(0, currentInventory.quantity + adjustment); // Prevent negative inventory
-    return updateInventory(productId, storeId, newQuantity);
+  const currentInventory = await getInventoryByProductAndStore(productId, storeId);
+  if (!currentInventory) {
+    // Create a new inventory record if one doesn't exist.
+    return knex(TABLE_NAME)
+      .insert({
+        product_id: productId,
+        store_id: storeId,
+        quantity: Math.max(0, adjustment)
+      })
+      .returning('*');
+  }
+  const newQuantity = Math.max(0, currentInventory.quantity + adjustment);
+  return updateInventory(productId, storeId, newQuantity);
 }
 
-// Now requires storeId
+// Create an initial inventory record for a product in a store.
 function createInitialInventory(productId, storeId, quantity = 0, lowStockThreshold = null) {
-     return knex(TABLE_NAME)
-        .insert({
-            product_id: productId,
-            store_id: storeId, // Include storeId
-            quantity: quantity,
-            low_stock_threshold: lowStockThreshold
-        })
-        .returning('*');
+  return knex(TABLE_NAME)
+    .insert({
+      product_id: productId,
+      store_id: storeId,
+      quantity: quantity,
+      low_stock_threshold: lowStockThreshold
+    })
+    .returning('*');
 }
-
-// Add functions for listing low stock items (will also need storeId filter)
 
 module.exports = {
-    getInventoryByProductAndStore, // Renamed for clarity
-    updateInventory,
-    adjustInventory,
-    createInitialInventory,
+  getInventoryByProductAndStore,
+  getInventoryByStore,
+  updateInventory,
+  adjustInventory,
+  createInitialInventory,
 };

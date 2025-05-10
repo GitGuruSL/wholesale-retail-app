@@ -12,6 +12,7 @@ import {
   TableContainer,
 } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
+import apiInstance from '../services/api';
 
 function BarcodeSymbologyList() {
   const [symbologies, setSymbologies] = useState([]);
@@ -20,7 +21,7 @@ function BarcodeSymbologyList() {
   const [feedback, setFeedback] = useState({ message: null, type: null });
   const navigate = useNavigate();
   const location = useLocation();
-  const { apiInstance, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, userCan } = useAuth();
 
   // Display navigation feedback (if passed via location state)
   useEffect(() => {

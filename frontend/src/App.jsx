@@ -50,6 +50,8 @@ import PermissionCategoryList from './components/PermissionCategoryList';
 import PermissionCategoryForm from './components/PermissionCategoryForm';
 import AccessControl from './components/AccessControl';
 import StoreSettings from './components/StoreSettings';
+import InventoryList from './components/InventoryList';
+
 
 const HomePage = () => {
     const location = useLocation();
@@ -99,22 +101,27 @@ const AppRoutes = () => {
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 <Route path="dashboard" element={<Outlet />}>
                     <Route index element={<HomePage />} />
+
                     {/* Stores Management */}
                     <Route path="stores" element={<ProtectedRoute roles={globalAdminOnly} permissions={['store:read']}><StoreList /></ProtectedRoute>} />
                     <Route path="stores/new" element={<ProtectedRoute roles={globalAdminOnly} permissions={['store:create']}><StoreForm /></ProtectedRoute>} />
                     <Route path="stores/edit/:storeId" element={<ProtectedRoute roles={globalAdminOnly} permissions={['store:update']}><StoreForm /></ProtectedRoute>} />
+
                     {/* Product Management */}
                     <Route path="products" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['product:read']}><ProductList /></ProtectedRoute>} />
                     <Route path="products/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['product:create']}><ProductForm /></ProtectedRoute>} />
                     <Route path="products/edit/:productId" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['product:update']}><ProductForm /></ProtectedRoute>} />
+
                     {/* Customer Management */}
                     <Route path="customers" element={<ProtectedRoute roles={globalAdminOnly}><CustomersList /></ProtectedRoute>} />
                     <Route path="customers/new" element={<ProtectedRoute roles={globalAdminOnly}><CustomerForm /></ProtectedRoute>} />
                     <Route path="customers/edit/:customerId" element={<ProtectedRoute roles={globalAdminOnly}><CustomerForm /></ProtectedRoute>} />
+
                     {/* Suppliers Management */}
                     <Route path="suppliers" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['supplier:read']}><SupplierList /></ProtectedRoute>} />
                     <Route path="suppliers/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['supplier:create']}><SupplierForm /></ProtectedRoute>} />
                     <Route path="suppliers/edit/:supplierId" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['supplier:update']}><SupplierForm /></ProtectedRoute>} />
+
                     {/* Product Catalog Section */}
                     <Route path="categories" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['category:read']}><CategoryList /></ProtectedRoute>} />
                     <Route path="categories/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['category:create']}><CategoryForm /></ProtectedRoute>} />
@@ -128,6 +135,7 @@ const AppRoutes = () => {
                     <Route path="special-categories" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['specialcategory:read']}><SpecialCategoryList /></ProtectedRoute>} />
                     <Route path="special-categories/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['specialcategory:create']}><SpecialCategoryForm /></ProtectedRoute>} />
                     <Route path="special-categories/edit/:specialCategoryId" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['specialcategory:update']}><SpecialCategoryForm /></ProtectedRoute>} />
+
                     {/* Product Attributes Section */}
                     <Route path="product-attributes" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['product_attribute:read']}><PlaceholderComponent title="Product Attributes Overview" /></ProtectedRoute>} />
                     <Route path="tax-types" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['tax_type:read']}><TaxTypeList /></ProtectedRoute>} />
@@ -136,6 +144,7 @@ const AppRoutes = () => {
                     <Route path="taxes" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['tax:read']}><TaxList /></ProtectedRoute>} />
                     <Route path="taxes/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['tax:create']}><TaxForm /></ProtectedRoute>} />
                     <Route path="taxes/edit/:taxId" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['tax:update']}><TaxForm /></ProtectedRoute>} />
+
                     {/* Product Settings Section */}
                     <Route path="units" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['unit:read']}><UnitList /></ProtectedRoute>} />
                     <Route path="units/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['unit:create']}><UnitForm /></ProtectedRoute>} />
@@ -152,34 +161,43 @@ const AppRoutes = () => {
                     <Route path="discount-types" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['discount_type:read']}><DiscountTypeList /></ProtectedRoute>} />
                     <Route path="discount-types/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['discount_type:create']}><DiscountTypeForm /></ProtectedRoute>} />
                     <Route path="discount-types/edit/:discountTypeId" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['discount_type:update']}><DiscountTypeForm /></ProtectedRoute>} />
+
                     {/* Inventory Management */}
-                    <Route path="inventory" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['inventory:read']}><PlaceholderComponent title="Inventory Management" /></ProtectedRoute>} />
+                    <Route path="inventory" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['inventory:read']}><InventoryList /></ProtectedRoute>} />
+
                     {/* Sales Management */}
                     <Route path="sales/pos" element={<ProtectedRoute roles={allAuthenticatedUsers} permissions={['sale:create']}><PlaceholderComponent title="Point of Sale (POS)" /></ProtectedRoute>} />
                     <Route path="sales/history" element={<ProtectedRoute roles={allAuthenticatedUsers} permissions={['sale:read']}><PlaceholderComponent title="Sales History" /></ProtectedRoute>} />
+
                     {/* User Management */}
                     <Route path="users" element={<ProtectedRoute roles={globalAdminOnly} permissions={['user:read_all']}><UserList /></ProtectedRoute>} />
                     <Route path="users/new" element={<ProtectedRoute roles={globalAdminOnly} permissions={['user:create']}><UserForm /></ProtectedRoute>} />
                     <Route path="users/edit/:userId" element={<ProtectedRoute roles={globalAdminOnly} permissions={['user:update_all']}><UserForm /></ProtectedRoute>} />
+
                     {/* Roles Management */}
                     <Route path="roles" element={<ProtectedRoute roles={globalAdminOnly} permissions={['role:read']}><RolesList /></ProtectedRoute>} />
                     <Route path="roles/add" element={<ProtectedRoute roles={globalAdminOnly} permissions={['role:create']}><RoleForm /></ProtectedRoute>} />
                     <Route path="roles/edit/:roleId" element={<ProtectedRoute roles={globalAdminOnly} permissions={['role:update']}><RoleForm /></ProtectedRoute>} />
+
                     {/* Permission Management */}
                     <Route path="permissions" element={<ProtectedRoute permissions={['permission:read']}><PermissionList /></ProtectedRoute>} />
                     <Route path="permissions/new" element={<ProtectedRoute permissions={['permission:create']}><PermissionForm /></ProtectedRoute>} />
                     <Route path="permissions/edit/:permissionId" element={<ProtectedRoute permissions={['permission:update']}><PermissionForm /></ProtectedRoute>} />
+
                     {/* Permission Categories Management */}
                     <Route path="permission-categories" element={<ProtectedRoute permissions={['system:manage_permission_categories']}><PermissionCategoryList /></ProtectedRoute>} />
                     <Route path="permission-categories/new" element={<ProtectedRoute permissions={['system:manage_permission_categories']}><PermissionCategoryForm /></ProtectedRoute>} />
                     <Route path="permission-categories/edit/:categoryId" element={<ProtectedRoute permissions={['system:manage_permission_categories']}><PermissionCategoryForm /></ProtectedRoute>} />
+
                     {/* Access Control */}
                     <Route path="access-control" element={<ProtectedRoute roles={globalAdminOnly} permissions={['role:assign_permissions']}><AccessControl /></ProtectedRoute>} />
+
                     {/* Reports Section */}
                     <Route path="reports" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['report:read']}><PlaceholderComponent title="Reports Dashboard" /></ProtectedRoute>} />
                     <Route path="reports/sales" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['report:read_sales']}><PlaceholderComponent title="Sales Reports" /></ProtectedRoute>} />
                     <Route path="reports/inventory" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['report:read_inventory']}><PlaceholderComponent title="Inventory Reports" /></ProtectedRoute>} />
                     <Route path="reports/user-activity" element={<ProtectedRoute roles={globalAdminOnly} permissions={['report:read_user_activity']}><PlaceholderComponent title="User Activity Reports" /></ProtectedRoute>} />
+                    
                     {/* Settings Section */}
                     <Route path="settings/company" element={<ProtectedRoute roles={globalAdminOnly} permissions={['system:manage_settings']}><PlaceholderComponent title="Company Settings" /></ProtectedRoute>} />
                     <Route path="settings/store" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['store_settings:read', 'store_settings:update']}><StoreSettings /></ProtectedRoute>} />

@@ -1,93 +1,119 @@
 import React, { useState, useEffect, useCallback } from 'react';
-// import axios from 'axios'; // REMOVE THIS
 import { useParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext'; // Import useAuth
-
-// const API_BASE_URL = 'http://localhost:5001/api'; // REMOVE THIS
+import { useAuth } from '../context/AuthContext';
+import apiInstance from '../services/api'; // Import apiInstance directly
+import {
+    Paper, Typography, TextField, Button, Box, Alert, CircularProgress, Grid
+} from '@mui/material';
 
 function StoreForm() {
     const { storeId } = useParams();
     const navigate = useNavigate();
-    const { apiInstance, isAuthenticated, isLoading: authLoading } = useAuth(); // Use AuthContext
-
+    // apiInstance is imported directly, userCan for permissions
+    const { isAuthenticated, isLoading: authLoading, userCan } = useAuth();
     const isEditing = Boolean(storeId);
 
-    const [name, setName] = useState('');
-    const [address, setAddress] = useState('');
-    const [contactInfo, setContactInfo] = useState('');
-    const [isLoading, setIsLoading] = useState(false); // Renamed from 'loading'
-    const [pageError, setPageError] = useState(null);   // Renamed from 'error'
-    const [formError, setFormError] = useState('');     // For specific field validation errors
+    const initialFormData = { name: '', address: '', contact_info: '' };
+    const [formData, setFormData] = useState(initialFormData);
+    const [initialLoading, setInitialLoading] = useState(isEditing);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [pageError, setPageError] = useState(null);
+    const [formErrors, setFormErrors] = useState({});
+
+    const requiredPermission = isEditing ? 'store:update' : 'store:create';
 
     const fetchStoreDetails = useCallback(async () => {
-        if (!isEditing || !apiInstance || !isAuthenticated) return;
+        if (!isEditing || !isAuthenticated || !storeId) return;
 
-        console.log(`[StoreForm] Fetching details for ID: ${storeId}`);
-        setIsLoading(true);
+        setInitialLoading(true);
         setPageError(null);
+        setFormErrors({});
         try {
             const response = await apiInstance.get(`/stores/${storeId}`);
             const data = response.data;
-            setName(data.name);
-            setAddress(data.address || '');
-            setContactInfo(data.contact_info || '');
-            console.log("[StoreForm] Data fetched:", data);
+            setFormData({
+                name: data.name || '',
+                address: data.address || '',
+                contact_info: data.contact_info || ''
+            });
         } catch (err) {
             console.error("[StoreForm] Failed to fetch store:", err);
-            setPageError(err.response?.data?.message || "Failed to load store data.");
+            setPageError(err.response?.data?.message || "Failed to load store data. You may not have permission or the item does not exist.");
         } finally {
-            setIsLoading(false);
+            setInitialLoading(false);
         }
-    }, [storeId, apiInstance, isAuthenticated, isEditing]);
+    }, [storeId, isAuthenticated, isEditing]);
 
     useEffect(() => {
-        if (isEditing && !authLoading && isAuthenticated && apiInstance) {
-            fetchStoreDetails();
-        } else if (isEditing && !authLoading && !isAuthenticated) {
-            setPageError("Please log in to edit stores.");
-        } else if (!isEditing) {
-            // Reset form for new store
-            setName('');
-            setAddress('');
-            setContactInfo('');
-            setPageError(null);
-            setFormError('');
+        if (!authLoading) {
+            if (!isAuthenticated) {
+                setPageError("Please log in to manage stores.");
+                setInitialLoading(false);
+                return;
+            }
+            if (userCan && !userCan(requiredPermission)) {
+                setPageError(`You do not have permission to ${isEditing ? 'edit' : 'create'} stores.`);
+                setInitialLoading(false);
+                return;
+            }
+            if (isEditing) {
+                fetchStoreDetails();
+            } else {
+                setFormData(initialFormData);
+                setPageError(null);
+                setFormErrors({});
+                setInitialLoading(false);
+            }
         }
-    }, [isEditing, fetchStoreDetails, authLoading, isAuthenticated, apiInstance]);
+    }, [isEditing, authLoading, isAuthenticated, userCan, requiredPermission, fetchStoreDetails]);
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+        if (formErrors[name]) {
+            setFormErrors(prev => ({ ...prev, [name]: null }));
+        }
+    };
+
+    const validateForm = () => {
+        const errors = {};
+        if (!formData.name.trim()) {
+            errors.name = "Store name cannot be empty.";
+        }
+        setFormErrors(errors);
+        return Object.keys(errors).length === 0;
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!apiInstance || !isAuthenticated) {
+        if (!isAuthenticated) {
             setPageError("Authentication error. Please log in again.");
             return;
         }
-
-        const storeData = {
-            name: name.trim(),
-            address: address.trim() === '' ? null : address.trim(),
-            contact_info: contactInfo.trim() === '' ? null : contactInfo.trim(),
-        };
-
-        if (!storeData.name) {
-            setFormError("Store name cannot be empty.");
-            setPageError(''); // Clear page error if it was a submission error
+        if (userCan && !userCan(requiredPermission)) {
+            setPageError(`You do not have permission to ${isEditing ? 'update' : 'create'} this store.`);
             return;
         }
-        setFormError('');
-        setIsLoading(true);
+        if (!validateForm()) return;
+
+        setIsSubmitting(true);
         setPageError(null);
-        console.log("[StoreForm] Submitting data:", storeData);
+
+        const storeDataPayload = {
+            name: formData.name.trim(),
+            address: formData.address.trim() === '' ? null : formData.address.trim(),
+            contact_info: formData.contact_info.trim() === '' ? null : formData.contact_info.trim(),
+        };
 
         try {
             if (isEditing) {
-                await apiInstance.put(`/stores/${storeId}`, storeData);
+                await apiInstance.put(`/stores/${storeId}`, storeDataPayload);
             } else {
-                await apiInstance.post('/stores', storeData);
+                await apiInstance.post('/stores', storeDataPayload);
             }
-            // Ensure path matches App.jsx, e.g., /dashboard/stores
             navigate('/dashboard/stores', {
                 state: {
-                    message: `Store "${storeData.name}" ${isEditing ? 'updated' : 'created'} successfully.`,
+                    message: `Store "${storeDataPayload.name}" ${isEditing ? 'updated' : 'created'} successfully.`,
                     type: 'success'
                 }
             });
@@ -95,90 +121,115 @@ function StoreForm() {
             console.error("[StoreForm] Error saving store:", err);
             const errMsg = err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} store.`;
             setPageError(errMsg);
-            if (err.response?.data?.errors) { // For backend field-specific errors
-                setFormError(Object.values(err.response.data.errors).join(', '));
+            if (err.response?.data?.errors) {
+                const backendErrors = {};
+                for (const key in err.response.data.errors) {
+                    backendErrors[key] = err.response.data.errors[key].join(', ');
+                }
+                setFormErrors(prev => ({ ...prev, ...backendErrors }));
             }
         } finally {
-            setIsLoading(false);
+            setIsSubmitting(false);
         }
     };
 
-    if (authLoading) return <p style={styles.centeredMessage}>Authenticating...</p>;
-    // Show loading for edit mode only if data isn't fetched yet
-    if (isLoading && isEditing && !name) return <p style={styles.centeredMessage}>Loading store details...</p>;
+    if (authLoading) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+    }
+    if (initialLoading && isEditing) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+    }
 
+    if ((!isAuthenticated || (userCan && !userCan(requiredPermission))) && pageError) {
+        return (
+            <Paper sx={{ p: 3, m: 2, maxWidth: 600, mx: 'auto' }}>
+                <Typography variant="h5" align="center" gutterBottom>
+                    {isEditing ? 'Edit Store' : 'Add New Store'}
+                </Typography>
+                <Alert severity="error">{pageError}</Alert>
+                <Button variant="outlined" sx={{ mt: 2 }} onClick={() => navigate('/dashboard/stores')}>
+                    Back to List
+                </Button>
+            </Paper>
+        );
+    }
 
     return (
-        <div style={styles.container}>
-            <h2 style={styles.title}>{isEditing ? 'Edit Store' : 'Add New Store'}</h2>
-            {pageError && <p style={styles.errorBox}>{pageError}</p>}
-            <form onSubmit={handleSubmit}>
-                <div style={styles.formGroup}>
-                    <label htmlFor="storeName" style={styles.label}>Store Name: *</label>
-                    <input
-                        type="text"
-                        id="storeName"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        required
-                        style={styles.input}
-                        disabled={isLoading}
-                        placeholder="e.g., Main Branch, Downtown Outlet"
-                    />
-                    {formError && <p style={styles.formSpecificErrorText}>{formError}</p>}
-                </div>
-                <div style={styles.formGroup}>
-                    <label htmlFor="storeAddress" style={styles.label}>Address:</label>
-                    <textarea
-                        id="storeAddress"
-                        value={address}
-                        onChange={(e) => setAddress(e.target.value)}
-                        rows="3"
-                        style={styles.textarea}
-                        disabled={isLoading}
-                        placeholder="e.g., 123 Main St, Anytown, USA"
-                    />
-                </div>
-                <div style={styles.formGroup}>
-                    <label htmlFor="storeContact" style={styles.label}>Contact Info:</label>
-                    <input
-                        type="text"
-                        id="storeContact"
-                        value={contactInfo}
-                        onChange={(e) => setContactInfo(e.target.value)}
-                        style={styles.input}
-                        disabled={isLoading}
-                        placeholder="e.g., (555) 123-4567, manager@example.com"
-                    />
-                </div>
-                <div style={styles.buttonGroup}>
-                    <button type="submit" disabled={isLoading} style={styles.buttonPrimary}>
-                        {isLoading ? 'Saving...' : (isEditing ? 'Update Store' : 'Create Store')}
-                    </button>
-                    {/* Ensure path matches App.jsx, e.g., /dashboard/stores */}
-                    <button type="button" onClick={() => navigate('/dashboard/stores')} style={styles.buttonSecondary} disabled={isLoading}>
+        <Paper sx={{ p: 3, m: 2, maxWidth: 600, mx: 'auto' }}>
+            <Typography variant="h5" align="center" gutterBottom>
+                {isEditing ? `Edit Store (ID: ${storeId})` : 'Add New Store'}
+            </Typography>
+            {pageError && !Object.keys(formErrors).length &&
+                <Alert severity="error" sx={{ mb: 2 }}>{pageError}</Alert>
+            }
+            <Box component="form" onSubmit={handleSubmit} noValidate>
+                <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                        <TextField
+                            label="Store Name"
+                            name="name"
+                            value={formData.name}
+                            onChange={handleChange}
+                            required
+                            fullWidth
+                            disabled={isSubmitting || initialLoading}
+                            placeholder="e.g., Main Branch, Downtown Outlet"
+                            error={Boolean(formErrors.name)}
+                            helperText={formErrors.name}
+                            sx={{ mb: 1 }}
+                        />
+                    </Grid>
+                    <Grid item xs={12}>
+                        <TextField
+                            label="Address"
+                            name="address"
+                            value={formData.address}
+                            onChange={handleChange}
+                            fullWidth
+                            multiline
+                            rows={3}
+                            disabled={isSubmitting || initialLoading}
+                            placeholder="e.g., 123 Main St, Anytown, USA"
+                            error={Boolean(formErrors.address)}
+                            helperText={formErrors.address}
+                            sx={{ mb: 1 }}
+                        />
+                    </Grid>
+                    <Grid item xs={12}>
+                        <TextField
+                            label="Contact Info"
+                            name="contact_info"
+                            value={formData.contact_info}
+                            onChange={handleChange}
+                            fullWidth
+                            disabled={isSubmitting || initialLoading}
+                            placeholder="e.g., (555) 123-4567, manager@example.com"
+                            error={Boolean(formErrors.contact_info)}
+                            helperText={formErrors.contact_info}
+                        />
+                    </Grid>
+                </Grid>
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 3 }}>
+                    <Button
+                        variant="outlined"
+                        color="secondary"
+                        onClick={() => navigate('/dashboard/stores')}
+                        disabled={isSubmitting}
+                    >
                         Cancel
-                    </button>
-                </div>
-            </form>
-        </div>
+                    </Button>
+                    <Button
+                        variant="contained"
+                        color="primary"
+                        type="submit"
+                        disabled={isSubmitting || initialLoading || (userCan && !userCan(requiredPermission))}
+                    >
+                        {isSubmitting ? <CircularProgress size={24} /> : (isEditing ? 'Update Store' : 'Create Store')}
+                    </Button>
+                </Box>
+            </Box>
+        </Paper>
     );
 }
-
-// Consistent Form Styles
-const styles = {
-    container: { padding: '20px', maxWidth: '600px', margin: '40px auto', fontFamily: 'Arial, sans-serif', boxShadow: '0 2px 10px rgba(0,0,0,0.1)', borderRadius: '8px', backgroundColor: '#fff' },
-    title: { marginBottom: '25px', color: '#333', textAlign: 'center', borderBottom: '1px solid #eee', paddingBottom: '15px' },
-    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
-    errorBox: { color: '#D8000C', border: '1px solid #FFBABA', padding: '10px 15px', marginBottom: '20px', borderRadius: '4px', backgroundColor: '#FFD2D2', textAlign: 'center' },
-    formSpecificErrorText: { color: 'red', fontSize: '0.9em', marginTop: '5px'},
-    formGroup: { marginBottom: '20px' },
-    label: { display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#555' },
-    input: { width: '100%', padding: '12px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1em' },
-    textarea: { width: '100%', padding: '12px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', minHeight: '80px', fontSize: '1em' },
-    buttonGroup: { marginTop: '30px', display: 'flex', justifyContent: 'flex-end', gap: '10px' },
-    buttonPrimary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
-    buttonSecondary: { padding: '10px 20px', cursor: 'pointer', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', fontSize: '1em' },
-};
 
 export default StoreForm;

@@ -1,157 +1,190 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
+import {
+    Paper, Typography, Button, Table, TableHead, TableRow, TableCell,
+    TableBody, TableContainer, Box, Alert, CircularProgress
+} from '@mui/material';
 import { useAuth } from '../context/AuthContext';
-
-// Re-using styles from UnitList for consistency, or define new ones
-const styles = {
-    container: { padding: '20px', fontFamily: 'Arial, sans-serif', maxWidth: '1000px', margin: '0 auto' },
-    title: { marginBottom: '20px', color: '#333', textAlign: 'center' },
-    centeredMessage: { textAlign: 'center', padding: '40px', fontSize: '1.1em', color: '#666' },
-    errorText: { color: '#D8000C', fontWeight: 'bold' },
-    feedbackBox: { padding: '10px 15px', marginBottom: '15px', borderRadius: '4px', textAlign: 'center', border: '1px solid' },
-    feedbackSuccess: { borderColor: 'green', color: 'green', backgroundColor: '#e6ffed' },
-    feedbackError: { borderColor: 'red', color: 'red', backgroundColor: '#ffe6e6' },
-    addButtonLink: { textDecoration: 'none', display: 'block', textAlign: 'right', marginBottom: '15px' },
-    button: { padding: '8px 12px', margin: '0 5px 0 0', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9em' },
-    buttonAdd: { backgroundColor: '#28a745', color: 'white'},
-    buttonEdit: { backgroundColor: '#ffc107', color: '#000' },
-    buttonDelete: { backgroundColor: '#dc3545', color: 'white' },
-    table: { width: '100%', borderCollapse: 'collapse', marginTop: '0px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
-    tableHeader: { backgroundColor: '#e9ecef' },
-    tableCell: { padding: '12px 10px', textAlign: 'left', verticalAlign: 'middle', borderBottom: '1px solid #dee2e6' },
-    actionsCell: { whiteSpace: 'nowrap' },
-    tableRowOdd: { backgroundColor: '#fff' },
-    tableRowEven: { backgroundColor: '#f8f9fa' }
-};
+import apiInstance from '../services/api';
 
 function CategoryList() {
     const [categories, setCategories] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [pageError, setPageError] = useState(null);
     const [feedback, setFeedback] = useState({ message: null, type: null });
     const navigate = useNavigate();
-    const { apiInstance, isAuthenticated, isLoading: authLoading } = useAuth();
+    const location = useLocation();
+    const { isAuthenticated, isLoading: authLoading, userCan } = useAuth();
+
+    useEffect(() => {
+        if (location.state?.message) {
+            setFeedback({ message: location.state.message, type: location.state.type || 'success' });
+            navigate(location.pathname, { replace: true, state: {} });
+            const timer = setTimeout(() => setFeedback({ message: null, type: null }), 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [location, navigate]);
 
     const fetchCategories = useCallback(async () => {
-        if (!isAuthenticated || !apiInstance) {
-            setError("User not authenticated or API client not available.");
-            setLoading(false);
+        if (!isAuthenticated) {
+            setPageError("User not authenticated. Cannot fetch categories.");
+            setIsLoading(false);
             return;
         }
-        setLoading(true);
-        setError(null);
-        setFeedback({ message: null, type: null });
+        setIsLoading(true);
+        setPageError(null);
         try {
             const response = await apiInstance.get('/categories');
             setCategories(response.data || []);
         } catch (err) {
-            console.error("Error fetching categories:", err);
-            const errorMsg = err.response?.data?.message || err.message || 'Failed to fetch categories.';
-            setError(errorMsg);
+            console.error("[CategoryList] Error fetching categories:", err);
+            setPageError(err.response?.data?.message || 'Failed to fetch categories.');
+            setCategories([]);
         } finally {
-            setLoading(false);
+            setIsLoading(false);
         }
-    }, [apiInstance, isAuthenticated]);
+    }, [isAuthenticated]);
 
     useEffect(() => {
-        if (!authLoading && isAuthenticated && apiInstance) {
-            fetchCategories();
-        } else if (!authLoading && !isAuthenticated) {
-            setError("Please log in to view categories.");
-            setLoading(false);
-        } else if (!authLoading && !apiInstance) {
-            setError("API client not available. Cannot fetch categories.");
-            setLoading(false);
+        if (!authLoading) {
+            if (isAuthenticated) {
+                fetchCategories();
+            } else {
+                setPageError("Please log in to view categories.");
+                setIsLoading(false);
+                setCategories([]);
+            }
         }
-    }, [authLoading, isAuthenticated, apiInstance, fetchCategories]);
+    }, [authLoading, isAuthenticated, fetchCategories]);
 
     const handleDelete = async (categoryId, categoryName) => {
-        if (!apiInstance) {
-            setFeedback({ message: "API client not available.", type: 'error' });
+        if (!isAuthenticated) {
+            setFeedback({ message: "Authentication error. Please log in again.", type: 'error' });
             return;
         }
-        if (!window.confirm(`Are you sure you want to delete category: "${categoryName}" (ID: ${categoryId})?\nThis might fail if it's linked to products.`)) {
+        if (userCan && !userCan('category:delete')) {
+            setFeedback({ message: "You do not have permission to delete categories.", type: 'error' });
+            setTimeout(() => setFeedback({ message: null, type: null }), 5000);
             return;
         }
-        setError(null);
+        if (!window.confirm(`Are you sure you want to delete category: "${categoryName}" (ID: ${categoryId})?\nThis might fail if it's linked to products or sub-categories.`)) {
+            return;
+        }
+        setPageError(null);
         try {
             await apiInstance.delete(`/categories/${categoryId}`);
             setFeedback({ message: `Category "${categoryName}" deleted successfully.`, type: 'success' });
-            setCategories(prevCategories => prevCategories.filter(category => category.id !== categoryId));
+            setCategories(prevCategories => prevCategories.filter(cat => cat.id !== categoryId));
         } catch (err) {
-            console.error(`Error deleting category ${categoryId}:`, err);
-            const errorMsg = err.response?.data?.message || err.message || 'Failed to delete category.';
+            console.error(`[CategoryList] Error deleting category ${categoryId}:`, err);
+            const errorMsg = err.response?.data?.message || 'Failed to delete category.';
             setFeedback({ message: errorMsg, type: 'error' });
-        } finally {
-            setTimeout(() => setFeedback({ message: null, type: null }), 5000);
         }
+        const timer = setTimeout(() => setFeedback({ message: null, type: null }), 5000);
+        // No return for cleanup here as handleDelete is an event handler
     };
 
-    if (authLoading) return <div style={styles.centeredMessage}>Authenticating...</div>;
-    if (loading) return <div style={styles.centeredMessage}>Loading categories...</div>;
-    if (error && categories.length === 0) return <div style={{ ...styles.centeredMessage, ...styles.errorText }}>Error: {error}</div>;
+    if (authLoading) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+    }
+    if (isLoading && !pageError && categories.length === 0) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+    }
+
+    if (pageError && categories.length === 0) {
+        return (
+            <Paper sx={{ p: 3, m: 2, maxWidth: 800, mx: 'auto' }}>
+                <Typography variant="h5" align="center" gutterBottom>Manage Categories</Typography>
+                <Alert severity="error" sx={{ mb: 2 }}>{pageError}</Alert>
+                {isAuthenticated && userCan && userCan('category:create') &&
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+                        <Button variant="contained" color="primary" component={RouterLink} to="/dashboard/categories/new">
+                            Add New Category
+                        </Button>
+                    </Box>
+                }
+            </Paper>
+        );
+    }
 
     return (
-        <div style={styles.container}>
-            <h2 style={styles.title}>Manage Categories</h2>
-
+        <Paper sx={{ p: 3, m: 2, maxWidth: 800, mx: 'auto' }}>
+            <Typography variant="h5" align="center" gutterBottom>
+                Manage Categories
+            </Typography>
             {feedback.message && (
-                <div style={{
-                   ...styles.feedbackBox,
-                   ...(feedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError)
-                }}>
+                <Alert severity={feedback.type === 'success' ? 'success' : 'error'} sx={{ mb: 2, width: '100%' }}>
                     {feedback.message}
-                </div>
+                </Alert>
             )}
-             {error && categories.length > 0 && !feedback.message && (
-                 <p style={{...styles.errorText, textAlign: 'center', marginBottom: '10px'}}>
-                    Warning: An operation failed. Error: {error}
-                 </p>
+            {pageError && categories.length > 0 && (
+                <Alert severity="warning" sx={{ mb: 2, width: '100%' }}>
+                    {pageError}
+                </Alert>
             )}
-
-            <Link to="/dashboard/categories/new" style={styles.addButtonLink}>
-                <button style={{...styles.button, ...styles.buttonAdd}}>Add New Category</button>
-            </Link>
-
-            {categories.length === 0 && !loading && !error ? (
-                <p style={styles.centeredMessage}>No categories found. Click "Add New Category" to create one.</p>
-            ) : (
-                <table style={styles.table}>
-                    <thead style={styles.tableHeader}>
-                        <tr>
-                            <th style={styles.tableCell}>ID</th>
-                            <th style={styles.tableCell}>Name</th>
-                            {/* Add other columns like 'Description' if your backend provides it */}
-                            <th style={styles.tableCell}>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {categories.map((category, index) => (
-                            <tr key={category.id} style={index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd}>
-                                <td style={styles.tableCell}>{category.id}</td>
-                                <td style={styles.tableCell}>{category.name}</td>
-                                <td style={{...styles.tableCell, ...styles.actionsCell}}>
-                                    <button
-                                        onClick={() => navigate(`/dashboard/categories/edit/${category.id}`)}
-                                        style={{...styles.button, ...styles.buttonEdit}}
-                                        title="Edit Category"
-                                    >
-                                        Edit
-                                    </button>
-                                    <button
-                                        onClick={() => handleDelete(category.id, category.name)}
-                                        style={{...styles.button, ...styles.buttonDelete}}
-                                        title="Delete Category"
-                                    >
-                                        Delete
-                                    </button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+            {isAuthenticated && userCan && userCan('category:create') &&
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+                    <Button variant="contained" color="primary" component={RouterLink} to="/dashboard/categories/new">
+                        Add New Category
+                    </Button>
+                </Box>
+            }
+            {!isLoading && categories.length === 0 && !pageError && (
+                <Typography align="center" sx={{ p: 2 }}>
+                    No categories found. {isAuthenticated && userCan && userCan('category:create') && "Try adding one!"}
+                </Typography>
             )}
-        </div>
+            {categories.length > 0 && (
+                <TableContainer component={Paper} elevation={2}>
+                    <Table sx={{ minWidth: 650 }} aria-label="categories table">
+                        <TableHead sx={{ '& th': { fontWeight: 'bold' } }}>
+                            <TableRow>
+                                <TableCell>ID</TableCell>
+                                <TableCell>Name</TableCell>
+                                <TableCell>Description</TableCell>
+                                <TableCell align="right">Actions</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {categories.map((category) => (
+                                <TableRow
+                                    key={category.id}
+                                    sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
+                                >
+                                    <TableCell component="th" scope="row">{category.id}</TableCell>
+                                    <TableCell>{category.name}</TableCell>
+                                    <TableCell>{category.description || '-'}</TableCell>
+                                    <TableCell align="right">
+                                        {isAuthenticated && userCan && userCan('category:update') &&
+                                            <Button
+                                                variant="outlined"
+                                                color="primary"
+                                                component={RouterLink}
+                                                to={`/dashboard/categories/edit/${category.id}`}
+                                                sx={{ mr: 1 }}
+                                                size="small"
+                                            >
+                                                Edit
+                                            </Button>
+                                        }
+                                        {isAuthenticated && userCan && userCan('category:delete') &&
+                                            <Button
+                                                variant="outlined"
+                                                color="error"
+                                                onClick={() => handleDelete(category.id, category.name)}
+                                                size="small"
+                                            >
+                                                Delete
+                                            </Button>
+                                        }
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+            )}
+        </Paper>
     );
 }
 

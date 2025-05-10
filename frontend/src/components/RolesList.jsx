@@ -1,126 +1,199 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link as RouterLink, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import styles from "../styles/ListStyles";
+import apiInstance from '../services/api'; // Import apiInstance directly
+import {
+    Paper, Typography, Button, Table, TableHead, TableRow, TableCell,
+    TableBody, TableContainer, Box, Alert, CircularProgress
+} from '@mui/material';
+import { FaEdit, FaTrashAlt, FaPlus } from 'react-icons/fa';
 
 function RolesList() {
     const [roles, setRoles] = useState([]);
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState(null);
-    const [successMessage, setSuccessMessage] = useState(''); // For delete success
-    const { apiInstance, fetchRoles: fetchRolesFromContext } = useAuth(); // Renamed to avoid conflict
+    const [isLoading, setIsLoading] = useState(true);
+    const [pageError, setPageError] = useState(null);
+    const [feedback, setFeedback] = useState({ message: null, type: null }); // For general feedback
+    // apiInstance is imported directly, userCan for permissions
+    const { isAuthenticated, isLoading: authLoading, userCan, fetchRoles: fetchRolesFromContext } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
+
+    useEffect(() => {
+        // Display feedback from navigation state (e.g., after create/edit)
+        if (location.state?.message) {
+            setFeedback({ message: location.state.message, type: location.state.type || 'success' });
+            navigate(location.pathname, { replace: true, state: {} }); // Clear location state
+            const timer = setTimeout(() => setFeedback({ message: null, type: null }), 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [location, navigate]);
 
     const fetchRolesList = useCallback(async () => {
+        if (!isAuthenticated) {
+            setPageError("User not authenticated. Cannot fetch roles.");
+            setIsLoading(false);
+            return;
+        }
         setIsLoading(true);
-        setError(null);
-        // setSuccessMessage(''); // Clear previous success messages
+        setPageError(null);
+        // setFeedback({ message: null, type: null }); // Clear previous feedback on new fetch
         try {
             const response = await apiInstance.get('/roles');
             setRoles(response.data || []);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to fetch roles.');
+            setPageError(err.response?.data?.message || 'Failed to fetch roles.');
             console.error("Error fetching roles:", err.response?.data || err.message);
+            setRoles([]);
         } finally {
             setIsLoading(false);
         }
-    }, [apiInstance]);
+    }, [isAuthenticated]); // apiInstance is module-scoped
 
     useEffect(() => {
-        fetchRolesList();
-    }, [fetchRolesList]);
-
-    const handleEdit = (roleId) => {
-        navigate(`/dashboard/roles/edit/${roleId}`);
-    };
+        if (!authLoading) { // Wait for authentication process to complete
+            if (isAuthenticated) {
+                fetchRolesList();
+            } else {
+                setPageError("Please log in to view roles.");
+                setIsLoading(false);
+                setRoles([]);
+            }
+        }
+    }, [authLoading, isAuthenticated, fetchRolesList]);
 
     const handleDelete = async (roleId, roleName) => {
+        if (!isAuthenticated) {
+            setFeedback({ message: "Authentication error. Please log in again.", type: 'error' });
+            return;
+        }
+        if (userCan && !userCan('role:delete')) {
+            setFeedback({ message: "You do not have permission to delete roles.", type: 'error' });
+            setTimeout(() => setFeedback({ message: null, type: null }), 5000);
+            return;
+        }
         if (window.confirm(`Are you sure you want to delete the role "${roleName}" (ID: ${roleId})? This action cannot be undone.`)) {
-            setIsLoading(true); // Indicate loading state for delete operation
-            setError(null);
-            setSuccessMessage('');
+            // Indicate loading state for delete operation if needed, e.g., by disabling buttons
+            setPageError(null);
             try {
                 await apiInstance.delete(`/roles/${roleId}`);
-                setSuccessMessage(`Role "${roleName}" (ID: ${roleId}) deleted successfully.`);
-                // Refresh the list of roles
-                fetchRolesList(); 
-                // Also, refresh roles in context if other components depend on it immediately
-                if (typeof fetchRolesFromContext === 'function') {
+                setFeedback({ message: `Role "${roleName}" (ID: ${roleId}) deleted successfully.`, type: 'success' });
+                setRoles(prevRoles => prevRoles.filter(role => role.id !== roleId)); // Update local state
+                if (typeof fetchRolesFromContext === 'function') { // If context needs update
                     fetchRolesFromContext();
                 }
             } catch (err) {
                 const errMsg = err.response?.data?.message || `Failed to delete role "${roleName}".`;
-                setError(errMsg);
+                setFeedback({ message: errMsg, type: 'error' });
                 console.error(`Error deleting role ID ${roleId}:`, err.response?.data || err.message);
-            } finally {
-                setIsLoading(false);
             }
+            const timer = setTimeout(() => setFeedback({ message: null, type: null }), 5000);
+            // No return for cleanup here
         }
     };
 
-    if (isLoading && roles.length === 0) return <p style={styles.centeredMessage}>Loading roles...</p>;
-    // Keep error display prominent
-    if (error && roles.length === 0) return <p style={{...styles.errorBox, textAlign: 'center'}}>{error}</p>;
+    if (authLoading) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+    }
+    if (isLoading && !pageError && roles.length === 0) { // Show loading only if no page error and no roles yet
+        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+    }
 
+    if (pageError && roles.length === 0) { // If there's a page error and no roles to show
+        return (
+            <Paper sx={{ p: 3, m: 2, maxWidth: 900, mx: 'auto' }}>
+                <Typography variant="h5" align="center" gutterBottom>Manage Roles</Typography>
+                <Alert severity="error" sx={{ mb: 2 }}>{pageError}</Alert>
+                {isAuthenticated && userCan && userCan('role:create') &&
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+                        <Button variant="contained" color="primary" component={RouterLink} to="/dashboard/roles/add" startIcon={<FaPlus />}>
+                            Add New Role
+                        </Button>
+                    </Box>
+                }
+            </Paper>
+        );
+    }
 
     return (
-        <div style={styles.container}>
-            <div style={styles.titleContainer}>
-                <h2 style={styles.title}>Manage Roles</h2>
-                <Link to="/dashboard/roles/add" style={styles.addButton}>
-                    Add New Role
-                </Link>
-            </div>
+        <Paper sx={{ p: 3, m: 2, maxWidth: 900, mx: 'auto' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h5">Manage Roles</Typography>
+                {isAuthenticated && userCan && userCan('role:create') && (
+                    <Button variant="contained" color="primary" component={RouterLink} to="/dashboard/roles/add" startIcon={<FaPlus />}>
+                        Add New Role
+                    </Button>
+                )}
+            </Box>
 
-            {/* Display general error or success messages */}
-            {error && <p style={{ ...styles.errorBox, backgroundColor: '#ffe6e6', borderColor: 'red', color: 'red', marginTop: '10px', marginBottom: '10px' }}>{error}</p>}
-            {successMessage && <p style={{ ...styles.successBox, backgroundColor: '#e6fffa', borderColor: 'green', color: 'green', marginTop: '10px', marginBottom: '10px' }}>{successMessage}</p>}
-            
-            {isLoading && roles.length > 0 && <p style={styles.centeredMessage}>Updating roles list...</p>}
-
-
-            {roles.length === 0 && !isLoading ? (
-                <p style={styles.centeredMessage}>No roles found. Click "Add New Role" to create one.</p>
-            ) : (
-                <table style={styles.table}>
-                    <thead>
-                        <tr>
-                            <th style={styles.th}>ID</th>
-                            <th style={styles.th}>Display Name</th>
-                            <th style={styles.th}>Machine Name</th>
-                            <th style={styles.th}>Description</th>
-                            <th style={styles.th}>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {roles.map(role => (
-                            <tr key={role.id}>
-                                <td style={styles.td}>{role.id}</td>
-                                <td style={styles.td}>{role.display_name}</td>
-                                <td style={styles.td}>{role.name}</td>
-                                <td style={styles.td}>{role.description || '-'}</td>
-                                <td style={styles.td}>
-                                    <button
-                                        onClick={() => handleEdit(role.id)}
-                                        style={{...styles.actionButton, ...styles.editButton}}
-                                        disabled={isLoading} // Disable buttons during any loading state
-                                    >
-                                        Edit
-                                    </button>
-                                    <button
-                                        onClick={() => handleDelete(role.id, role.display_name)}
-                                        style={{...styles.actionButton, ...styles.deleteButton}}
-                                        disabled={isLoading} // Disable buttons during any loading state
-                                    >
-                                        Delete
-                                    </button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+            {feedback.message && (
+                <Alert severity={feedback.type === 'error' ? 'error' : 'success'} sx={{ mb: 2 }}>
+                    {feedback.message}
+                </Alert>
             )}
-        </div>
+            {pageError && roles.length > 0 && ( // Show pageError as warning if roles are already displayed
+                 <Alert severity="warning" sx={{ mb: 2, width: '100%' }}>
+                    {pageError}
+                </Alert>
+            )}
+
+            {isLoading && roles.length > 0 && <Box sx={{display: 'flex', justifyContent: 'center', my: 2}}><CircularProgress size={24} /><Typography sx={{ml:1}}>Updating list...</Typography></Box>}
+
+            {!isLoading && roles.length === 0 && !pageError && (
+                <Alert severity="info" sx={{ textAlign: 'center', mb: 2 }}>
+                    No roles found. {isAuthenticated && userCan && userCan('role:create') && "Click 'Add New Role' to create one."}
+                </Alert>
+            )}
+
+            {roles.length > 0 && (
+                <TableContainer component={Paper} elevation={2}>
+                    <Table sx={{ minWidth: 650 }} aria-label="roles table">
+                        <TableHead sx={{ '& th': { fontWeight: 'bold' } }}>
+                            <TableRow>
+                                <TableCell>ID</TableCell>
+                                <TableCell>Display Name</TableCell>
+                                <TableCell>Machine Name</TableCell>
+                                <TableCell>Description</TableCell>
+                                <TableCell align="right">Actions</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {roles.map(role => (
+                                <TableRow hover key={role.id} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+                                    <TableCell component="th" scope="row">{role.id}</TableCell>
+                                    <TableCell>{role.display_name}</TableCell>
+                                    <TableCell>{role.name}</TableCell>
+                                    <TableCell>{role.description || '-'}</TableCell>
+                                    <TableCell align="right">
+                                        {isAuthenticated && userCan && userCan('role:update') && (
+                                            <Button
+                                                variant="outlined"
+                                                size="small"
+                                                onClick={() => navigate(`/dashboard/roles/edit/${role.id}`)}
+                                                sx={{ mr: 1 }}
+                                                startIcon={<FaEdit />}
+                                            >
+                                                Edit
+                                            </Button>
+                                        )}
+                                        {isAuthenticated && userCan && userCan('role:delete') && (
+                                            <Button
+                                                variant="outlined"
+                                                color="error"
+                                                size="small"
+                                                onClick={() => handleDelete(role.id, role.display_name)}
+                                                startIcon={<FaTrashAlt />}
+                                            >
+                                                Delete
+                                            </Button>
+                                        )}
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+            )}
+        </Paper>
     );
 }
 
