@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
 import {
     Drawer, List, ListItem, ListItemIcon, ListItemText, Divider, IconButton,
@@ -32,12 +32,13 @@ import PrecisionManufacturingIcon from '@mui/icons-material/PrecisionManufacturi
 import StraightenIcon from '@mui/icons-material/Straighten';
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest';
+import StyleIcon from '@mui/icons-material/Style'; // Icon for Attributes
 
-// Aliases for icons if needed
-const SubCategoryIcon = CategoryIcon; // Example, adjust as needed
-const BrandIcon = StoreIcon; // Example, adjust as needed
-const SpecialCategoryIcon = CategoryIcon; // Example, adjust as needed
-const SupplierIcon = PeopleIcon; // Example, adjust as needed
+// Aliases for icons if needed (Consider using distinct icons if available)
+const SubCategoryIcon = CategoryIcon;
+const BrandIcon = StoreIcon; // Example: Using StoreIcon for Brand
+const SpecialCategoryIcon = CategoryIcon;
+const SupplierIcon = PeopleIcon; // Example: Using PeopleIcon for Supplier
 
 import { useAuth } from '../context/AuthContext';
 
@@ -72,16 +73,15 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
     const { user, logout, userCan } = useAuth();
     const [openSections, setOpenSections] = useState({});
 
-    // --- DEFINE MENU DATA STRUCTURES FIRST ---
-    const mainMenuItems = [
+    const mainMenuItems = useMemo(() => [
         { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard', requiredPermission: 'user:read_self' },
         { text: 'Stores', icon: <StoreIcon />, path: '/dashboard/stores', requiredPermission: 'store:read' },
         { text: 'Products', icon: <ListAltIcon />, path: '/dashboard/products', requiredPermission: 'product:read' },
         { text: 'Customers', icon: <PeopleIcon />, path: '/dashboard/customers', requiredPermission: 'customer:read' },
         { text: 'Suppliers', icon: <SupplierIcon />, path: '/dashboard/suppliers', requiredPermission: 'supplier:read' },
-    ];
+    ], []);
 
-    const collapsibleSectionsData = [
+    const collapsibleSectionsData = useMemo(() => [
         {
             id: "productCatalog", label: "Product Catalog", icon: <CategoryIcon />, requiredPermission: 'product:read',
             items: [
@@ -92,21 +92,24 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
             ]
         },
         {
-            id: "productAttributes", label: "Product Attributes", icon: <SettingsIcon />, requiredPermission: 'product_attribute:read',
+            id: "productAttributesManagement",
+            label: "Attributes",
+            icon: <StyleIcon />,
+            requiredPermission: 'product_attribute:read',
             items: [
-                { text: 'Attributes List', icon: <ListAltIcon />, path: '/dashboard/product-attributes', requiredPermission: 'product_attribute:read' },
-                { text: 'Tax Types', icon: <MonetizationOnIcon />, path: '/dashboard/tax-types', requiredPermission: 'tax:read' },
-                { text: 'Taxes', icon: <MonetizationOnIcon />, path: '/dashboard/taxes', requiredPermission: 'tax:manage' },
+                { text: 'Manage Attributes', icon: <ListAltIcon />, path: '/dashboard/attributes', requiredPermission: 'product_attribute:read' },
             ]
         },
         {
             id: "productSettings", label: "Product Settings", icon: <SettingsSuggestIcon />, requiredPermission: 'product_settings:read',
             items: [
-                { text: 'Units', icon: <StraightenIcon />, path: '/dashboard/units', requiredPermission: 'unit:read' },
+                { text: 'Tax Types', icon: <MonetizationOnIcon />, path: '/dashboard/tax-types', requiredPermission: 'tax:read' },
+                { text: 'Taxes', icon: <MonetizationOnIcon />, path: '/dashboard/taxes', requiredPermission: 'tax:manage' },
+                { text: 'Units of Measure', icon: <StraightenIcon />, path: '/dashboard/units', requiredPermission: 'unit:read' },
+                { text: 'Barcode Symbologies', icon: <QrCodeScannerIcon />, path: '/dashboard/barcode-symbologies', requiredPermission: 'barcodesymbology:read' },
+                { text: 'Discount Types', icon: <LocalOfferIcon />, path: '/dashboard/discount-types', requiredPermission: 'discounttype:read' },
                 { text: 'Manufacturers', icon: <PrecisionManufacturingIcon />, path: '/dashboard/manufacturers', requiredPermission: 'manufacturer:read' },
                 { text: 'Warranties', icon: <VerifiedUserIcon />, path: '/dashboard/warranties', requiredPermission: 'warranty:read' },
-                { text: 'Barcode Symbologies', icon: <QrCodeScannerIcon />, path: '/dashboard/barcode-symbologies', requiredPermission: 'barcode_symbology:read' },
-                { text: 'Discount Types', icon: <LocalOfferIcon />, path: '/dashboard/discount-types', requiredPermission: 'discount_type:read' },
             ]
         },
         {
@@ -147,21 +150,17 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
                 { text: 'Store Settings', icon: <StoreIcon />, path: '/dashboard/settings/store', requiredPermission: 'store_settings:update' },
             ]
         },
-    ];
-    // --- END OF MENU DATA DEFINITIONS ---
+    ], []);
 
     const hasPermission = useCallback((requiredPermission) => {
-        if (!requiredPermission) return true;
-        if (userCan) {
-            return userCan(requiredPermission);
-        }
-        if (!user || !user.permissions) return false;
+        if (!requiredPermission) return true; // No permission required
+        if (userCan) return userCan(requiredPermission); // Use context's userCan if available
+        if (!user || !user.permissions) return false; // Fallback if userCan is not ready or user has no permissions array
         return user.permissions.includes(requiredPermission);
     }, [user, userCan]);
 
     useEffect(() => {
-        // Pre-open sections if a sub-item is active and the sidebar is open
-        if (open && collapsibleSectionsData) { // Ensure collapsibleSectionsData is defined
+        if (open && collapsibleSectionsData) {
             const activeSection = collapsibleSectionsData.find(section =>
                 section.items.some(item => location.pathname.startsWith(item.path))
             );
@@ -169,21 +168,24 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
                 setOpenSections(prev => ({ ...prev, [activeSection.id]: true }));
             }
         }
-    }, [location.pathname, open, collapsibleSectionsData, openSections]); // collapsibleSectionsData is a dependency
+    }, [location.pathname, open, collapsibleSectionsData, openSections]);
 
     const handleMenuClick = (sectionId) => {
         setOpenSections(prev => ({ ...prev, [sectionId]: !prev[sectionId] }));
     };
 
-    const filteredMainMenuItems = mainMenuItems.filter(item => hasPermission(item.requiredPermission));
+    const filteredMainMenuItems = useMemo(() =>
+        mainMenuItems.filter(item => hasPermission(item.requiredPermission)),
+        [mainMenuItems, hasPermission]
+    );
 
-    const renderCollapsibleMenu = (section) => {
+    const renderCollapsibleMenu = useCallback((section) => {
         if (!hasPermission(section.requiredPermission)) {
             return null;
         }
         const filteredSubItems = section.items.filter(subItem => hasPermission(subItem.requiredPermission));
 
-        if (section.path && filteredSubItems.length === 0) { // Section is a direct link with no visible sub-items
+        if (section.path && filteredSubItems.length === 0) {
             return (
                 <Tooltip title={!open ? section.label : ""} placement="right" key={section.id} disableHoverListener={open}>
                     <ListItem disablePadding>
@@ -200,18 +202,18 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
             );
         }
 
-        if (filteredSubItems.length === 0 && !section.path) { // No sub-items and section is not a link itself
+        if (filteredSubItems.length === 0 && !section.path) {
             return null;
         }
 
         return (
             <React.Fragment key={section.id}>
                 <Tooltip title={!open ? section.label : ""} placement="right" disableHoverListener={open}>
-                    <ListItem button onClick={() => handleMenuClick(section.id)}>
+                    <ListItemButton onClick={() => handleMenuClick(section.id)}> {/* Changed ListItem to ListItemButton for consistent behavior */}
                         <ListItemIcon>{section.icon}</ListItemIcon>
                         {open && <ListItemText primary={section.label} />}
                         {open && (filteredSubItems.length > 0 ? (openSections[section.id] ? <ExpandLess /> : <ExpandMore />) : null)}
-                    </ListItem>
+                    </ListItemButton>
                 </Tooltip>
                 {filteredSubItems.length > 0 && (
                     <Collapse in={openSections[section.id]} timeout="auto" unmountOnExit>
@@ -235,7 +237,7 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
                 )}
             </React.Fragment>
         );
-    };
+    }, [open, openSections, hasPermission, location.pathname, handleMenuClick]); // Added handleMenuClick to dependencies
 
     return (
         <StyledDrawer variant="permanent" open={open} drawerWidth={drawerWidth}>
@@ -243,14 +245,14 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
                 sx={(theme) => ({
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between', // Distributes space
-                    padding: theme.spacing(0, 1), // Standard padding
-                    ...theme.mixins.toolbar, // Necessary for height
+                    justifyContent: 'space-between',
+                    padding: theme.spacing(0, 1),
+                    ...theme.mixins.toolbar,
                 })}
             >
                 {open && (
                     <Typography component="h1" variant="h6" color="inherit" noWrap sx={{ ml: 1, flexGrow: 1 }}>
-                        App Name {/* Or your dynamic app name/logo */}
+                        App Name
                     </Typography>
                 )}
                 <IconButton onClick={handleDrawerToggle}>
@@ -274,7 +276,7 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
             )}
             {open && user && <Divider sx={{ mb: 1 }} />}
 
-            <List component="nav" sx={{ pt: 0, pb: 0, flexGrow: 1, overflowY: 'auto' }}>
+            <List component="nav" sx={{ pt: 0, pb: 0, flexGrow: 1, overflowY: 'auto', overflowX: 'hidden' }}>
                 {filteredMainMenuItems.map((item) => (
                     <Tooltip title={!open ? item.text : ""} placement="right" key={item.text} disableHoverListener={open}>
                         <ListItem disablePadding>
@@ -294,10 +296,10 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
             </List>
             <Divider />
             <Tooltip title={!open ? "Logout" : ""} placement="right" disableHoverListener={open}>
-                <ListItem button onClick={logout}>
+                <ListItemButton onClick={logout}> {/* Changed ListItem to ListItemButton */}
                     <ListItemIcon><LogoutIcon /></ListItemIcon>
                     {open && <ListItemText primary="Logout" />}
-                </ListItem>
+                </ListItemButton>
             </Tooltip>
         </StyledDrawer>
     );

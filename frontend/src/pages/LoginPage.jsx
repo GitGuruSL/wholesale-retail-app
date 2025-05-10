@@ -5,13 +5,21 @@ import { useNavigate, useLocation } from 'react-router-dom';
 function LoginPage() {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
-    const { loginUser, isLoading, error: authError, setError, user } = useAuth();
+    // Alias setError from useAuth to avoid conflict
+    const { loginUser, isLoading, error: authErrorFromContext, setError: setAuthError, user } = useAuth(); 
     const navigate = useNavigate();
     const location = useLocation();
+    // This is the local error state for the LoginPage
+    const [error, setError] = useState(null); 
+    const [loading, setLoading] = useState(false);
 
+    // This useEffect might not be necessary or should have different dependencies.
+    // If you want to clear the local error when the component mounts or authErrorFromContext changes:
     useEffect(() => {
-        setError(null);
-    }, [setError]);
+        setError(null); // Clears local error
+        // If you also want to clear the context error when this page loads:
+        // setAuthError(null); 
+    }, [setAuthError]); // Or an empty array [] if only on mount, or [authErrorFromContext]
 
     useEffect(() => {
         if (user) {
@@ -25,15 +33,30 @@ function LoginPage() {
     const handleSubmit = async (e) => {
         e.preventDefault();
         console.log("LoginPage: Attempting login with credentials:", { username, password });
-        
-        const result = await loginUser({ username, password });
+        setLoading(true);
+        setError(null); // Clear local error before attempting login
+        // setAuthError(null); // Optionally clear context error too
 
-        if (result && result.success) {
-            console.log("LoginPage: Login successful, navigating to dashboard. User:", result.user);
-            const from = location.state?.from?.pathname || '/';
-            navigate(from, { replace: true });
-        } else {
-            console.error("LoginPage: Login failed. AuthContext error:", authError, "LoginUser result error:", result?.error);
+        try {
+            const result = await loginUser({ username, password });
+
+            if (result && result.success) {
+                console.log("LoginPage: Login successful, navigating to dashboard. User:", result.user);
+                const from = location.state?.from?.pathname || '/';
+                navigate(from, { replace: true });
+            } else {
+                // Use the local setError for login attempt failures
+                const errorMessage = result?.error || authErrorFromContext || "Login failed. Please try again.";
+                setError(errorMessage);
+                console.error("LoginPage: Login failed. AuthContext error:", authErrorFromContext, "LoginUser result error:", result?.error);
+            }
+        } catch (err) {
+            // Use the local setError for network/other errors
+            const errorMessage = err.response?.data?.message || "Login failed. Please try again.";
+            setError(errorMessage);
+            console.error("Login error:", err);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -65,10 +88,13 @@ function LoginPage() {
                         disabled={isLoading}
                     />
                 </div>
-                <button type="submit" disabled={isLoading} style={styles.button}>
-                    {isLoading ? 'Logging in...' : 'Login'}
+                <button type="submit" disabled={isLoading || loading} style={styles.button}>
+                    {(isLoading || loading) ? 'Logging in...' : 'Login'}
                 </button>
-                {authError && <p style={styles.error}>{authError}</p>}
+                {/* Display the local error state */}
+                {error && <p style={styles.error}>{error}</p>}
+                {/* You might also want to display authErrorFromContext if it's different and relevant */}
+                {/* {authErrorFromContext && !error && <p style={styles.error}>{authErrorFromContext}</p>} */}
             </form>
         </div>
     );

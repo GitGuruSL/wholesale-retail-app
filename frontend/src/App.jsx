@@ -1,7 +1,8 @@
 import React from 'react';
+// Remove BrowserRouter as Router from this import line
 import { Routes, Route, Navigate, Outlet, Link, useLocation } from 'react-router-dom';
-import { AuthProvider, useAuth } from "./context/AuthContext";
-import { StoreProvider } from "./context/StoreContext";
+import { AuthProvider, useAuth } from "./context/AuthContext"; // AuthProvider can be removed if only used in main.jsx
+import { StoreProvider } from "./context/StoreContext"; // StoreProvider can be removed if only used in main.jsx
 import { ROLES } from './utils/roles';
 
 import ProtectedRoute from './components/ProtectedRoute';
@@ -14,6 +15,8 @@ import CustomersList from './components/CustomersList';
 import CustomerForm from './components/CustomerForm';
 import ProductList from './components/ProductList';
 import ProductForm from './components/ProductForm';
+import ProductAttributeListPage from './components/ProductAttributeList.tsx';
+import ProductAttributeFormPage from './components/ProductAttributeForm';
 import CategoryList from './components/CategoryList';
 import CategoryForm from './components/CategoryForm';
 import SubCategoryList from './components/SubCategoryList';
@@ -136,8 +139,13 @@ const AppRoutes = () => {
                     <Route path="special-categories/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['specialcategory:create']}><SpecialCategoryForm /></ProtectedRoute>} />
                     <Route path="special-categories/edit/:specialCategoryId" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['specialcategory:update']}><SpecialCategoryForm /></ProtectedRoute>} />
 
-                    {/* Product Attributes Section */}
-                    <Route path="product-attributes" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['product_attribute:read']}><PlaceholderComponent title="Product Attributes Overview" /></ProtectedRoute>} />
+                    {/* Product Attributes Section - UPDATED */}
+                    <Route path="attributes" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['product_attribute:read']}><ProductAttributeListPage /></ProtectedRoute>} />
+                    <Route path="attributes/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['product_attribute:create']}><ProductAttributeFormPage /></ProtectedRoute>} />
+                    {/* Ensure this :attributeId matches what ProductAttributeFormPage expects from useParams */}
+                    <Route path="attributes/edit/:attributeId" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['product_attribute:update']}><ProductAttributeFormPage /></ProtectedRoute>} />
+                    
+                    {/* Tax Management */}
                     <Route path="tax-types" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['tax_type:read']}><TaxTypeList /></ProtectedRoute>} />
                     <Route path="tax-types/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['tax_type:create']}><TaxTypeForm /></ProtectedRoute>} />
                     <Route path="tax-types/edit/:taxTypeId" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['tax_type:update']}><TaxTypeForm /></ProtectedRoute>} />
@@ -210,12 +218,10 @@ const AppRoutes = () => {
 };
 
 function App() {
+    // No Router wrapper here anymore
+    // AuthProvider and StoreProvider are also removed as they are in main.jsx
     return (
-        <AuthProvider>
-            <StoreProvider>
-                <AppRoutes />
-            </StoreProvider>
-        </AuthProvider>
+        <AppRoutes />
     );
 }
 

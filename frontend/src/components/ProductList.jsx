@@ -337,14 +337,14 @@ function ProductList() {
                                     <TableCell>{product.id}</TableCell>
                                     <TableCell sx={{minWidth: 150}}>{product.name}</TableCell>
                                     <TableCell>{product.sku || '-'}</TableCell>
-                                    <TableCell>{product.category?.name || 'N/A'}</TableCell>
-                                    <TableCell>{product.sub_category?.name || 'N/A'}</TableCell>
-                                    <TableCell>{product.base_unit?.name || 'N/A'}</TableCell>
+                                    <TableCell>{product.category_name || 'N/A'}</TableCell> {/* CHANGED */}
+                                    <TableCell>{product.sub_category_name || 'N/A'}</TableCell> {/* CHANGED (see point 3) */}
+                                    <TableCell>{product.base_unit_name || 'N/A'}</TableCell> {/* CHANGED */}
                                     <TableCell>{formatCurrency(product.cost_price)}</TableCell>
                                     <TableCell>{formatCurrency(product.retail_price)}</TableCell>
                                     <TableCell>{formatCurrency(product.wholesale_price)}</TableCell>
-                                    <TableCell>{product.store?.name || (product.store_id ? `ID: ${product.store_id}` : 'N/A')}</TableCell>
-                                    <TableCell>{product.brand?.name || 'N/A'}</TableCell>
+                                    <TableCell>{product.store_name || (product.store_id ? `ID: ${product.store_id}` : 'N/A')}</TableCell> {/* CHANGED */}
+                                    <TableCell>{product.brand_name || 'N/A'}</TableCell> {/* CHANGED */}
                                     <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                                         {isAuthenticated && userCan && userCan('product:update') && (
                                             <Button variant="outlined" size="small" onClick={() => navigate(`/dashboard/products/edit/${product.id}`)} sx={{ mr: 1 }} startIcon={<FaEdit />}>

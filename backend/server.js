@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const knex = require('./db/knex');
 const { authenticateToken } = require('./middleware/authMiddleware'); // Import authenticateToken
+const { checkPermission } = require('./middleware/authorizeRoles'); // Adjust path as needed
 
 // --- Import Router Creation Functions ---
 const createAuthRouter = require('./routes/auth');
@@ -28,8 +29,12 @@ const createWarrantiesRouter = require('./routes/warranties');
 const createRolesRouter = require('./routes/roles'); // Add roles router
 const createPermissionsRouter = require('./routes/permissions');
 const createPermissionCategoriesRouter = require('./routes/permissionCategories');
-const createStoreSettingsRoutes = require('./routes/settings');
+const createStoreSettingsRoutes = require('./routes/settings'); // This one points to settings.js
 const createCustomersRouter = require('./routes/customers');
+// const createCompanyProfileRouter = require('./routes/company_profile'); // Commented out
+// const createStoreSettingsRouter = require('./routes/store_settings'); // <-- COMMENT THIS LINE OUT
+// const createReportsRouter = require('./routes/reports'); // <-- COMMENT THIS LINE OUT
+const createAttributesRouter = require('./routes/attributes'); // <-- New Import
 
 const app = express();
 
@@ -54,10 +59,39 @@ const mountRouter = (path, routerCreator, ...middlewares) => {
         return;
     }
     try {
-        const router = routerCreator(knex); // Pass knex instance
-        if (middlewares.length > 0) {
-            app.use(path, ...middlewares, router);
-            console.log(`Mounted ${path} with ${middlewares.map(m => m.name || 'middleware').join(', ')}`);
+        let router;
+        // Special handling for routers that require more arguments for their creator
+        if (routerCreator === createProductsRouter) {
+            // createProductsRouter expects (knex, authenticateToken, checkPermissionFactory)
+            // The ...middlewares for this call are [authenticateToken, checkPermissionFactory]
+            if (middlewares.length >= 2 && middlewares[0] === authenticateToken && middlewares[1] === checkPermission) {
+                router = routerCreator(knex, middlewares[0], middlewares[1]); // Pass them correctly
+            } else {
+                 console.error(`Error: createProductsRouter not called with expected authenticateToken and checkPermission factory.`);
+                 // Fallback or throw error, for now, let's try with knex only and log
+                 router = routerCreator(knex); // This will likely still lead to issues if not handled
+            }
+        } else if (routerCreator === createUsersRouter) { // Example if createUsersRouter needs authenticateToken
+             if (middlewares.length >= 1 && middlewares[0] === authenticateToken) {
+                 router = routerCreator(knex, middlewares[0]);
+             } else {
+                 router = routerCreator(knex);
+             }
+        }
+        // Add other similar else if blocks for other routers needing specific args from ...middlewares
+        else {
+            router = routerCreator(knex); // Default for simple routers like auth
+        }
+
+        // Filter out the checkPermission factory from path-level middlewares if it's present,
+        // as it's a factory, not a direct middleware for app.use(path, factory, router)
+        const actualPathMiddlewares = middlewares.filter(mw => mw !== checkPermission);
+        // If you had a default permission for all product routes, you'd use:
+        // actualPathMiddlewares.push(checkPermission('some-default-product-permission'));
+
+        if (actualPathMiddlewares.length > 0) {
+            app.use(path, ...actualPathMiddlewares, router);
+            console.log(`Mounted ${path} with ${actualPathMiddlewares.map(m => m.name || 'middleware').join(', ')}`);
         } else {
             app.use(path, router);
             console.log(`Mounted ${path}`);
@@ -79,7 +113,7 @@ mountRouter('/api/employees', createEmployeesRouter, authenticateToken);
 mountRouter('/api/inventory', createInventoryRouter, authenticateToken);
 mountRouter('/api/manufacturers', createManufacturersRouter, authenticateToken);
 mountRouter('/api/product-units', createProductUnitsRouter, authenticateToken);
-mountRouter('/api/products', createProductsRouter, authenticateToken);
+mountRouter('/api/products', createProductsRouter, authenticateToken, checkPermission);
 mountRouter('/api/sales', createSalesRouter, authenticateToken);
 mountRouter('/api/special-categories', createSpecialCategoriesRouter, authenticateToken);
 mountRouter('/api/stores', createStoresRouter, authenticateToken);
@@ -93,8 +127,12 @@ mountRouter('/api/warranties', createWarrantiesRouter, authenticateToken);
 mountRouter('/api/roles', createRolesRouter, authenticateToken);
 mountRouter('/api/permissions', createPermissionsRouter, authenticateToken);
 mountRouter('/api/permission-categories', createPermissionCategoriesRouter, authenticateToken);
-mountRouter('/api/settings', createStoreSettingsRoutes, authenticateToken);
+mountRouter('/api/settings', createStoreSettingsRoutes, authenticateToken); // This uses settings.js
 mountRouter('/api/customers', createCustomersRouter, authenticateToken);
+// mountRouter('/api/company-profile', createCompanyProfileRouter, authenticateToken); // Already commented
+// mountRouter('/api/store-settings', createStoreSettingsRouter, authenticateToken); // Already commented
+// mountRouter('/api/reports', createReportsRouter, authenticateToken); // <-- AND COMMENT THIS LINE OUT
+mountRouter('/api/attributes', createAttributesRouter, authenticateToken); // <-- Use new router
 
 // --- Global Error Handler ---
 app.use((err, req, res, next) => {
