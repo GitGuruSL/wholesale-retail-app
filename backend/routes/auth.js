@@ -17,6 +17,7 @@ function createAuthRouter(knex) {
         try {
             const user = await knex('users')
                 .leftJoin('roles', 'users.role_id', 'roles.id')
+                .leftJoin('stores', 'users.current_store_id', 'stores.id') // <<< JOIN with stores table
                 .select(
                     'users.id as user_id',
                     'users.username',
@@ -29,7 +30,8 @@ function createAuthRouter(knex) {
                     'users.last_name',
                     'users.email',
                     'users.is_active',
-                    'users.current_store_id as store_id' // <<< ADD THIS LINE
+                    'users.current_store_id as store_id',
+                    'stores.name as store_name' // <<< SELECT store_name
                 )
                 .whereRaw('LOWER(users.username) = LOWER(?)', [username])
                 .first();
@@ -64,7 +66,8 @@ function createAuthRouter(knex) {
                 roleName: user.role_name,
                 roleDisplayName: user.role_display_name,
                 permissions: userPermissions,
-                storeId: user.store_id // <<< ADD store_id TO JWT PAYLOAD if needed by middleware or other services
+                storeId: user.store_id,
+                // store_name is not typically needed in JWT payload unless specifically required by middleware
             };
 
             if (!process.env.JWT_SECRET) {
@@ -86,10 +89,11 @@ function createAuthRouter(knex) {
                 email: user.email,
                 is_active: user.is_active,
                 permissions: userPermissions,
-                store_id: user.store_id // <<< INCLUDE store_id IN RESPONSE
+                store_id: user.store_id,
+                store_name: user.store_name // <<< INCLUDE store_name IN RESPONSE
             };
 
-            console.log(`Login successful: User ${user.username} (ID: ${user.user_id}, Role: ${user.role_name}, Store ID: ${user.store_id})`);
+            console.log(`Login successful: User ${user.username} (ID: ${user.user_id}, Role: ${user.role_name}, Store ID: ${user.store_id}, Store Name: ${user.store_name})`);
             res.json({
                 message: 'Login successful',
                 token,
@@ -113,6 +117,7 @@ function createAuthRouter(knex) {
         try {
             const userProfileData = await knex('users')
                 .leftJoin('roles', 'users.role_id', 'roles.id')
+                .leftJoin('stores', 'users.current_store_id', 'stores.id') // <<< JOIN with stores table
                 .select(
                     'users.id as user_id',
                     'users.username',
@@ -124,7 +129,8 @@ function createAuthRouter(knex) {
                     'users.last_name',
                     'users.email',
                     'users.is_active',
-                    'users.current_store_id as store_id' // <<< ADD THIS LINE
+                    'users.current_store_id as store_id',
+                    'stores.name as store_name' // <<< SELECT store_name
                 )
                 .where('users.id', req.user.userId)
                 .first();
@@ -140,7 +146,7 @@ function createAuthRouter(knex) {
             const userPermissions = permissionsData.map(p => p.permission_name);
 
             const userProfileResponse = {
-                ...userProfileData, // This will now include store_id from the select alias
+                ...userProfileData, // This will now include store_id and store_name
                 permissions: userPermissions
             };
             
@@ -153,7 +159,7 @@ function createAuthRouter(knex) {
                     userProfileResponse.employee_details = employeeDetails;
                 }
             }
-            console.log(`Profile fetched for user ${userProfileResponse.username} (ID: ${userProfileResponse.user_id}, Store ID: ${userProfileResponse.store_id})`);
+            console.log(`Profile fetched for user ${userProfileResponse.username} (ID: ${userProfileResponse.user_id}, Store ID: ${userProfileResponse.store_id}, Store Name: ${userProfileResponse.store_name})`);
             res.json(userProfileResponse);
 
         } catch (err) {

@@ -1,80 +1,43 @@
 const jwt = require('jsonwebtoken');
 const knex = require('../db/knex.js'); // Ensure you have your knex instance configured and exported
 
-const authenticateToken = async (req, res, next) => {
+function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-  
-    if (!token) {
-      console.warn("AuthMiddleware: No token provided.");
-      return res.status(401).json({ message: 'Unauthorized: No token provided.' });
+    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+
+    if (token == null) {
+        console.log('[AuthMiddleware] No token provided.');
+        return res.status(401).json({ message: 'No token provided.' });
     }
-  
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-  
-      if (!decoded.userId) {
-        console.warn("AuthMiddleware: Token does not contain userId.");
-        return res.status(401).json({ message: 'Unauthorized: Invalid token payload.' });
-      }
-  
-      const userDetails = await knex('users')
-        .leftJoin('roles', 'users.role_id', 'roles.id')
-        .where({ 'users.id': decoded.userId })
-        .select(
-          'users.id',
-          'users.username',
-          'users.current_store_id',
-          'users.is_active',
-          'users.first_name',
-          'users.last_name',
-          'users.email',
-          'users.role_id', // Ensure role_id is selected
-          'roles.name as role_name' // Include role_name
-        )
-        .first();
-  
-      if (!userDetails) {
-        console.warn(`AuthMiddleware: User not found for ID: ${decoded.userId}`);
-        return res.status(401).json({ message: 'Unauthorized: User not found.' });
-      }
-  
-      if (!userDetails.is_active) {
-        console.warn(`AuthMiddleware: User ${userDetails.username} is not active.`);
-        return res.status(403).json({ message: 'Forbidden: User account is inactive.' });
-      }
-  
-      if (!userDetails.role_id) {
-        console.warn(`AuthMiddleware: User ${userDetails.username} does not have a role assigned.`);
-        return res.status(403).json({ message: 'Forbidden: User does not have a role assigned.' });
-      }
-  
-      console.log(`AuthMiddleware: User ${userDetails.username} has role_id: ${userDetails.role_id}`);
-  
-      // Fetch permissions for the user's role
-      const permissionsResult = await knex('role_permissions')
-        .join('permissions', 'role_permissions.permission_id', 'permissions.id')
-        .where({ role_id: userDetails.role_id })
-        .select('permissions.name as permission_name');
-  
-      userDetails.permissions = permissionsResult.map(p => p.permission_name);
-      console.log(`AuthMiddleware: User ${userDetails.username} (Role: ${userDetails.role_name}) permissions:`, userDetails.permissions);
-  
-      req.user = userDetails;
-      console.log("AuthMiddleware: Authentication successful. req.user populated.");
-      next();
-    } catch (err) {
-      console.error("AuthMiddleware: Error during authentication:", err);
-  
-      if (err instanceof jwt.JsonWebTokenError) {
-        return res.status(401).json({ message: `Unauthorized: ${err.message}` });
-      } else if (err.name === 'TokenExpiredError') {
-        return res.status(401).json({ message: 'Unauthorized: Token has expired.' });
-      } else {
-        return res.status(500).json({ message: 'Internal server error: Could not process authentication.' });
-      }
-    }
-  };
+
+    jwt.verify(token, process.env.JWT_SECRET, (err, decodedJwtPayload) => {
+        if (err) {
+            console.error('[AuthMiddleware] JWT Error:', err.message);
+            // Differentiate between expired and invalid token for better client feedback
+            if (err.name === 'TokenExpiredError') {
+                return res.status(401).json({ message: 'Token expired. Please log in again.' });
+            }
+            return res.status(403).json({ message: 'Invalid token.' });
+        }
+
+        // The 'decodedJwtPayload' is the object you signed in auth.js
+        // It contains: userId, username, roleId, roleName, permissions, storeId
+        
+        // Construct req.user to match expectations of downstream routes (e.g., inventoryRoutes.js)
+        req.user = {
+            user_id: decodedJwtPayload.userId, // Map to user_id if routes expect that
+            username: decodedJwtPayload.username,
+            role_id: decodedJwtPayload.roleId,   // Map to role_id
+            role_name: decodedJwtPayload.roleName, // Keep as role_name
+            permissions: decodedJwtPayload.permissions,
+            store_id: decodedJwtPayload.storeId // <<< CRITICAL: Map storeId from token to store_id
+            // Add other fields from decodedJwtPayload if needed by other routes
+        };
+        
+        // console.log('[AuthMiddleware] Token verified. req.user set:', JSON.stringify(req.user, null, 2));
+        next();
+    });
+}
 
 // Function to check if user has ANY of the allowed roles
 const authorizeRole = (allowedRoles) => {
