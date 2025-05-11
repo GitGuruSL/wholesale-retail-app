@@ -113,6 +113,7 @@ function ProductAttributeFormPage() {
 
     const handleSubmit = async (event) => {
         event.preventDefault();
+        console.log('handleSubmit - Initial attributeValues:', JSON.stringify(attributeValues, null, 2)); // <<< ADD THIS
         setIsLoading(true);
         setError(null);
         setSuccessMessage(null);
@@ -159,18 +160,17 @@ function ProductAttributeFormPage() {
             setSuccessMessage(isEditing ? "Attribute updated successfully!" : "Attribute created successfully!");
             
             setTimeout(() => {
-                if (!isEditing) {
-                    // navigate('/dashboard/attributes'); // Or to the list page
+                setSuccessMessage(null); // Clear the success message after a delay
+                if (isEditing) {
+                    navigate('/dashboard/attributes'); // Navigate back to the list after update
                 } else {
-                    // Optionally, re-fetch or just show message
+                    // For create, clear the form to allow adding another attribute
+                    // setAttributeName(''); // No longer needed if navigating away
+                    // setAttributeValues(['']); // No longer needed if navigating away
+                    // Optionally, you could also navigate for 'create' if desired:
+                    navigate('/dashboard/attributes'); // <<< ADD THIS LINE TO REDIRECT AFTER CREATE
                 }
-                // For now, let's clear form on new, and navigate on success for edit
-                 if (!isEditing) {
-                    setAttributeName('');
-                    setAttributeValues(['']);
-                 }
-                 // navigate('/dashboard/attributes'); // Consider navigating back to list
-            }, 1500);
+            }, 1500); // Delay to allow user to see the success message
 
         } catch (err) {
             console.error('Error saving attribute:', err);

@@ -615,84 +615,98 @@ function ProductForm() {
                     )}
 
                     {formData.product_type === 'Variable' && (
-                        <VariableProductFields
-                            formData={formData}
-                            productVariations={productVariations}
-                            onGenerateVariations={handleGenerateVariations}
-                            onVariationChange={handleVariationChange}
-                            onRemoveVariation={handleRemoveVariation}
-                            loadingVariations={loadingVariations}
-                            variationGenerationError={variationGenerationError}
-                            setVariationGenerationError={setVariationGenerationError}
-                            setError={setError}
-                        />
-                    )}
-                    
-                     <Box component="fieldset" sx={{ border: 1, borderColor: 'divider', p: 2, borderRadius: 1 }}>
-                        <Typography component="legend" variant="h6" sx={{ mb: 2 }}>Additional Details</Typography>
-                        {/* Placeholder for other fields. You can create another sub-component or add fields directly here if few. */}
-                        {/* For example: Warranty, Supplier, Serialized, Expiry */}
-                        <Typography variant="body2">Additional product details (warranty, supplier, etc.) can be added here or in a dedicated sub-component.</Typography>
-                    </Box>
-
-                    {formData.product_type === 'Variable' && (
-                        <Box component="fieldset" sx={{ border: 1, borderColor: 'divider', p: 2, borderRadius: 1, mt: 2 }}>
-                            <Typography component="legend" variant="h6" sx={{ mb: 2 }}>Configure Product Attributes</Typography>
-                            <FormControl fullWidth margin="normal">
-                                <InputLabel>Add Attribute to Product</InputLabel>
-                                <Select
-                                    value=""
-                                    label="Add Attribute to Product"
-                                    onChange={(e) => {
-                                        const selectedSysAttr = allSystemAttributes.find(attr => attr.id === e.target.value);
-                                        if (selectedSysAttr) {
-                                            handleAddProductAttribute(selectedSysAttr); // Uses the NEW handler
-                                        }
-                                    }}
-                                >
-                                    <MenuItem value="" disabled><em>Select an attribute</em></MenuItem>
-                                    {allSystemAttributes
-                                        .filter(sysAttr => !formData.attributes_config.find(ac => ac.attribute_id === sysAttr.id))
-                                        .map(sysAttr => (
-                                            <MenuItem key={sysAttr.id} value={sysAttr.id}>{sysAttr.name}</MenuItem>
-                                        ))}
-                                </Select>
-                            </FormControl>
-
-                            {formData.attributes_config.map((config, index) => {
-                                const systemAttributeDetails = allSystemAttributes.find(sa => sa.id === config.attribute_id);
-                                return (
-                                    <Box key={index} sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, p: 1, border: '1px solid lightgray', borderRadius: 1 }}>
-                                        <Typography sx={{ minWidth: '100px' }}>{config.name}:</Typography>
-                                        <FormControl fullWidth>
-                                            <InputLabel>Select Values for {config.name}</InputLabel>
-                                            <Select
-                                                multiple
-                                                value={config.values}
-                                                onChange={(e) => handleProductAttributeValuesChange(index, e.target.value)} // Uses the NEW handler
-                                                input={<OutlinedInput label={`Select Values for ${config.name}`} />}
-                                                renderValue={(selected) => (
-                                                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                                        {selected.map((value) => (
-                                                            <Chip key={value} label={value} />
-                                                        ))}
-                                                    </Box>
-                                                )}
-                                            >
-                                                {systemAttributeDetails?.values?.map(attrValue => ( // Added optional chaining for values
-                                                    <MenuItem key={attrValue.id || attrValue.value} value={attrValue.value}>
-                                                        {attrValue.value}
-                                                    </MenuItem>
+                        <>
+                            {/* Desired New Order */}
+                            <Box sx={{ mb: 3 }}>
+                                <Typography variant="h6">Configure Product Attributes</Typography>
+                                {/* ... JSX for selecting/configuring attributes for variations ... */}
+                                {/* This section might involve selecting attributes that will be used to generate variations */}
+                                <Box component="fieldset" sx={{ border: 1, borderColor: 'divider', p: 2, borderRadius: 1, mt: 2 }}>
+                                    <FormControl fullWidth margin="normal">
+                                        <InputLabel>Add Attribute to Product</InputLabel>
+                                        <Select
+                                            value=""
+                                            label="Add Attribute to Product"
+                                            onChange={(e) => {
+                                                const selectedSysAttr = allSystemAttributes.find(attr => attr.id === e.target.value);
+                                                if (selectedSysAttr) {
+                                                    handleAddProductAttribute(selectedSysAttr); // Uses the NEW handler
+                                                }
+                                            }}
+                                        >
+                                            <MenuItem value="" disabled><em>Select an attribute</em></MenuItem>
+                                            {allSystemAttributes
+                                                .filter(sysAttr => !formData.attributes_config.find(ac => ac.attribute_id === sysAttr.id))
+                                                .map(sysAttr => (
+                                                    <MenuItem key={sysAttr.id} value={sysAttr.id}>{sysAttr.name}</MenuItem>
                                                 ))}
-                                            </Select>
-                                        </FormControl>
-                                        <IconButton onClick={() => handleRemoveProductAttributeConfig(index)} color="error"> {/* Uses the NEW handler */}
-                                            <DeleteIcon />
-                                        </IconButton>
-                                    </Box>
-                                );
-                            })}
-                        </Box>
+                                        </Select>
+                                    </FormControl>
+
+                                    {formData.attributes_config.map((config, index) => {
+                                        const systemAttributeDetails = allSystemAttributes.find(sa => sa.id === config.attribute_id);
+                                        return (
+                                            <Box key={index} sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, p: 1, border: '1px solid lightgray', borderRadius: 1 }}>
+                                                <Typography sx={{ minWidth: '100px' }}>{config.name}:</Typography>
+                                                <FormControl fullWidth>
+                                                    <InputLabel>Select Values for {config.name}</InputLabel>
+                                                    <Select
+                                                        multiple
+                                                        value={config.values}
+                                                        onChange={(e) => handleProductAttributeValuesChange(index, e.target.value)} // Uses the NEW handler
+                                                        input={<OutlinedInput label={`Select Values for ${config.name}`} />}
+                                                        renderValue={(selected) => (
+                                                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                                                {selected.map((value) => (
+                                                                    <Chip key={value} label={value} />
+                                                                ))}
+                                                            </Box>
+                                                        )}
+                                                    >
+                                                        {systemAttributeDetails?.values?.map(attrValue => ( // Added optional chaining for values
+                                                            <MenuItem key={attrValue.id || attrValue.value} value={attrValue.value}>
+                                                                {attrValue.value}
+                                                            </MenuItem>
+                                                        ))}
+                                                    </Select>
+                                                </FormControl>
+                                                <IconButton onClick={() => handleRemoveProductAttributeConfig(index)} color="error"> {/* Uses the NEW handler */}
+                                                    <DeleteIcon />
+                                                </IconButton>
+                                            </Box>
+                                        );
+                                    })}
+                                </Box>
+                            </Box>
+
+                            <Box sx={{ mb: 3 }}>
+                                <Typography variant="h6">Product Variations</Typography>
+                                {/* ... JSX for managing variations (e.g., price, SKU per variation) ... */}
+                                {/* This section would likely depend on the attributes configured above */}
+                                <VariableProductFields
+                                    formData={formData}
+                                    productVariations={productVariations}
+                                    onGenerateVariations={handleGenerateVariations}
+                                    onVariationChange={handleVariationChange}
+                                    onRemoveVariation={handleRemoveVariation}
+                                    loadingVariations={loadingVariations}
+                                    variationGenerationError={variationGenerationError}
+                                    setVariationGenerationError={setVariationGenerationError}
+                                    setError={setError}
+                                />
+                            </Box>
+
+                            <Box sx={{ mb: 3 }}>
+                                <Typography variant="h6">Additional Details</Typography>
+                                {/* ... JSX for warranty, manufacturer, tax, supplier, etc. ... */}
+                                <Box component="fieldset" sx={{ border: 1, borderColor: 'divider', p: 2, borderRadius: 1 }}>
+                                    <Typography component="legend" variant="h6" sx={{ mb: 2 }}>Additional Details</Typography>
+                                    {/* Placeholder for other fields. You can create another sub-component or add fields directly here if few. */}
+                                    {/* For example: Warranty, Supplier, Serialized, Expiry */}
+                                    <Typography variant="body2">Additional product details (warranty, supplier, etc.) can be added here or in a dedicated sub-component.</Typography>
+                                </Box>
+                            </Box>
+                        </>
                     )}
 
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, pt: 1 }}>

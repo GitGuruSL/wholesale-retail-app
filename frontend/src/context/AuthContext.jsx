@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import apiInstance from '../services/api';
+import apiInstance from '../services/api'; // Ensure this path is correct
 
 const AuthContext = createContext(null);
 
@@ -104,19 +104,20 @@ export const AuthProvider = ({ children }) => {
     }, [user, token, logoutUser]);
 
     // Permission checking function
-    const userCan = useCallback((requiredPermissions) => {
+    const userCan = useCallback((requiredPermission) => {
+        // Ensure these console.log lines are present and not commented out
+        console.log('[AuthContext userCan] Current user:', user); // Log the whole user object
         if (!user || !user.permissions) {
+            console.log('[AuthContext userCan] User or user.permissions is null/undefined. Required:', requiredPermission, 'Result: false');
             return false;
         }
-        const userPermissions = Array.isArray(user.permissions) ? user.permissions : [];
-        if (typeof requiredPermissions === 'string') {
-            return userPermissions.includes(requiredPermissions);
-        }
-        if (Array.isArray(requiredPermissions)) {
-            return requiredPermissions.every(permission => userPermissions.includes(permission));
-        }
-        return false;
-    }, [user]);
+        console.log('[AuthContext userCan] User permissions:', user.permissions); // Log the permissions array
+        console.log('[AuthContext userCan] Checking if user has permission:', requiredPermission);
+
+        const hasPerm = user.permissions.includes(requiredPermission);
+        console.log(`[AuthContext userCan] User has permission '${requiredPermission}': ${hasPerm}`);
+        return hasPerm;
+    }, [user]); // Dependency array includes user
 
     // Memoize the context value to prevent unnecessary re-renders
     const contextValue = useMemo(() => ({

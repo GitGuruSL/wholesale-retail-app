@@ -1,12 +1,12 @@
 import React from 'react';
 // Remove BrowserRouter as Router from this import line
 import { Routes, Route, Navigate, Outlet, Link, useLocation } from 'react-router-dom';
-import { AuthProvider, useAuth } from "./context/AuthContext"; // AuthProvider can be removed if only used in main.jsx
-import { StoreProvider } from "./context/StoreContext"; // StoreProvider can be removed if only used in main.jsx
+import { useAuth } from "./context/AuthContext"; // AuthProvider removed as it's in main.jsx
+// StoreProvider removed as it's in main.jsx
 import { ROLES } from './utils/roles';
 
 import ProtectedRoute from './components/ProtectedRoute';
-import MainLayout from './components/MainLayout';
+import MainLayout from './components/MainLayout'; // Ensure this path is correct
 
 import LoginPage from "./pages/LoginPage";
 import AccessDeniedPage from './pages/AccessDeniedPage';
