@@ -149,7 +149,7 @@ const HorizontalMenu = () => {
                 { text: 'Print Barcode', icon: <PrintIcon />, path: '/dashboard/inventory/print-barcode', requiredPermission: 'inventory:print_barcode' },
                 { text: 'Print QR Code', icon: <QrCodeScannerIcon />, path: '/dashboard/inventory/print-qrcode', requiredPermission: 'inventory:print_qrcode' },
                 { text: 'Product Barcodes', icon: <DocumentScannerIcon />, path: '/dashboard/inventory/product-barcodes', requiredPermission: 'product_barcode:manage' },
-                { text: 'Barcode Symbologies', icon: <TuneIcon />, path: '/dashboard/inventory/barcode-symbologies', requiredPermission: 'barcode_symbology:manage' }, // Added this line
+                { text: 'Barcode Symbologies', icon: <TuneIcon />, path: '/dashboard/inventory/barcode-symbologies', requiredPermission: 'barcode_symbology:read' }, // Added this line
                 { text: 'Discount Types', icon: <LocalOfferIcon />, path: '/dashboard/inventory/discount-types', requiredPermission: 'discount_type:manage' },
                 { text: 'Special Categories', icon: <StarIcon />, path: '/dashboard/special-categories', requiredPermission: 'specialcategory:read' },
             ]

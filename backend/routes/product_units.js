@@ -1,75 +1,21 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { authenticateToken, authorizePermissions } = require('../middleware/authMiddleware'); // Adjust path as needed
-// Define specific permissions for managing permissions, e.g., 'permission:manage', 'permission:read'
-// For simplicity, we'll assume a general admin capability for now or use a placeholder.
-const PERMISSIONS = { 
-    PERMISSION_MANAGE: 'permission:manage', // Example permission to manage permissions
-    PERMISSION_READ: 'permission:read'      // Example permission to read permissions
-};
+// const { authenticateToken, checkPermission } = require('../middleware'); // Assuming combined middleware file
 
-const createPermissionsRouter = (knex) => {
+function createProductUnitsRouter(knex, authenticateToken, checkPermission) {
     const router = express.Router();
 
-    // GET /api/permissions - Fetch all permissions
-    router.get(
-        '/',
-        authenticateToken,
-        // authorizePermissions([PERMISSIONS.PERMISSION_READ]), // Protect this route
-        async (req, res) => {
-            try {
-                const permissions = await knex('permissions')
-                    .select('id', 'name', 'display_name', 'description', 'created_at', 'updated_at')
-                    .orderBy('display_name');
-                res.status(200).json(permissions);
-            } catch (error) {
-                console.error('Error fetching permissions:', error);
-                res.status(500).json({ message: 'Failed to fetch permissions.' });
-            }
-        }
-    );
-
-    // GET /api/permissions/:id - Fetch a single permission by ID
-    router.get(
-        '/:id',
-        authenticateToken,
-        // authorizePermissions([PERMISSIONS.PERMISSION_READ]),
-        async (req, res) => {
-            try {
-                const { id } = req.params;
-                if (isNaN(parseInt(id))) {
-                    return res.status(400).json({ message: 'Permission ID must be an integer.' });
-                }
-                const permission = await knex('permissions')
-                    .where({ id: parseInt(id) })
-                    .first();
-                if (!permission) {
-                    return res.status(404).json({ message: 'Permission not found.' });
-                }
-                res.status(200).json(permission);
-            } catch (error) {
-                console.error(`Error fetching permission ID ${req.params.id}:`, error);
-                res.status(500).json({ message: 'Failed to fetch permission.' });
-            }
-        }
-    );
-
-    // POST /api/permissions - Create a new permission
+    // POST /api/product-units - Add a new unit configuration to an EXISTING product
     router.post(
         '/',
         authenticateToken,
-        // authorizePermissions([PERMISSIONS.PERMISSION_MANAGE]),
+        checkPermission('product_unit:create'), // Or a more general product:update permission
         [
-            body('name')
-                .trim().notEmpty().withMessage('Permission name (machine-readable) is required.')
-                .isLength({ min: 3, max: 100 }).withMessage('Name must be 3-100 characters.')
-                .matches(/^[a-z0-9_:-]+$/).withMessage('Name can only contain lowercase letters, numbers, underscores, hyphens, and colons (e.g., user:create).'),
-            body('display_name')
-                .trim().notEmpty().withMessage('Display name is required.')
-                .isLength({ min: 3, max: 100 }).withMessage('Display name must be 3-100 characters.'),
-            body('description')
-                .optional({ checkFalsy: true }).trim()
-                .isLength({ max: 255 }).withMessage('Description cannot exceed 255 characters.')
+            body('product_id').isInt({ gt: 0 }).withMessage('Product ID must be a positive integer.'),
+            body('unit_id').isInt({ gt: 0 }).withMessage('Unit ID must be a positive integer.'),
+            body('conversion_factor').isFloat({ gt: 0 }).withMessage('Conversion factor must be positive.').toFloat(),
+            body('is_purchase_unit').optional().isBoolean().toBoolean(),
+            body('is_sales_unit').optional().isBoolean().toBoolean(),
         ],
         async (req, res) => {
             const errors = validationResult(req);
@@ -77,116 +23,152 @@ const createPermissionsRouter = (knex) => {
                 return res.status(400).json({ errors: errors.array() });
             }
 
-            const { name, display_name, description } = req.body;
+            const { product_id, unit_id, conversion_factor, is_purchase_unit = false, is_sales_unit = false } = req.body;
+            
             try {
-                const existingPermission = await knex('permissions').where({ name: name.toLowerCase() }).first();
-                if (existingPermission) {
-                    return res.status(409).json({ message: `Permission with name '${name}' already exists.` });
+                const product = await knex('products').where({ id: product_id }).first();
+                if (!product) {
+                    return res.status(404).json({ message: `Product with ID ${product_id} not found.` });
+                }
+                if (!product.base_unit_id) {
+                    return res.status(400).json({ message: `Product ${product_id} has no base unit defined.` });
                 }
 
-                const [newPermission] = await knex('permissions')
-                    .insert({
-                        name: name.toLowerCase(),
-                        display_name,
-                        description: description || null
-                    })
-                    .returning('*');
-                res.status(201).json(newPermission);
-            } catch (error) {
-                console.error('Error creating permission:', error);
-                if (error.code === '23505') { // Unique constraint violation
-                    return res.status(409).json({ message: 'Permission name already exists.' });
+                const existingConfig = await knex('product_units').where({ product_id, unit_id }).first();
+                if (existingConfig) {
+                    return res.status(409).json({ message: 'This unit is already configured for this product.' });
                 }
-                res.status(500).json({ message: 'Failed to create permission.' });
+                
+                if (product.base_unit_id === unit_id && conversion_factor !== 1) {
+                    return res.status(400).json({ message: 'Conversion factor for the product\'s base unit must be 1.' });
+                }
+
+                const [newProductUnit] = await knex('product_units')
+                    .insert({
+                        product_id,
+                        unit_id,
+                        base_unit_id: product.base_unit_id, // Store the product's base_unit_id for context
+                        conversion_factor,
+                        is_purchase_unit,
+                        is_sales_unit,
+                    })
+                    .returning('*'); 
+
+                // Fetch unit name for the response
+                const unitDetails = await knex('units').where({id: newProductUnit.unit_id}).first();
+                const responseProductUnit = {...newProductUnit, unit_name: unitDetails?.name || 'Unknown Unit'};
+
+
+                res.status(201).json({ message: 'Unit configuration added successfully.', productUnit: responseProductUnit });
+
+            } catch (error) {
+                console.error('Error adding product unit configuration:', error);
+                if (error.code === '23503') { // FK violation
+                    return res.status(400).json({ message: 'Invalid unit ID or product ID.' });
+                }
+                res.status(500).json({ message: 'Failed to add unit configuration.' });
             }
         }
     );
 
-    // PUT /api/permissions/:id - Update an existing permission
-    router.put(
-        '/:id',
-        authenticateToken,
-        // authorizePermissions([PERMISSIONS.PERMISSION_MANAGE]),
-        [
-            // Name is often not updatable or updatable with caution as it's used in code.
-            // For this example, we'll allow display_name and description updates.
-            body('display_name')
-                .optional().trim().notEmpty().withMessage('Display name cannot be empty if provided.')
-                .isLength({ min: 3, max: 100 }).withMessage('Display name must be 3-100 characters.'),
-            body('description')
-                .optional({ checkFalsy: true }).trim()
-                .isLength({ max: 255 }).withMessage('Description cannot exceed 255 characters.')
+    // GET /api/product-units?productId=X - Get all unit configurations for a specific product
+    router.get('/', authenticateToken, checkPermission('product_unit:read'), async (req, res) => {
+        const { productId } = req.query;
+        if (!productId || isNaN(parseInt(productId))) {
+            return res.status(400).json({ message: 'Valid Product ID query parameter is required.' });
+        }
+        const parsedProductId = parseInt(productId);
+
+        try {
+            const productUnitsData = await knex('product_units as pu')
+                .join('units', 'pu.unit_id', 'units.id')
+                .where('pu.product_id', parsedProductId)
+                .select(
+                    'pu.id', 'pu.product_id', 'pu.unit_id', 'units.name as unit_name', 
+                    'units.short_name as unit_short_name', 'pu.base_unit_id as product_base_unit_id_ref',
+                    'pu.conversion_factor', 'pu.is_purchase_unit', 'pu.is_sales_unit',
+                    'pu.created_at', 'pu.updated_at'
+                )
+                .orderBy('units.name');
+            
+            res.status(200).json(productUnitsData); // Send array directly
+        } catch (error) {
+            console.error('Error fetching product unit configurations:', error);
+            res.status(500).json({ message: 'Failed to fetch unit configurations.' });
+        }
+    });
+    
+    // PUT /api/product-units/:id - Update an existing unit configuration
+    router.put('/:id', authenticateToken, checkPermission('product_unit:update'),
+        [ /* Validations for updatable fields */
+            body('conversion_factor').optional().isFloat({ gt: 0 }).withMessage('Conversion factor must be positive.').toFloat(),
+            body('is_purchase_unit').optional().isBoolean().toBoolean(),
+            body('is_sales_unit').optional().isBoolean().toBoolean(),
         ],
         async (req, res) => {
             const errors = validationResult(req);
-            if (!errors.isEmpty()) {
-                return res.status(400).json({ errors: errors.array() });
-            }
+            if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-            const { id } = req.params;
-            if (isNaN(parseInt(id))) {
-                return res.status(400).json({ message: 'Permission ID must be an integer.' });
-            }
-
-            const { display_name, description } = req.body;
+            const { id } = req.params; // This is product_units.id
+            const configId = parseInt(id);
             const updatePayload = {};
-            if (display_name !== undefined) updatePayload.display_name = display_name;
-            if (description !== undefined) updatePayload.description = description === '' ? null : description;
-            
+            if (req.body.hasOwnProperty('conversion_factor')) updatePayload.conversion_factor = req.body.conversion_factor;
+            if (req.body.hasOwnProperty('is_purchase_unit')) updatePayload.is_purchase_unit = req.body.is_purchase_unit;
+            if (req.body.hasOwnProperty('is_sales_unit')) updatePayload.is_sales_unit = req.body.is_sales_unit;
+
             if (Object.keys(updatePayload).length === 0) {
-                return res.status(400).json({ message: 'No fields provided for update.' });
+                return res.status(400).json({ message: 'No update data provided.' });
             }
             updatePayload.updated_at = knex.fn.now();
 
             try {
-                const [updatedPermission] = await knex('permissions')
-                    .where({ id: parseInt(id) })
-                    .update(updatePayload)
-                    .returning('*');
+                const existingConfig = await knex('product_units').where({ id: configId }).first();
+                if (!existingConfig) return res.status(404).json({ message: 'Unit configuration not found.' });
 
-                if (!updatedPermission) {
-                    return res.status(404).json({ message: 'Permission not found.' });
+                const product = await knex('products').where({id: existingConfig.product_id}).first();
+                if (!product) return res.status(404).json({ message: 'Associated product not found.' });
+
+
+                if (updatePayload.hasOwnProperty('conversion_factor') && 
+                    existingConfig.unit_id === product.base_unit_id && // Check against product's actual base unit
+                    updatePayload.conversion_factor !== 1) {
+                     return res.status(400).json({ message: 'Conversion factor for the product\'s base unit must be 1.' });
                 }
-                res.status(200).json(updatedPermission);
+
+                const [updatedRecord] = await knex('product_units').where({ id: configId }).update(updatePayload).returning('*');
+                const unitDetails = await knex('units').where({id: updatedRecord.unit_id}).first();
+                const responseProductUnit = {...updatedRecord, unit_name: unitDetails?.name || 'Unknown Unit'};
+
+                res.status(200).json({ message: 'Unit configuration updated.', productUnit: responseProductUnit });
             } catch (error) {
-                console.error(`Error updating permission ID ${id}:`, error);
-                res.status(500).json({ message: 'Failed to update permission.' });
+                console.error('Error updating unit configuration:', error);
+                res.status(500).json({ message: 'Failed to update unit configuration.' });
             }
         }
     );
 
-    // DELETE /api/permissions/:id - Delete a permission
-    router.delete(
-        '/:id',
-        authenticateToken,
-        // authorizePermissions([PERMISSIONS.PERMISSION_MANAGE]),
-        async (req, res) => {
-            const { id } = req.params;
-            if (isNaN(parseInt(id))) {
-                return res.status(400).json({ message: 'Permission ID must be an integer.' });
-            }
-            try {
-                // Before deleting, you might want to check if this permission is used in 'role_permissions'
-                // and decide on a strategy (e.g., prevent deletion, or cascade delete from role_permissions).
-                // For simplicity, we'll directly attempt deletion.
-                // await knex('role_permissions').where({ permission_id: parseInt(id) }).del(); // Example: orphan removal
+    // DELETE /api/product-units/:id - Delete a specific unit configuration
+    router.delete('/:id', authenticateToken, checkPermission('product_unit:delete'), async (req, res) => {
+        const { id } = req.params; // This is product_units.id
+        const configId = parseInt(id);
+        if (isNaN(configId)) return res.status(400).json({ message: 'Invalid configuration ID.' });
 
-                const numDeleted = await knex('permissions').where({ id: parseInt(id) }).del();
-                if (numDeleted === 0) {
-                    return res.status(404).json({ message: 'Permission not found.' });
-                }
-                res.status(200).json({ message: `Permission with ID ${id} deleted successfully.` });
-            } catch (error) {
-                console.error(`Error deleting permission ID ${id}:`, error);
-                 if (error.code === '23503') { // Foreign key violation if permission is in use by roles
-                     return res.status(400).json({ message: 'Cannot delete permission. It is currently assigned to one or more roles.' });
-                }
-                res.status(500).json({ message: 'Failed to delete permission.' });
-            }
+        try {
+            const configToDelete = await knex('product_units').where({ id: configId }).first();
+            if (!configToDelete) return res.status(404).json({ message: 'Unit configuration not found.' });
+            
+            // Optional: Check if this is the product's base unit itself being deleted from product_units.
+            // Generally allowed, as the true base unit is on the `products` table.
+
+            await knex('product_units').where({ id: configId }).del();
+            res.status(200).json({ message: 'Unit configuration deleted successfully.' });
+        } catch (error) {
+            console.error('Error deleting unit configuration:', error);
+            res.status(500).json({ message: 'Failed to delete unit configuration.' });
         }
-    );
+    });
 
     return router;
-};
+}
 
-module.exports = createPermissionsRouter;
+module.exports = createProductUnitsRouter;
