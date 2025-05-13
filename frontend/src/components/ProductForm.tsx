@@ -254,6 +254,7 @@ function ProductForm() {
     const [unitConfigError, setUnitConfigError] = useState<string | null>(null);
     const [unitConfigFeedback, setUnitConfigFeedback] = useState<string>('');
     const [variationGenerationError, setVariationGenerationError] = useState<string | null>(null);
+    const [submitStatus, setSubmitStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle'); // <-- ADD THIS LINE
 
     useEffect(() => {
         const fetchSystemAttributes = async () => {
@@ -561,7 +562,7 @@ function ProductForm() {
         if (barcodeImageFile) {
             payload.append('barcode_image', barcodeImageFile);
         } else if (isEditing && formData.barcode_image_path === null && barcodeImagePreview === null) {
-            // payload.append('remove_barcode_image', '1');
+            payload.append('remove_barcode_image', '1'); // Ensure this is sent when image is cleared
         }
 
 
@@ -586,12 +587,14 @@ function ProductForm() {
 
         try {
             let response;
+            setSubmitStatus('submitting');
             if (isEditing) {
-                payload.append('_method', 'PUT');
-                response = await apiInstance.post(`/products/${productId}`, payload, {
+                console.log("Attempting PUT (via POST with _method in query). Product ID:", productId);
+                response = await apiInstance.post(`/products/${productId}?_method=PUT`, payload, {
                     headers: { 'Content-Type': 'multipart/form-data' }
                 });
             } else {
+                console.log("Attempting POST to create new product.");
                 response = await apiInstance.post('/products', payload, {
                     headers: { 'Content-Type': 'multipart/form-data' }
                 });

@@ -77,7 +77,10 @@ function PurchaseOrderForm() {
 
     const [products, setProducts] = useState<Product[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-    const [stores, setStores] = useState<Store[]>([]); // For global admin store dropdown
+    const [stores, setStores] = useState<Store[]>([]);
+
+    // Keep track of the supplier ID used for the current product list
+    const [productFilterSupplierId, setProductFilterSupplierId] = useState<string | number | null>(null);
 
     const [initialLoading, setInitialLoading] = useState(true); // Start true for all modes
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -99,52 +102,85 @@ function PurchaseOrderForm() {
         }
     }, [user]);
 
-    const fetchDropdownData = useCallback(async () => { // Products and Suppliers
-        console.log("[PurchaseOrderForm] fetchDropdownData called. isAuthenticated:", isAuthenticated);
+    // Modified to accept supplierId for filtering products
+    const fetchDropdownData = useCallback(async (filterBySupplierId: string | number | null) => {
+        console.log(`[PurchaseOrderForm] fetchDropdownData called. isAuthenticated: ${isAuthenticated}, filterBySupplierId: ${filterBySupplierId}`);
         if (!isAuthenticated) {
             console.log("[PurchaseOrderForm] fetchDropdownData: Not authenticated, returning.");
             return;
         }
         try {
             console.log("[PurchaseOrderForm] fetchDropdownData: Attempting to fetch products and suppliers.");
+            
+            let productApiUrl = '/products?limit=1000&include=category,subCategory,store,brand,baseUnit'; // Added include back
+            if (filterBySupplierId) {
+                productApiUrl += `&supplier_id=${filterBySupplierId}`;
+            }
+            
+            // Fetch suppliers only if they are not already loaded or if explicitly needed
+            const suppliersPromise = suppliers.length === 0 
+                ? apiInstance.get('/suppliers') 
+                : Promise.resolve({ data: { data: suppliers } }); // Simulate API response if already loaded
+
             const [productsRes, suppliersRes] = await Promise.all([
-                apiInstance.get('/products?limit=1000'),
-                apiInstance.get('/suppliers'),
+                apiInstance.get(productApiUrl),
+                suppliersPromise,
             ]);
 
+            console.log(`[PurchaseOrderForm] fetchDropdownData: Products API URL: ${productApiUrl}`);
             console.log("[PurchaseOrderForm] fetchDropdownData: Raw productsRes.data:", JSON.stringify(productsRes.data, null, 2));
-            // console.log("[PurchaseOrderForm] fetchDropdownData: Raw suppliersRes.data:", JSON.stringify(suppliersRes.data, null, 2)); // Optional
 
-            const productsData = productsRes.data?.data;
+            const productsData = productsRes.data?.products || productsRes.data?.data; // Adjusted to match product list structure
             if (Array.isArray(productsData)) {
-                console.log("[PurchaseOrderForm] fetchDropdownData: Setting products from productsRes.data.data:", productsData.length, "items");
+                console.log(`[PurchaseOrderForm] fetchDropdownData: Setting products (filtered by supplier: ${filterBySupplierId || 'All'}):`, productsData.length, "items");
                 setProducts(productsData);
-            } else if (Array.isArray(productsRes.data)) {
-                console.log("[PurchaseOrderForm] fetchDropdownData: Setting products from productsRes.data:", productsRes.data.length, "items");
-                setProducts(productsRes.data);
+                setProductFilterSupplierId(filterBySupplierId); // Track current filter
+
+                // After updating products, validate existing items
+                setFormData(prevFormData => {
+                    const newItems = prevFormData.items.map(item => {
+                        if (item.product_id && !productsData.some(p => p.id === item.product_id)) {
+                            // Product is no longer in the filtered list, reset it
+                            return {
+                                ...item,
+                                product_id: null,
+                                product_name: '',
+                                unit_price: '0.00', // Or keep if user manually entered
+                            };
+                        }
+                        return item;
+                    });
+                    return { ...prevFormData, items: newItems };
+                });
+
             } else {
                 console.warn("[PurchaseOrderForm] Products API response was not an array. Response:", productsRes.data);
                 setProducts([]);
+                setProductFilterSupplierId(null);
             }
 
-            // Suppliers handling (remains the same)
-            const suppliersData = suppliersRes.data?.data;
-            if (Array.isArray(suppliersData)) {
-                setSuppliers(suppliersData);
-            } else if (Array.isArray(suppliersRes.data)) {
-                setSuppliers(suppliersRes.data);
-            } else {
-                console.warn("[PurchaseOrderForm] Suppliers API response was not an array. Response:", suppliersRes.data);
-                setSuppliers([]);
+            if (suppliersRes.data) { // Check if suppliersRes.data exists (it will from Promise.resolve)
+                const suppliersDataArray = suppliersRes.data?.data;
+                if (Array.isArray(suppliersDataArray)) {
+                    if (suppliers.length === 0) { // Only set if initially empty
+                         setSuppliers(suppliersDataArray);
+                    }
+                } else {
+                     if (suppliers.length === 0) {
+                        console.warn("[PurchaseOrderForm] Suppliers API response was not an array. Response:", suppliersRes.data);
+                        setSuppliers([]);
+                     }
+                }
             }
 
         } catch (err) {
             console.error("[PurchaseOrderForm] Error fetching products/suppliers:", err);
             setPageError("Failed to load required product/supplier data.");
             setProducts([]);
-            setSuppliers([]);
+            if (suppliers.length === 0) setSuppliers([]); // Only reset if initially fetching
+            setProductFilterSupplierId(null);
         }
-    }, [isAuthenticated]); // setProducts, setSuppliers, setPageError are stable from useState
+    }, [isAuthenticated, suppliers]); // Removed products from dependencies here to avoid loop, manage via productFilterSupplierId
 
 
     const fetchPurchaseOrderDetails = useCallback(async () => {
@@ -217,11 +253,14 @@ function PurchaseOrderForm() {
         // For subsequent runs due to minor data changes (like stores list),
         // we might not want to flash the main loader.
 
-        // Fetch general dropdowns if products are not loaded and user is authenticated
-        // fetchDropdownData handles fetching both products and suppliers.
-        if (products.length === 0 && isAuthenticated) {
-            console.log("[PurchaseOrderForm] useEffect: products are empty and authenticated, calling fetchDropdownData");
-            fetchDropdownData();
+        // Fetch products based on current formData.supplier_id
+        // This will run if supplier_id changes or if products haven't been fetched for the current supplier
+        if (isAuthenticated && (productFilterSupplierId !== formData.supplier_id || products.length === 0 && !productFilterSupplierId)) {
+             console.log(`[PurchaseOrderForm] useEffect: Supplier changed or products not loaded. Current form supplier: ${formData.supplier_id}, Product filter supplier: ${productFilterSupplierId}`);
+             fetchDropdownData(formData.supplier_id);
+        } else if (isAuthenticated && suppliers.length === 0) {
+            // If only suppliers are missing, fetch them (products might be loaded with no filter)
+            fetchDropdownData(null);
         }
 
         if (user.role_name === 'global_admin' && stores.length === 0 && isAuthenticated) {
@@ -230,7 +269,11 @@ function PurchaseOrderForm() {
         }
 
         if (isEditing) {
-            fetchPurchaseOrderDetails();
+            // Fetch PO details only if not already fetched or if purchaseOrderId changes
+            // This check might need refinement if PO details depend on products/suppliers being loaded first
+            if (!formData.items.some(item => item.id) && purchaseOrderId) { // Simple check if items have IDs (from fetched PO)
+                 fetchPurchaseOrderDetails();
+            }
         } else { // Create mode
             setInitialLoading(true); // Explicitly for create mode setup
             const queryParams = new URLSearchParams(reactRouterLocation.search);
@@ -281,7 +324,11 @@ function PurchaseOrderForm() {
         // if their fetching is guarded and form updates are handled carefully.
         // For now, keeping 'stores' as it influences store_id logic.
         stores,
-        products.length // Add products.length to re-evaluate if it changes (e.g. after fetch)
+        formData.supplier_id, // Key dependency for re-fetching products
+        productFilterSupplierId, // To compare against formData.supplier_id
+        products.length, // Re-evaluate if products list itself changes
+        purchaseOrderId, // Added purchaseOrderId
+        suppliers.length // Added suppliers.length
     ]);
 
 
@@ -292,7 +339,14 @@ function PurchaseOrderForm() {
     };
 
     const handleSelectChange = (name: string, value: any) => {
-        setFormData(prev => ({ ...prev, [name]: value }));
+        const newFormData = { ...formData, [name]: value };
+        setFormData(newFormData);
+
+        if (name === 'supplier_id') {
+            // Products will be refetched by the useEffect due to formData.supplier_id changing
+            // No need to call fetchDropdownData directly here if useEffect handles it.
+            console.log(`[PurchaseOrderForm] Supplier changed to: ${value}. Product list will update.`);
+        }
         if (formErrors[name]) setFormErrors(prev => ({ ...prev, [name]: null }));
     };
     
@@ -328,10 +382,7 @@ function PurchaseOrderForm() {
     };
 
     const removeItem = (index: number) => {
-        if (formData.items.length <= 1) {
-            setFormErrors(prev => ({ ...prev, items_general: "At least one item is required."}));
-            return;
-        }
+        if (formData.items.length <= 1) return; // Prevent removing the last item
         const newItems = formData.items.filter((_, i) => i !== index);
         setFormData(prev => ({ ...prev, items: newItems }));
     };
@@ -340,58 +391,52 @@ function PurchaseOrderForm() {
         return formData.items.reduce((total, item) => {
             const quantity = parseFloat(item.quantity);
             const unitPrice = parseFloat(item.unit_price);
-            if (!isNaN(quantity) && !isNaN(unitPrice)) {
-                return total + (quantity * unitPrice);
-            }
-            return total;
+            const subtotal = !isNaN(quantity) && !isNaN(unitPrice) ? quantity * unitPrice : 0;
+            return total + subtotal;
         }, 0);
     };
 
+    const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => { // Added async here
+        event.preventDefault();
+        console.log("[PurchaseOrderForm] handleSubmit triggered.");
+        console.log("[PurchaseOrderForm] Current formData on submit:", JSON.stringify(formData, null, 2));
 
-    const validateForm = () => {
-        const errors: Record<string, any> = {};
-        if (!formData.supplier_id) errors.supplier_id = "Supplier is required.";
-        if (!formData.store_id) errors.store_id = "Store is required."; // Add store_id validation
-        if (!formData.order_date) errors.order_date = "Order Date is required.";
-        if (!formData.status) errors.status = "Status is required.";
-
-        formData.items.forEach((item, index) => {
-            if (!item.product_id) errors[`items[${index}].product_id`] = "Product is required.";
-            if (isNaN(parseFloat(item.quantity)) || parseFloat(item.quantity) <= 0) {
-                errors[`items[${index}].quantity`] = "Quantity must be a positive number.";
-            }
-            if (isNaN(parseFloat(item.unit_price)) || parseFloat(item.unit_price) < 0) {
-                errors[`items[${index}].unit_price`] = "Unit Price must be a non-negative number.";
-            }
-        });
-        if (formData.items.length === 0) errors.items_general = "At least one item is required.";
-
-        setFormErrors(errors);
-        return Object.keys(errors).length === 0;
-    };
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!isAuthenticated || (userCan && !userCan(requiredPermission))) {
-            setPageError(`You do not have permission to ${isEditing ? 'update' : 'create'} this purchase order.`);
+        if (!isAuthenticated) {
+            setPageError("Authentication error. Please log in again.");
             return;
         }
-        if (!validateForm()) return;
+        if (userCan && !userCan(requiredPermission)) {
+            setPageError(`You do not have permission to ${isEditing ? 'edit' : 'create'} purchase orders.`);
+            return;
+        }
 
+        const validationErrors = validateForm();
+        if (Object.keys(validationErrors).length > 0) {
+            setFormErrors(validationErrors);
+            console.log("[PurchaseOrderForm] Validation errors:", validationErrors);
+            setFeedback({ message: "Please correct the errors in the form.", type: 'error' });
+            return;
+        }
+        setFormErrors({});
         setIsSubmitting(true);
+        setFeedback(null);
         setPageError(null);
 
         const payload = {
-            ...formData, // store_id is already in formData
-            order_date: formData.order_date ? format(formData.order_date, 'yyyy-MM-dd') : null,
-            expected_delivery_date: formData.expected_delivery_date ? format(formData.expected_delivery_date, 'yyyy-MM-dd') : null,
+            ...formData,
+            order_date: formData.order_date ? formatDateForAPI(formData.order_date) : null,
+            expected_delivery_date: formData.expected_delivery_date ? formatDateForAPI(formData.expected_delivery_date) : null,
             items: formData.items.map(item => ({
-                id: item.id,
-                product_id: item.product_id,
-                quantity: parseFloat(item.quantity),
-                unit_price: parseFloat(item.unit_price),
-            })),
+                ...item,
+                product_id: item.product_id ? parseInt(String(item.product_id), 10) : null,
+                quantity: parseFloat(String(item.quantity)) || 0,
+                unit_price: parseFloat(String(item.unit_price)) || 0,
+                tax_rate: parseFloat(String(item.tax_rate)) || 0,
+                discount_amount: parseFloat(String(item.discount_amount)) || 0,
+            })).filter(item => item.product_id && item.quantity > 0) // Ensure only valid items are sent
         };
+        console.log("[PurchaseOrderForm] Payload to be sent:", JSON.stringify(payload, null, 2));
+
 
         try {
             let responseMessage = '';

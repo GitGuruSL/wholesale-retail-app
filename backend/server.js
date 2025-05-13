@@ -4,6 +4,7 @@ const cors = require('cors');
 const knex = require('./db/knex');
 const { authenticateToken } = require('./middleware/authMiddleware');
 const authorizeAccess = require('./middleware/authorizeRoles'); // Keep this one
+const methodOverride = require('method-override'); // Import method-override
 
 // --- Import Router Creation Functions ---
 const createAuthRouter = require('./routes/auth');
@@ -50,8 +51,42 @@ const corsOptions = {
   optionsSuccessStatus: 200 
 };
 app.use(cors(corsOptions));
-app.use(express.json());
+
+// Body parsers - These are important for method-override to inspect req.body for non-multipart forms
+// For multipart/form-data, multer handles parsing at the route level.
+app.use(express.json()); 
 app.use(express.urlencoded({ extended: true }));
+
+// Configure method-override
+// It should come AFTER body parsers if it needs to inspect req.body for non-multipart forms.
+// For multipart forms, multer (used in your route) will populate req.body with text fields.
+app.use(methodOverride(function (req, res) {
+  console.log('[MethodOverride] Original Method:', req.method, 'URL:', req.originalUrl);
+  // console.log('[MethodOverride] req.body:', JSON.stringify(req.body)); // req.body will be undefined here for multipart before multer
+  console.log('[MethodOverride] req.query:', JSON.stringify(req.query)); // Log req.query
+
+  let methodToOverride;
+
+  // Check query parameter first (most reliable for multipart forms)
+  if (req.query && typeof req.query === 'object' && '_method' in req.query) {
+    methodToOverride = req.query._method;
+    console.log(`[MethodOverride] _method found in query: ${methodToOverride}. Overriding.`);
+    // Optionally, delete req.query._method if you want to clean it up, though not strictly necessary
+    // delete req.query._method; 
+    return methodToOverride;
+  }
+  
+  // Fallback to check body (for non-multipart forms where body is parsed earlier)
+  if (req.body && typeof req.body === 'object' && '_method' in req.body) {
+    methodToOverride = req.body._method;
+    console.log(`[MethodOverride] _method found in body: ${methodToOverride}. Overriding.`);
+    delete req.body._method; 
+    return methodToOverride;
+  }
+
+  console.log('[MethodOverride] _method not found in body or query.');
+  return undefined; // If not found, continue with the original method
+}));
 
 // --- Request Logging Middleware ---
 app.use((req, res, next) => {

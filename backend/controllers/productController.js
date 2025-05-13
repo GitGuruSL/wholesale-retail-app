@@ -1,85 +1,34 @@
-const knex = require('../db/knex'); // Adjust path if your knex instance is elsewhere
-const { ROLES } = require('../utils/roles'); // Assuming you have this utility
-
-// --- Helper Function for Data Preparation (can be moved to a utility file) ---
-const prepareProductData = (inputData) => {
-    const data = { ...inputData };
-    // Add your existing data preparation logic here.
-    // For example, converting empty strings to null, parsing numbers, etc.
-    // This is a simplified placeholder.
-    const fieldsToNullifyIfEmpty = [
-        'slug', 'sku', 'sub_category_id', 'special_category_id', 'brand_id',
-        'barcode_symbology_id', 'item_barcode', 'description', 'tax_id',
-        'discount_type_id', 'discount_value', 'measurement_type', 'measurement_value',
-        'weight', 'manufacturer_id', 'warranty_id', 'expiry_notification_days',
-        'supplier_id', 'store_id', 'max_sales_qty_per_person'
-    ];
-
-    const numericFields = ['cost_price', 'retail_price', 'wholesale_price', 'discount_value', 'weight'];
-    const integerFields = ['expiry_notification_days', 'max_sales_qty_per_person']; // Add other integer fields
-    const booleanFields = ['has_expiry', 'is_serialized'];
-
-    for (const key in data) {
-        if (typeof data[key] === 'string') {
-            data[key] = data[key].trim();
-        }
-        if (fieldsToNullifyIfEmpty.includes(key) && data[key] === '') {
-            data[key] = null;
-        }
-        if (numericFields.includes(key) && data[key] !== null && data[key] !== '') {
-            const parsed = parseFloat(data[key]);
-            data[key] = isNaN(parsed) ? null : parsed;
-        } else if (numericFields.includes(key) && (data[key] === '' || data[key] === null)) {
-            data[key] = null;
-        }
-        if (integerFields.includes(key) && data[key] !== null && data[key] !== '') {
-            const parsed = parseInt(data[key], 10);
-            data[key] = isNaN(parsed) ? null : parsed;
-        } else if (integerFields.includes(key) && (data[key] === '' || data[key] === null)) {
-            data[key] = null;
-        }
-        if (booleanFields.includes(key)) {
-            data[key] = Boolean(data[key]);
-        }
-    }
-    // Ensure foreign keys are integers or null
-    const fkFields = ['category_id', 'sub_category_id', 'special_category_id', 'brand_id', 'base_unit_id', 'barcode_symbology_id', 'tax_id', 'discount_type_id', 'manufacturer_id', 'supplier_id', 'warranty_id', 'store_id'];
-    fkFields.forEach(fk => {
-        if (data[fk] !== null && data[fk] !== undefined && data[fk] !== '') {
-            const parsedInt = parseInt(data[fk], 10);
-            data[fk] = isNaN(parsedInt) ? null : parsedInt;
-        } else if (data[fk] === '') {
-            data[fk] = null;
-        }
-    });
-
-    return data;
-};
-
+const knex = require('../db/knex');
+const { ROLES } = require('../utils/roles');
+// This line must work for the rest of the code to function
+const { prepareProductData, processProductUnits, processAttributesAndVariations } = require('../utils/productDataProcessors');
 
 // GET /api/products - List products
 const getProducts = async (req, res, next) => {
-    console.log(`[ProductCtrl] GET / - User: ${req.user ? req.user.username : 'Guest'}, Store ID from query: ${req.query.storeId}`);
+    // ... (your existing getProducts logic - seems mostly fine)
+    // Ensure all relevant columns for filtering/sorting are handled
+    // console.log(`[ProductCtrl] GET / - User: ${req.user ? req.user.username : 'Guest'}, Store ID from query: ${req.query.storeId}`);
     const {
         page = 1,
-        limit = 10, // Default to 10 for list view, frontend can override
-        sortBy = 'products.created_at', // Default sort
-        sortOrder = 'desc',
+        limit = 10,
+        sortBy = 'products.created_at', // Default sort column
+        sortOrder = 'desc',      // Default sort order
         searchTerm,
         categoryId,
         subCategoryId,
         brandId,
-        storeId, // storeId from query for filtering product list
+        storeId, // For filtering by a specific store
         productType,
-        // inventoryType, // Add if used
-        // sellingType, // Add if used
-        include // e.g., 'category,subCategory,store,brand,baseUnit'
+        supplier_id, 
+        inventory_type, // Added
+        selling_type,   // Added
+        include 
     } = req.query;
 
     const pageNum = parseInt(page, 10);
     const limitNum = parseInt(limit, 10);
 
-    // Define allowed sort columns to prevent SQL injection
+    // Define allowed sort columns, including potential joined columns
     const allowedSortColumns = {
         'id': 'products.id',
         'product_name': 'products.product_name',
@@ -93,91 +42,128 @@ const getProducts = async (req, res, next) => {
         'created_at': 'products.created_at',
         'updated_at': 'products.updated_at',
         'category_name': 'categories.name', // Joined field
-        'brand_name': 'brands.name', // Joined field
-        'store_name': 'stores.name' // Joined field
+        'brand_name': 'brands.name',       // Joined field
+        'store_name': 'stores.name',         // Joined field
+        'supplier_name': 'suppliers.name'    // Joined field
     };
     const safeSortBy = allowedSortColumns[sortBy] || allowedSortColumns['created_at'];
     const safeSortOrder = ['asc', 'desc'].includes(sortOrder.toLowerCase()) ? sortOrder.toLowerCase() : 'desc';
 
     try {
         let query = knex('products');
+        let countQuery = knex('products'); // Separate query for counting
 
-        // Select base product fields
-        query = query.select(
-            'products.*',
-            'categories.name as category_name',
-            'sub_categories.name as sub_category_name',
-            'brands.name as brand_name',
-            'units.name as base_unit_name',
-            'stores.name as store_name'
-        );
+        // Base selections - always include products.id for distinct counting
+        const selectFields = ['products.*'];
+        const groupByFields = ['products.id'];
 
-        // Joins
-        query = query.leftJoin('categories', 'products.category_id', 'categories.id')
-                     .leftJoin('sub_categories', 'products.sub_category_id', 'sub_categories.id')
-                     .leftJoin('brands', 'products.brand_id', 'brands.id')
-                     .leftJoin('units', 'products.base_unit_id', 'units.id')
-                     .leftJoin('stores', 'products.store_id', 'stores.id');
+        // Conditional Joins and Selections based on 'include' or filter parameters
+        const includesArray = include ? include.split(',') : [];
 
-        // Apply filters
-        if (searchTerm) {
-            query = query.where(function() {
-                this.where('products.product_name', 'ilike', `%${searchTerm}%`)
-                    .orWhere('products.sku', 'ilike', `%${searchTerm}%`)
-                    .orWhere('products.description', 'ilike', `%${searchTerm}%`);
-            });
+        if (includesArray.includes('category') || categoryId || sortBy === 'category_name') {
+            query.leftJoin('categories', 'products.category_id', 'categories.id');
+            countQuery.leftJoin('categories', 'products.category_id', 'categories.id');
+            if (!selectFields.includes('categories.name as category_name')) selectFields.push('categories.name as category_name');
+            if (!groupByFields.includes('categories.name')) groupByFields.push('categories.name');
         }
-        if (categoryId) query = query.where('products.category_id', parseInt(categoryId, 10));
-        if (subCategoryId) query = query.where('products.sub_category_id', parseInt(subCategoryId, 10));
-        if (brandId) query = query.where('products.brand_id', parseInt(brandId, 10));
-        if (productType) query = query.where('products.product_type', productType);
-        
-        // Store filtering based on user role and query param
-        if (req.user.role_name !== ROLES.GLOBAL_ADMIN) {
-            const userAccessibleStores = req.user.associated_store_ids || [];
-            if (req.user.store_id && !userAccessibleStores.includes(req.user.store_id)) {
-                userAccessibleStores.push(req.user.store_id);
-            }
-            // If a specific storeId is requested by a non-global admin, ensure they have access to it
-            if (storeId && userAccessibleStores.includes(parseInt(storeId, 10))) {
-                 query = query.where('products.store_id', parseInt(storeId, 10));
-            } else if (storeId && !userAccessibleStores.includes(parseInt(storeId, 10))) {
-                // Non-global admin trying to access a store they are not allowed to
-                return res.status(403).json({ message: "Forbidden: You do not have access to this store's products." });
-            } else {
-                // Non-global admin, no specific storeId requested, show products from their accessible stores + global products
-                query = query.where(function() {
-                    this.whereIn('products.store_id', userAccessibleStores)
-                        .orWhereNull('products.store_id');
+        if (includesArray.includes('subCategory') || subCategoryId) {
+            query.leftJoin('sub_categories', 'products.sub_category_id', 'sub_categories.id');
+            countQuery.leftJoin('sub_categories', 'products.sub_category_id', 'sub_categories.id');
+            if (!selectFields.includes('sub_categories.name as sub_category_name')) selectFields.push('sub_categories.name as sub_category_name');
+            if (!groupByFields.includes('sub_categories.name')) groupByFields.push('sub_categories.name');
+        }
+        if (includesArray.includes('brand') || brandId || sortBy === 'brand_name') {
+            query.leftJoin('brands', 'products.brand_id', 'brands.id');
+            countQuery.leftJoin('brands', 'products.brand_id', 'brands.id');
+            if (!selectFields.includes('brands.name as brand_name')) selectFields.push('brands.name as brand_name');
+            if (!groupByFields.includes('brands.name')) groupByFields.push('brands.name');
+        }
+        if (includesArray.includes('baseUnit')) {
+            query.leftJoin('units as base_units', 'products.base_unit_id', 'base_units.id');
+            // countQuery doesn't need this join unless filtering on base_units.name
+            if (!selectFields.includes('base_units.name as base_unit_name')) selectFields.push('base_units.name as base_unit_name');
+            if (!groupByFields.includes('base_units.name')) groupByFields.push('base_units.name');
+        }
+        if (includesArray.includes('store') || storeId || sortBy === 'store_name') {
+            query.leftJoin('stores', 'products.store_id', 'stores.id');
+            countQuery.leftJoin('stores', 'products.store_id', 'stores.id');
+            if (!selectFields.includes('stores.name as store_name')) selectFields.push('stores.name as store_name');
+            if (!groupByFields.includes('stores.name')) groupByFields.push('stores.name');
+        }
+        if (includesArray.includes('supplier') || supplier_id || sortBy === 'supplier_name') {
+            query.leftJoin('suppliers', 'products.supplier_id', 'suppliers.id');
+            countQuery.leftJoin('suppliers', 'products.supplier_id', 'suppliers.id');
+            if (!selectFields.includes('suppliers.name as supplier_name')) selectFields.push('suppliers.name as supplier_name');
+            if (!groupByFields.includes('suppliers.name')) groupByFields.push('suppliers.name');
+        }
+        // Add other joins for tax, manufacturer etc. if needed for display or filtering
+
+        query.select(selectFields).groupBy(groupByFields);
+
+
+        // Apply filters to both queries
+        const applyFilters = (q) => {
+            if (searchTerm) {
+                q.where(function() {
+                    this.where('products.product_name', 'ilike', `%${searchTerm}%`)
+                        .orWhere('products.sku', 'ilike', `%${searchTerm}%`)
+                        .orWhere('products.description', 'ilike', `%${searchTerm}%`);
                 });
             }
-        } else { // Global Admin
-            if (storeId) { // Global admin can filter by any store
-                query = query.where('products.store_id', parseInt(storeId, 10));
+            if (categoryId) q.where('products.category_id', parseInt(categoryId, 10));
+            if (subCategoryId) q.where('products.sub_category_id', parseInt(subCategoryId, 10));
+            if (brandId) q.where('products.brand_id', parseInt(brandId, 10));
+            if (productType) q.where('products.product_type', productType);
+            if (supplier_id) q.where('products.supplier_id', parseInt(supplier_id, 10));
+            if (inventory_type) q.where('products.inventory_type', inventory_type);
+            if (selling_type) q.where('products.selling_type', selling_type);
+
+            // Role-based store filtering
+            if (req.user.role_name !== ROLES.GLOBAL_ADMIN) {
+                const userAccessibleStores = req.user.associated_store_ids || [];
+                if (req.user.store_id && !userAccessibleStores.includes(req.user.store_id)) {
+                    userAccessibleStores.push(req.user.store_id);
+                }
+
+                if (storeId) { // User is filtering by a specific store
+                    if (userAccessibleStores.includes(parseInt(storeId, 10))) {
+                        q.where('products.store_id', parseInt(storeId, 10));
+                    } else {
+                        // If user filters for a store they don't have access to, return empty or error
+                        q.whereRaw('1 = 0'); // Effectively no results
+                    }
+                } else { // User is not filtering by a specific store, show accessible
+                    q.where(function() {
+                        this.whereIn('products.store_id', userAccessibleStores)
+                            .orWhereNull('products.store_id'); // Include global products
+                    });
+                }
+            } else { // Global admin
+                if (storeId) { // Global admin filtering by specific store
+                    q.where('products.store_id', parseInt(storeId, 10));
+                }
+                // If no storeId, global admin sees all
             }
-            // If no storeId, global admin sees all products (global and store-specific)
-        }
+        };
 
-
-        // Count total records for pagination BEFORE applying limit and offset
-        const countQuery = query.clone().clearSelect().clearOrder().countDistinct('products.id as total').first();
-        const totalResult = await countQuery;
+        applyFilters(query);
+        applyFilters(countQuery);
+        
+        const totalResult = await countQuery.countDistinct('products.id as total').first();
         const totalProducts = parseInt(totalResult.total, 10);
 
-        // Apply sorting and pagination
-        query = query.orderBy(safeSortBy, safeSortOrder)
-                     .groupBy('products.id', 'categories.name', 'sub_categories.name', 'brands.name', 'units.name', 'stores.name') // Ensure GROUP BY for distinct products when joining
-                     .limit(limitNum)
-                     .offset((pageNum - 1) * limitNum);
+        query.orderBy(safeSortBy, safeSortOrder)
+             .limit(limitNum)
+             .offset((pageNum - 1) * limitNum);
 
         const productsData = await query;
 
         res.status(200).json({
             success: true,
-            products: productsData, // Key name expected by ProductList.jsx
+            products: productsData,
             currentPage: pageNum,
             totalPages: Math.ceil(totalProducts / limitNum),
-            totalProducts: totalProducts, // Total items matching query
+            totalProducts: totalProducts,
             limit: limitNum
         });
     } catch (error) {
@@ -188,24 +174,30 @@ const getProducts = async (req, res, next) => {
 
 // GET /api/products/:id - Fetch single product
 const getProductById = async (req, res, next) => {
+    // ... (your existing getProductById logic - seems mostly fine)
+    // Ensure it includes all necessary related data based on 'include' query param
+    // and respects user permissions for store-specific products.
     const { id } = req.params;
     const productId = parseInt(id, 10);
     const { id: userId, role_name: userRole, store_id: userStoreId, associated_store_ids } = req.user;
-    const { include } = req.query; // e.g. "variations,attributes,product_units"
+    const { include } = req.query; // e.g. "variations,attributes,product_units,category,brand,supplier,tax"
 
     if (isNaN(productId)) return res.status(400).json({ message: 'Invalid product ID.' });
 
     try {
-        const product = await knex('products').where({ id: productId }).first();
+        let query = knex('products').where('products.id', productId);
+        
+        const product = await query.first(); // Fetch the base product first
+
         if (!product) {
             return res.status(404).json({ message: `Product with ID ${productId} not found.` });
         }
 
-        // Role-based access for specific product
+        // Role-based access check
         if (userRole !== ROLES.GLOBAL_ADMIN && product.store_id !== null) {
             const accessibleStores = associated_store_ids || [];
             if (userStoreId && !accessibleStores.includes(userStoreId)) {
-                accessibleStores.push(userStoreId);
+                accessibleStores.push(userStoreId); // Add user's direct store if not in associated list
             }
             if (!accessibleStores.includes(product.store_id)) {
                 return res.status(403).json({ message: 'Forbidden: You do not have access to this product.' });
@@ -215,22 +207,61 @@ const getProductById = async (req, res, next) => {
         let responseData = { ...product };
         const includesArray = include ? include.split(',') : [];
 
+        // Join related data based on 'include'
+        if (includesArray.includes('category')) {
+            const category = await knex('categories').where({id: product.category_id}).first();
+            responseData.category = category;
+        }
+        if (includesArray.includes('subCategory') && product.sub_category_id) {
+            const subCategory = await knex('sub_categories').where({id: product.sub_category_id}).first();
+            responseData.sub_category = subCategory;
+        }
+        if (includesArray.includes('brand') && product.brand_id) {
+            const brand = await knex('brands').where({id: product.brand_id}).first();
+            responseData.brand = brand;
+        }
+        if (includesArray.includes('baseUnit') && product.base_unit_id) {
+            const baseUnit = await knex('units').where({id: product.base_unit_id}).first();
+            responseData.base_unit = baseUnit;
+        }
+        if (includesArray.includes('supplier') && product.supplier_id) {
+            const supplier = await knex('suppliers').where({id: product.supplier_id}).first();
+            responseData.supplier = supplier;
+        }
+        if (includesArray.includes('manufacturer') && product.manufacturer_id) {
+            const manufacturer = await knex('manufacturers').where({id: product.manufacturer_id}).first();
+            responseData.manufacturer = manufacturer;
+        }
+        if (includesArray.includes('tax') && product.tax_id) {
+            const tax = await knex('taxes').where({id: product.tax_id}).first();
+            responseData.tax = tax;
+        }
+        if (includesArray.includes('store') && product.store_id) {
+            const store = await knex('stores').where({id: product.store_id}).first();
+            responseData.store = store;
+        }
+         if (includesArray.includes('warranty') && product.warranty_id) {
+            const warranty = await knex('warranties').where({id: product.warranty_id}).first();
+            responseData.warranty = warranty;
+        }
+
+
         if (includesArray.includes('product_units')) {
             const productUnits = await knex('product_units')
                 .join('units', 'product_units.unit_id', 'units.id')
                 .select(
-                    'product_units.id', 'product_units.unit_id', 'units.name as unit_name',
+                    'product_units.id', 'product_units.unit_id', 'units.name as unit_name', 'units.short_name as unit_short_name',
                     'product_units.conversion_factor', 'product_units.is_purchase_unit',
                     'product_units.is_sales_unit'
                 )
                 .where('product_units.product_id', productId)
                 .orderBy('units.name');
-            responseData.product_units = productUnits;
+            responseData.product_units_config = productUnits; // Match frontend expected key
         }
 
         if (product.product_type === 'Variable') {
-            if (includesArray.includes('variations')) {
-                const variations = await knex('product_variations')
+            if (includesArray.includes('variations') || includesArray.includes('attributes')) {
+                 const variations = await knex('product_variations')
                     .where({ product_id: productId })
                     .select('*');
 
@@ -240,19 +271,28 @@ const getProductById = async (req, res, next) => {
                         .join('attribute_values as av', 'pvav.attribute_value_id', 'av.id')
                         .join('attributes as a', 'av.attribute_id', 'a.id')
                         .where('pvav.product_variation_id', variation.id)
-                        .select('a.name as attribute_name', 'av.value as attribute_value');
+                        .select('a.id as attribute_id', 'a.name as attribute_name', 'av.id as attribute_value_id', 'av.value as attribute_value');
                     
-                    const attributeCombination = attributeDetails.reduce((acc, ad) => {
-                        acc[ad.attribute_name] = ad.attribute_value;
-                        return acc;
-                    }, {});
-                    variationsData.push({ ...variation, attribute_combination: attributeCombination });
+                    const attributeCombination = {};
+                    const attributesForVariation = []; // For attributes_config structure
+                     attributeDetails.forEach(ad => {
+                        attributeCombination[ad.attribute_name] = ad.attribute_value;
+                        // Collect for attributes_config like structure if needed per variation
+                        const existingAttr = attributesForVariation.find(a => a.attribute_id === ad.attribute_id);
+                        if (existingAttr) {
+                            if (!existingAttr.values.includes(ad.attribute_value)) {
+                                existingAttr.values.push(ad.attribute_value);
+                            }
+                        } else {
+                            attributesForVariation.push({attribute_id: ad.attribute_id, name: ad.attribute_name, values: [ad.attribute_value]});
+                        }
+                    });
+                    variationsData.push({ ...variation, attribute_combination, attributes: attributesForVariation });
                 }
                 responseData.variations_data = variationsData;
             }
-
-            if (includesArray.includes('attributes')) {
-                const distinctAttributes = await knex('product_variations as pv')
+             if (includesArray.includes('attributes')) { // For the whole product
+                const distinctAttributesQuery = await knex('product_variations as pv')
                     .join('product_variation_attribute_values as pvav', 'pv.id', 'pvav.product_variation_id')
                     .join('attribute_values as av', 'pvav.attribute_value_id', 'av.id')
                     .join('attributes as a', 'av.attribute_id', 'a.id')
@@ -260,8 +300,8 @@ const getProductById = async (req, res, next) => {
                     .distinct('a.id as attribute_id', 'a.name as attribute_name')
                     .select();
                 
-                const attributesConfig = [];
-                for (const attr of distinctAttributes) {
+                const attributesConfigData = [];
+                for (const attr of distinctAttributesQuery) {
                     const values = await knex('attribute_values as av')
                         .distinct('av.value')
                         .join('product_variation_attribute_values as pvav', 'av.id', 'pvav.attribute_value_id')
@@ -269,9 +309,9 @@ const getProductById = async (req, res, next) => {
                         .where('av.attribute_id', attr.attribute_id)
                         .andWhere('pv.product_id', productId)
                         .pluck('value');
-                    attributesConfig.push({ attribute_id: attr.attribute_id, name: attr.attribute_name, values: values.sort() });
+                    attributesConfigData.push({ attribute_id: attr.attribute_id, name: attr.attribute_name, values: values.sort() });
                 }
-                responseData.attributes_config = attributesConfig;
+                responseData.attributes_config = attributesConfigData;
             }
         }
         
@@ -282,111 +322,79 @@ const getProductById = async (req, res, next) => {
     }
 };
 
+
 // POST /api/products - Create a new product
 const createProduct = async (req, res, next) => {
     console.log(`[ProductCtrl POST /] User: ${req.user?.id}, Role: ${req.user?.role_name}`);
-    // console.log('[ProductCtrl POST /] Body:', JSON.stringify(req.body, null, 2)); // req.body is FormData
-    // console.log('[ProductCtrl POST /] Files:', req.file || req.files); // If using multer for single/multiple files
+    // console.log('[ProductCtrl POST /] Request Body:', JSON.stringify(req.body, null, 2)); // Careful with large payloads or sensitive data
 
     try {
-        // For FormData, fields are strings. Parse them.
-        const rawPayload = req.body;
-        const productPayload = {};
-        const booleanFields = ['has_expiry', 'is_serialized'];
-        const jsonFields = ['attributes_config', 'variations_data', 'product_units_config'];
-
-        for (const key in rawPayload) {
-            if (booleanFields.includes(key)) {
-                productPayload[key] = rawPayload[key] === 'true' || rawPayload[key] === '1';
-            } else if (jsonFields.includes(key)) {
-                try {
-                    productPayload[key] = JSON.parse(rawPayload[key]);
-                } catch (e) {
-                    console.error(`[ProductCtrl POST /] Error parsing JSON field ${key}:`, rawPayload[key], e);
-                    return res.status(400).json({ message: `Invalid JSON format for ${key}.` });
-                }
-            }
-            else {
-                productPayload[key] = rawPayload[key];
-            }
-        }
+        // req.body will contain text fields from multer; req.file will contain the image
+        const rawPayload = { ...req.body };
         
-        const { attributes_config, variations_data, product_units_config, ...mainProductData } = productPayload;
+        // Extract complex JSON string fields first
+        const attributes_config_json = rawPayload.attributes_config;
+        const variations_data_json = rawPayload.variations_data;
+        const product_units_config_json = rawPayload.product_units_config;
 
-        if (!mainProductData.product_name || !mainProductData.category_id || !mainProductData.base_unit_id || !mainProductData.product_type) {
+        delete rawPayload.attributes_config;
+        delete rawPayload.variations_data;
+        delete rawPayload.product_units_config;
+
+        // Prepare main product data (all other fields)
+        let preparedData = prepareProductData(rawPayload); // This should handle type conversions
+
+        // Parse JSON fields after main data preparation
+        const attributes_config = attributes_config_json ? JSON.parse(attributes_config_json) : null;
+        const variations_data = variations_data_json ? JSON.parse(variations_data_json) : null;
+        const product_units_config = product_units_config_json ? JSON.parse(product_units_config_json) : null;
+
+
+        // --- Validations ---
+        if (!preparedData.product_name || !preparedData.category_id || !preparedData.base_unit_id || !preparedData.product_type) {
             return res.status(400).json({ message: 'Missing required product fields (name, category, base unit, product type).' });
         }
-        if (!['Standard', 'Variable'].includes(mainProductData.product_type)) {
+        if (!['Standard', 'Variable'].includes(preparedData.product_type)) {
             return res.status(400).json({ message: "Product type must be 'Standard' or 'Variable'." });
         }
+        if (preparedData.product_type === 'Variable' && (!variations_data || variations_data.length === 0)) {
+            // return res.status(400).json({ message: "Variable products must have at least one variation defined." });
+            // Or allow creation without variations initially, depending on workflow
+        }
+        if (preparedData.product_type === 'Standard' && (variations_data && variations_data.length > 0)) {
+            return res.status(400).json({ message: "Standard products cannot have variations data." });
+        }
 
-        let preparedData = prepareProductData(mainProductData); // prepareProductData handles type conversions
 
-        // Handle store_id based on user role
+        // --- Store ID assignment based on role ---
         if (req.user.role_name === ROLES.STORE_ADMIN || req.user.role_name === ROLES.STORE_MANAGER) {
-            if (req.user.current_store_id) { // Assuming current_store_id is populated on user object
+            if (req.user.current_store_id) { 
                 preparedData.store_id = req.user.current_store_id;
-            } else if (!preparedData.store_id) {
+            } else if (!preparedData.store_id) { 
                 return res.status(400).json({ message: 'Store information missing for product creation by your role.' });
             }
         } else if (req.user.role_name !== ROLES.GLOBAL_ADMIN && !preparedData.store_id) {
-            // Non-global admin creating a product without a store_id (if store_id is optional in payload)
-            // This logic depends on whether they *can* create global products.
-            // If not, uncomment:
-            // return res.status(400).json({ message: 'Store ID is required for product creation by your role.' });
+            // For other roles, if store_id is not provided, it implies a global product.
+            // Business rule: Can non-global admins create global products? If not, enforce store_id.
+            // For now, we allow it, meaning preparedData.store_id would be null.
         }
         
-        // Handle barcode image upload if `req.file` is populated by multer
-        if (req.file && req.file.path) { // Assuming multer saves file and req.file.path has the accessible URL/path
-            preparedData.barcode_image_path = req.file.path;
+        // --- Handle Barcode Image ---
+        if (req.file && req.file.path) { 
+            preparedData.barcode_image_path = req.file.path.replace(/\\/g, '/');
         }
 
-
+        // --- Database Transaction ---
         await knex.transaction(async trx => {
             const [newProduct] = await trx('products').insert(preparedData).returning('*');
 
             if (product_units_config && Array.isArray(product_units_config) && product_units_config.length > 0) {
-                const unitsToInsert = product_units_config.map(unitConfig => ({
-                    product_id: newProduct.id,
-                    unit_id: parseInt(unitConfig.unit_id, 10),
-                    base_unit_id: newProduct.base_unit_id,
-                    conversion_factor: parseFloat(unitConfig.conversion_factor),
-                    is_purchase_unit: Boolean(unitConfig.is_purchase_unit),
-                    is_sales_unit: Boolean(unitConfig.is_sales_unit)
-                }));
-                await trx('product_units').insert(unitsToInsert);
+                await processProductUnits(trx, newProduct.id, product_units_config, newProduct.base_unit_id);
             }
 
             if (newProduct.product_type === 'Variable' && variations_data && Array.isArray(variations_data) && variations_data.length > 0) {
-                for (const variationItem of variations_data) {
-                    const { attribute_combination, ...variationPayload } = variationItem;
-                    const preparedVariationPayload = prepareProductData(variationPayload); // Prepare prices etc.
-
-                    const [newVariation] = await trx('product_variations').insert({
-                        product_id: newProduct.id,
-                        sku: preparedVariationPayload.sku,
-                        cost_price: preparedVariationPayload.cost_price,
-                        retail_price: preparedVariationPayload.retail_price,
-                        wholesale_price: preparedVariationPayload.wholesale_price,
-                    }).returning('*');
-
-                    if (attribute_combination && typeof attribute_combination === 'object') {
-                        for (const attributeName in attribute_combination) {
-                            const attributeValueName = attribute_combination[attributeName];
-                            const attribute = await trx('attributes').whereRaw('LOWER(name) = LOWER(?)', [attributeName.trim()]).first();
-                            if (!attribute) continue;
-                            const attributeValue = await trx('attribute_values')
-                                .where({ attribute_id: attribute.id })
-                                .andWhereRaw('LOWER(value) = LOWER(?)', [attributeValueName.trim()])
-                                .first();
-                            if (!attributeValue) continue;
-                            await trx('product_variation_attribute_values').insert({
-                                product_variation_id: newVariation.id,
-                                attribute_value_id: attributeValue.id,
-                            });
-                        }
-                    }
-                }
+                // attributes_config might be used by processAttributesAndVariations to validate/create attributes if needed
+                await processAttributesAndVariations(trx, newProduct.id, attributes_config, variations_data);
             }
             res.status(201).json({ message: 'Product created successfully.', product: newProduct });
         });
@@ -395,6 +403,9 @@ const createProduct = async (req, res, next) => {
         console.error('[ProductCtrl POST /] Error:', error.message, error.stack);
         if (error.code === '23505') return res.status(409).json({ message: 'Conflict: SKU or other unique identifier already exists.', detail: error.detail });
         if (error.code === '23503') return res.status(400).json({ message: 'Invalid data: A specified reference (e.g., category) does not exist.', detail: error.detail });
+        if (error instanceof SyntaxError && error.message.includes("JSON.parse")) { // Catch JSON parsing errors
+            return res.status(400).json({ message: `Invalid JSON format in request: ${error.message}` });
+        }
         next(error);
     }
 };
@@ -403,84 +414,141 @@ const createProduct = async (req, res, next) => {
 const updateProduct = async (req, res, next) => {
     const { id } = req.params;
     const productId = parseInt(id, 10);
-    console.log(`[ProductCtrl PUT /${productId}] User: ${req.user?.id}, Role: ${req.user?.role_name}`);
+    const { id: userId, role_name: userRole, store_id: userStoreId, associated_store_ids } = req.user;
+
+    if (isNaN(productId)) {
+        return res.status(400).json({ message: 'Invalid product ID.' });
+    }
+    
+    // console.log(`[ProductCtrl PUT /${id}] User: ${userId}, Role: ${userRole}`);
+    // console.log('[ProductCtrl PUT /] Request Body:', JSON.stringify(req.body, null, 2));
+
 
     try {
-        const rawPayload = req.body;
-        const productPayload = {};
-        const booleanFields = ['has_expiry', 'is_serialized'];
-        const jsonFields = ['attributes_config', 'variations_data', 'product_units_config']; // Though these are usually handled by separate endpoints for updates
-
-        for (const key in rawPayload) {
-            if (booleanFields.includes(key)) {
-                productPayload[key] = rawPayload[key] === 'true' || rawPayload[key] === '1';
-            } else if (jsonFields.includes(key)) {
-                // For PUT, complex objects like variations/units are often handled by their own dedicated endpoints
-                // or require more sophisticated merging logic if sent with the main product update.
-                // For simplicity, we'll assume they are not part of this main update payload here,
-                // or if they are, they replace the existing ones entirely (which needs careful handling).
-                // productPayload[key] = JSON.parse(rawPayload[key]);
-            } else {
-                productPayload[key] = rawPayload[key];
-            }
-        }
-        
-        const { attributes_config, variations_data, product_units_config, ...mainProductData } = productPayload;
-
-        if (isNaN(productId)) return res.status(400).json({ message: 'Invalid product ID.' });
-
         const existingProduct = await knex('products').where({ id: productId }).first();
-        if (!existingProduct) return res.status(404).json({ message: `Product with ID ${productId} not found.` });
+        if (!existingProduct) {
+            return res.status(404).json({ message: `Product with ID ${productId} not found.` });
+        }
 
-        // Authorization: Check if user can update this specific product (similar to getProductById)
-        if (req.user.role_name !== ROLES.GLOBAL_ADMIN && existingProduct.store_id !== null) {
-            const accessibleStores = req.user.associated_store_ids || [];
-            if (req.user.store_id && !accessibleStores.includes(req.user.store_id)) {
-                accessibleStores.push(req.user.store_id);
+        // --- Authorization Check ---
+        if (userRole !== ROLES.GLOBAL_ADMIN && existingProduct.store_id !== null) {
+            const accessibleStores = associated_store_ids || [];
+            if (userStoreId && !accessibleStores.includes(userStoreId)) {
+                accessibleStores.push(userStoreId);
             }
             if (!accessibleStores.includes(existingProduct.store_id)) {
                 return res.status(403).json({ message: 'Forbidden: You do not have access to update this product.' });
             }
         }
+        
+        const rawPayload = { ...req.body };
 
-        let preparedData = prepareProductData(mainProductData);
-        delete preparedData.id; // Cannot update primary key
-        preparedData.updated_at = knex.fn.now();
+        const shouldRemoveBarcodeImage = rawPayload.remove_barcode_image === '1';
+        delete rawPayload.remove_barcode_image; // Remove flag before passing to prepareProductData
 
+        // Extract complex JSON string fields first
+        const attributes_config_json = rawPayload.attributes_config;
+        const variations_data_json = rawPayload.variations_data;
+        const product_units_config_json = rawPayload.product_units_config;
+
+        delete rawPayload.attributes_config;
+        delete rawPayload.variations_data;
+        delete rawPayload.product_units_config;
+        
+        // Prepare main product data (all other fields)
+        // Pass existingProduct to allow prepareProductData to merge or decide on defaults
+        let preparedData = prepareProductData({ ...existingProduct, ...rawPayload }); 
+        
+        // Parse JSON fields
+        const attributes_config = attributes_config_json ? JSON.parse(attributes_config_json) : null;
+        const variations_data = variations_data_json ? JSON.parse(variations_data_json) : null;
+        const product_units_config = product_units_config_json ? JSON.parse(product_units_config_json) : null;
+
+        // --- Handle Barcode Image ---
         if (req.file && req.file.path) {
-            preparedData.barcode_image_path = req.file.path;
-        } else if (rawPayload.remove_barcode_image === '1') {
-            preparedData.barcode_image_path = null; // Logic to remove image
+            preparedData.barcode_image_path = req.file.path.replace(/\\/g, '/'); 
+        } else if (shouldRemoveBarcodeImage) {
+            preparedData.barcode_image_path = null;
+        }
+        // If no new file and no removal flag, barcode_image_path remains as it was in existingProduct/rawPayload
+
+        // --- Validations (similar to create, but consider existingProduct type) ---
+        if (preparedData.product_type && existingProduct.product_type !== preparedData.product_type) {
+            // Handle product type change - this can be complex.
+            // e.g., if changing from Standard to Variable, variations_data would be needed.
+            // If changing from Variable to Standard, existing variations might need to be deleted.
+            // For simplicity, you might disallow changing product_type directly here and require a different process.
+            // For now, let's assume if product_type is in payload, it's the new type.
+            if (preparedData.product_type === 'Variable' && (!variations_data || variations_data.length === 0)) {
+                // return res.status(400).json({ message: "Changing to Variable product requires variations data." });
+            }
         }
 
 
+        // --- Database Transaction ---
         await knex.transaction(async trx => {
+            // Remove 'id', 'created_at' from preparedData for update, updated_at will be set by prepareProductData
+            delete preparedData.id;
+            delete preparedData.created_at; 
+
             const [updatedProduct] = await trx('products')
                 .where({ id: productId })
-                .update(preparedData)
+                .update(preparedData) 
                 .returning('*');
-            
-            // More complex updates for variations and units would typically be handled here
-            // or via their own dedicated API endpoints. For example, syncing variations:
-            // 1. Delete existing variations/units not present in the payload.
-            // 2. Update existing ones.
-            // 3. Add new ones.
-            // This is complex and error-prone in a single PUT.
-            // The ProductForm seems to handle unit configs via separate API calls for existing products.
+
+            if (!updatedProduct) {
+                throw new Error('Product update failed or product not found after update.');
+            }
+
+            // --- Handle related data updates ---
+            // Product Units: Decide on strategy (replace all, or manage individually via separate endpoints)
+            if (product_units_config && Array.isArray(product_units_config)) {
+                // Example: Replace all existing units for simplicity in this main update
+                await trx('product_units').where({ product_id: updatedProduct.id }).del();
+                if (product_units_config.length > 0) {
+                    await processProductUnits(trx, updatedProduct.id, product_units_config, updatedProduct.base_unit_id);
+                }
+            }
+
+            // Variations and Attributes for Variable Products
+            if (updatedProduct.product_type === 'Variable') {
+                if (variations_data && Array.isArray(variations_data)) {
+                    // processAttributesAndVariations needs to handle updates intelligently
+                    // (add new, update existing, remove old ones not in the payload)
+                    await processAttributesAndVariations(trx, updatedProduct.id, attributes_config, variations_data);
+                }
+            } else if (existingProduct.product_type === 'Variable' && updatedProduct.product_type === 'Standard') {
+                // If changed from Variable to Standard, delete old variations
+                await trx('product_variation_attribute_values')
+                    .whereIn('product_variation_id', function() { this.select('id').from('product_variations').where('product_id', updatedProduct.id); })
+                    .del();
+                await trx('product_variations').where({ product_id: updatedProduct.id }).del();
+            }
+
 
             res.status(200).json({ message: 'Product updated successfully.', product: updatedProduct });
         });
 
     } catch (error) {
         console.error(`[ProductCtrl PUT /${id}] Error:`, error.message, error.stack);
-        if (error.code === '23505') return res.status(409).json({ message: 'Conflict: SKU or other unique identifier already exists.', detail: error.detail });
-        if (error.code === '23503') return res.status(400).json({ message: 'Invalid data: A specified reference does not exist.', detail: error.detail });
-        next(error);
+        if (error.code === '23505') { 
+            return res.status(409).json({ message: 'Conflict: SKU or other unique identifier already exists.', detail: error.detail });
+        }
+        if (error.code === '23503') { 
+            return res.status(400).json({ message: 'Invalid data: A specified reference (e.g., category, brand) does not exist.', detail: error.detail });
+        }
+        if (error instanceof SyntaxError && error.message.includes("JSON.parse")) {
+            return res.status(400).json({ message: `Invalid JSON format in request: ${error.message}` });
+        }
+        res.status(500).json({ message: error.message || 'Failed to update product.' });
     }
 };
 
 // DELETE /api/products/:id - Delete a product
 const deleteProduct = async (req, res, next) => {
+    // ... (your existing deleteProduct logic - seems mostly fine)
+    // Ensure all related data is properly cleaned up (cascade delete or manual)
+    // and appropriate checks for dependencies (e.g., in sales orders) are in place.
     const { id } = req.params;
     const productId = parseInt(id, 10);
     const { id: userId, role_name: userRole, store_id: userStoreId, associated_store_ids } = req.user;
@@ -493,46 +561,60 @@ const deleteProduct = async (req, res, next) => {
             return res.status(404).json({ message: `Product with ID ${productId} not found.` });
         }
 
+        // Authorization check
         let canDeleteThisProduct = false;
         if (userRole === ROLES.GLOBAL_ADMIN) {
             canDeleteThisProduct = true;
         } else if (userRole === ROLES.STORE_ADMIN || userRole === ROLES.STORE_MANAGER) {
-            if (product.store_id === null && (userRole === ROLES.STORE_ADMIN)) { // Store admin might be allowed to delete global if configured
-                // canDeleteThisProduct = true; // Business rule dependent
-            } else {
-                const accessibleStores = associated_store_ids || [];
-                if (userStoreId && !accessibleStores.includes(userStoreId)) {
-                     accessibleStores.push(userStoreId);
-                }
-                if (accessibleStores.includes(product.store_id)) {
-                    canDeleteThisProduct = true;
-                }
+            // Store admins/managers can delete products from their assigned stores,
+            // or global products if business logic allows (e.g. STORE_ADMIN for global products).
+            // Current logic: only if product.store_id is in their accessible list.
+            const accessibleStores = associated_store_ids || [];
+            if (userStoreId && !accessibleStores.includes(userStoreId)) {
+                 accessibleStores.push(userStoreId);
+            }
+            if (product.store_id === null && userRole === ROLES.STORE_ADMIN) { // Store Admin can delete global products
+                // canDeleteThisProduct = true; // Uncomment if this is the desired business rule
+            } else if (product.store_id && accessibleStores.includes(product.store_id)) {
+                canDeleteThisProduct = true;
             }
         }
         if (!canDeleteThisProduct) {
             return res.status(403).json({ message: 'Forbidden: You do not have permission to delete this product.' });
         }
 
-        // Check for dependencies before deleting (e.g., in purchase_order_items, sale_items, inventory)
-        // This is a simplified check; a more robust check would query all relevant tables.
+        // Check for dependencies before deleting
         const poItemCount = await knex('purchase_order_items').where({ product_id: productId }).count('id as count').first();
-        if (poItemCount && poItemCount.count > 0) {
+        if (poItemCount && parseInt(poItemCount.count, 10) > 0) {
             return res.status(409).json({ message: 'Conflict: Product cannot be deleted as it is part of existing purchase orders.' });
         }
-        // Add similar checks for sale_items, inventory_entries, etc.
+        const saleItemCount = await knex('sale_items').where({ product_id: productId }).count('id as count').first();
+         if (saleItemCount && parseInt(saleItemCount.count, 10) > 0) {
+            return res.status(409).json({ message: 'Conflict: Product cannot be deleted as it is part of existing sales records.' });
+        }
+        // Add more checks for inventory, etc., if direct deletion is problematic.
+        // Consider a "soft delete" (is_active = false) pattern as an alternative.
+
 
         await knex.transaction(async trx => {
-            // Manually delete related data if ON DELETE CASCADE is not set up or not sufficient
+            // Delete related data first if not handled by ON DELETE CASCADE
+            // Assuming ON DELETE CASCADE is set for product_variations on product_id,
+            // and for product_variation_attribute_values on product_variation_id.
+            // And for product_units on product_id.
+            // If not, delete them manually:
             await trx('product_variation_attribute_values')
                 .whereIn('product_variation_id', function() {
                     this.select('id').from('product_variations').where('product_id', productId);
                 }).del();
             await trx('product_variations').where({ product_id: productId }).del();
             await trx('product_units').where({ product_id: productId }).del();
-            // Add other related data deletions here (e.g., product_attributes_junction if you have one)
+            // Delete product images if stored and referenced
+            // await trx('product_images').where({ product_id: productId }).del(); 
             
             const deletedCount = await trx('products').where({ id: productId }).del();
             if (deletedCount > 0) {
+                // Optionally: delete barcode image file from filesystem if it exists
+                // if (product.barcode_image_path) { fs.unlink(...) }
                 res.status(200).json({ message: `Product ${productId} and its related data deleted successfully.` });
             } else {
                 res.status(404).json({ message: `Product ${productId} not found or already deleted.` });
@@ -540,7 +622,7 @@ const deleteProduct = async (req, res, next) => {
         });
 
     } catch (err) {
-        if (err.code === '23503') { // Fallback FK violation if checks above miss something
+        if (err.code === '23503') { 
             return res.status(409).json({ 
                 message: 'Conflict: This product cannot be deleted as it is referenced by other records.', 
                 detail: err.detail 
@@ -558,5 +640,4 @@ module.exports = {
     createProduct,
     updateProduct,
     deleteProduct,
-    // export prepareProductData if you move it to a shared utility
 };

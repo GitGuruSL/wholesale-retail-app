@@ -114,7 +114,8 @@ import VerifiedUserIcon from '@mui/icons-material/VerifiedUser'; // Warranties, 
 import VpnKeyIcon from '@mui/icons-material/VpnKey'; // Social Authentication
 import WebAssetIcon from '@mui/icons-material/WebAsset'; // CMS Pages
 import WebIcon from '@mui/icons-material/Web'; // Forms, Tables (as part of UI)
-import WorkHistoryIcon from '@mui/icons-material/WorkHistory'; // Shifts
+import WorkHistoryIcon from '@mui/icons-material/WorkHistory';
+import SupplierIcon from '@mui/icons-material/LocalShipping'; // Corrected 'inport' to 'import' and assumed an icon
 
 
 const HorizontalMenu = () => {
