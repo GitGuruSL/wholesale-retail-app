@@ -46,23 +46,33 @@ function SupplierForm() {
         setFormErrors({});
         try {
             const response = await apiInstance.get(`/suppliers/${supplierId}`);
-            const data = response.data;
-            const sinceDateFormatted = data.since_date ? data.since_date.split('T')[0] : '';
+            
+            // Correctly access the supplier object from response.data.data
+            const supplierData = response.data?.data; 
+
+            if (!supplierData) {
+                console.error("[SupplierForm] Error: Supplier data not found in API response.", response.data);
+                setPageError("Failed to load supplier data: structure mismatch.");
+                return;
+            }
+
+            const sinceDateFormatted = supplierData.since_date ? supplierData.since_date.split('T')[0] : '';
+            
             setFormData({
-                name: data.name || '',
-                address: data.address || '',
-                city: data.city || '',
-                contact_person: data.contact_person || '',
-                telephone: data.telephone || '',
-                fax: data.fax || '',
-                email: data.email || '',
+                name: supplierData.name || '',
+                address: supplierData.address || '',
+                city: supplierData.city || '',
+                contact_person: supplierData.contact_person || '',
+                telephone: supplierData.telephone || '',
+                fax: supplierData.fax || '',
+                email: supplierData.email || '',
                 since_date: sinceDateFormatted,
-                main_category_id: data.main_category_id?.toString() || '',
-                tax_invoice_details: data.tax_invoice_details || '',
-                default_discount_percent: data.default_discount_percent?.toString() ?? '0',
-                credit_limit: data.credit_limit?.toString() ?? '0.00',
-                credit_days: data.credit_days?.toString() ?? '0',
-                is_default_supplier: data.is_default_supplier || false,
+                main_category_id: supplierData.main_category_id?.toString() || '',
+                tax_invoice_details: supplierData.tax_invoice_details || '',
+                default_discount_percent: supplierData.default_discount_percent?.toString() ?? '0',
+                credit_limit: supplierData.credit_limit?.toString() ?? '0.00',
+                credit_days: supplierData.credit_days?.toString() ?? '0',
+                is_default_supplier: supplierData.is_default_supplier || false,
             });
         } catch (err) {
             console.error("[SupplierForm] Error fetching supplier details:", err);

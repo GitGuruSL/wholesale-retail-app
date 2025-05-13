@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Paper,
   Box,
@@ -9,65 +9,49 @@ import {
   TableCell,
   TableBody,
   Checkbox,
-  Button
+  Button,
+  TextField, // Added for search
+  CircularProgress // Added for loading state
 } from '@mui/material';
 import { FaPlus } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import apiInstance from '../services/api'; // Step 1: Import apiInstance directly
+import apiInstance from '../services/api';
 
 function AccessControl() {
-  const [allPermissions, setAllPermissions] = useState([]); // All available permissions
-  const [categories, setCategories] = useState([]);           // Permission categories
-  const [roles, setRoles] = useState([]);                     // All roles
-  // Mapping: { roleId: [permissionId, ...] }
+  const [allPermissions, setAllPermissions] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [roles, setRoles] = useState([]);
   const [roleAssignments, setRoleAssignments] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
- const { isAuthenticated, isLoading: authLoading, userCan } = useAuth();
+  const [searchTerm, setSearchTerm] = useState(''); // State for search term
+  const { isAuthenticated, isLoading: authLoading, userCan } = useAuth();
 
-  // Fetch all permissions
   useEffect(() => {
-    async function fetchAllPermissions() {
+    setLoading(true);
+    setError(null);
+    async function fetchData() {
       try {
-        const res = await apiInstance.get('/permissions/list-all');
-        setAllPermissions(res.data || []);
-      } catch (err) {
-        console.error('Error fetching all permissions:', err);
-      }
-    }
-    fetchAllPermissions();
-  }, [apiInstance]);
+        const [permsRes, catsRes, rolesRes] = await Promise.all([
+          apiInstance.get('/permissions/list-all'),
+          apiInstance.get('/permissions/categories'),
+          apiInstance.get('/roles')
+        ]);
 
-  // Fetch all permission categories
-  useEffect(() => {
-    async function fetchCategories() {
-      try {
-        const res = await apiInstance.get('/permissions/categories');
-        setCategories(res.data || []);
-      } catch (err) {
-        console.error('Error fetching permission categories:', err);
-      }
-    }
-    fetchCategories();
-  }, [apiInstance]);
-
-  // Fetch roles and their permissions
-  useEffect(() => {
-    async function fetchRolesAndAssignments() {
-      try {
-        const res = await apiInstance.get('/roles');
-        const rolesData = res.data || [];
+        setAllPermissions(permsRes.data || []);
+        setCategories(catsRes.data || []);
+        
+        const rolesData = rolesRes.data || [];
         setRoles(rolesData);
+
         const assignments = {};
-        // Fetch each role's assigned permissions in parallel
         await Promise.all(
           rolesData.map(async (role) => {
             try {
               const roleRes = await apiInstance.get(`/roles/${role.id}`);
               let perms = roleRes.data.permissions || [];
-              // If permissions are returned as objects, map to IDs
-              if (perms.length && typeof perms[0] === 'object') {
+              if (perms.length && typeof perms[0] === 'object' && perms[0] !== null) { // Check for object and not null
                 perms = perms.map(p => p.id);
               }
               assignments[role.id] = perms;
@@ -78,19 +62,26 @@ function AccessControl() {
           })
         );
         setRoleAssignments(assignments);
+
       } catch (err) {
-        console.error('Error fetching roles:', err);
+        console.error('Error fetching initial access control data:', err);
+        setError(err.response?.data?.message || 'Failed to load access control data.');
       } finally {
         setLoading(false);
       }
     }
-    fetchRolesAndAssignments();
-  }, [apiInstance]);
+    if (isAuthenticated) {
+        fetchData();
+    } else if (!authLoading) {
+        setError("User not authenticated.");
+        setLoading(false);
+    }
+  }, [isAuthenticated, authLoading]);
 
-  // Handle toggling a permission for a given role
   const handleTogglePermissionForRole = async (roleId, permissionId, isAssigned) => {
+    // No need for setLoading(true) here as individual checkbox changes are quick
+    // setError(null); // Clear previous specific error
     try {
-      setLoading(true);
       const current = roleAssignments[roleId] || [];
       let updated;
       if (isAssigned) {
@@ -98,27 +89,60 @@ function AccessControl() {
       } else {
         updated = [...current, permissionId];
       }
-      // Update the role's permissions by sending the complete updated array
       await apiInstance.post(`/roles/${roleId}/permissions`, { permissionIds: updated });
-      // Update our mapping in state
       setRoleAssignments(prev => ({ ...prev, [roleId]: updated }));
     } catch (err) {
       console.error('Error updating permission for role:', err);
       setError(err.response?.data?.message || 'Failed to update permission.');
-    } finally {
-      setLoading(false);
+      // Optionally revert state on error, or refetch
     }
   };
 
-  // Group permissions by category (optional, for display order)
-  const groupedPermissions = allPermissions.reduce((groups, permission) => {
-    // If no category found, fall back to "Other"
-    const categoryObj = categories.find(cat => cat.id === permission.permission_category_id) || { name: "Other" };
-    const categoryName = categoryObj.name;
-    if (!groups[categoryName]) groups[categoryName] = [];
-    groups[categoryName].push(permission);
-    return groups;
-  }, {});
+  const filteredPermissions = useMemo(() => {
+    if (!searchTerm) {
+      return allPermissions;
+    }
+    const lowerSearchTerm = searchTerm.toLowerCase();
+    return allPermissions.filter(permission =>
+      (permission.display_name && permission.display_name.toLowerCase().includes(lowerSearchTerm)) ||
+      (permission.name && permission.name.toLowerCase().includes(lowerSearchTerm)) ||
+      (permission.description && permission.description.toLowerCase().includes(lowerSearchTerm))
+    );
+  }, [allPermissions, searchTerm]);
+
+  const groupedPermissions = useMemo(() => {
+    return filteredPermissions.reduce((groups, permission) => {
+      const categoryObj = categories.find(cat => cat.id === permission.permission_category_id) || { name: "Uncategorized", display_order: 999 };
+      const categoryName = categoryObj.name;
+      if (!groups[categoryName]) {
+        groups[categoryName] = {
+          permissions: [],
+          displayOrder: categoryObj.display_order
+        };
+      }
+      groups[categoryName].permissions.push(permission);
+      return groups;
+    }, {});
+  }, [filteredPermissions, categories]);
+
+  // Sort categories by displayOrder
+  const sortedGroupedPermissions = useMemo(() => {
+    return Object.entries(groupedPermissions)
+      .sort(([, groupA], [, groupB]) => groupA.displayOrder - groupB.displayOrder)
+      .map(([categoryName, groupData]) => ({
+        categoryName,
+        permissions: groupData.permissions.sort((a, b) => {
+          const nameA = a.display_name || a.name || ''; // Fallback to name, then to empty string
+          const nameB = b.display_name || b.name || ''; // Fallback to name, then to empty string
+          return nameA.localeCompare(nameB);
+        })
+      }));
+  }, [groupedPermissions]);
+
+
+  if (authLoading) {
+    return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+  }
 
   return (
     <Paper sx={{ p: 3, m: 2 }}>
@@ -130,66 +154,83 @@ function AccessControl() {
           </Button>
         )}
       </Box>
+      <Box mb={2}>
+        <TextField
+          fullWidth
+          variant="outlined"
+          label="Search Permissions (by name, code, or description)"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+      </Box>
       {loading && (
-        <Typography variant="body1" align="center">
-          Loading data...
-        </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>
       )}
       {error && (
-        <Typography variant="body2" color="error" align="center">
+        <Typography variant="body2" color="error" align="center" sx={{mb: 2}}>
           {error}
         </Typography>
       )}
-      {!loading && allPermissions.length === 0 && (
+      {!loading && !error && sortedGroupedPermissions.length === 0 && (
         <Typography variant="body1" align="center">
-          No permissions available.
+          {searchTerm ? 'No permissions match your search.' : 'No permissions available.'}
         </Typography>
       )}
-      <Table>
-        <TableHead>
-          <TableRow>
-            <TableCell>Permission</TableCell>
-            {roles.map(role => (
-              <TableCell key={role.id} align="center">{role.name}</TableCell>
-            ))}
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {Object.entries(groupedPermissions).map(([group, permissions]) => (
-            <React.Fragment key={group}>
-              <TableRow>
-                <TableCell colSpan={roles.length + 1} sx={{ backgroundColor: '#f5f5f5' }}>
-                  <Typography variant="h6">{group}</Typography>
+      {!loading && !error && sortedGroupedPermissions.length > 0 && (
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{minWidth: 250}}>Permission</TableCell>
+              {roles.map(role => (
+                <TableCell key={role.id} align="center" sx={{textTransform: 'capitalize'}}>
+                  {role.display_name || role.name}
                 </TableCell>
-              </TableRow>
-              {permissions.map(permission => (
-                <TableRow key={permission.id}>
-                  <TableCell>
-                    <Typography variant="body1" fontWeight="bold">
-                      {permission.display_name || permission.name}
-                    </Typography>
-                    <Typography variant="caption" color="textSecondary">
-                      Code: {permission.name}
-                    </Typography>
-                  </TableCell>
-                  {roles.map(role => {
-                    const assigned = (roleAssignments[role.id] || []).includes(permission.id);
-                    return (
-                      <TableCell key={`${role.id}-${permission.id}`} align="center">
-                        <Checkbox
-                          checked={assigned}
-                          onChange={() => handleTogglePermissionForRole(role.id, permission.id, assigned)}
-                          color="primary"
-                        />
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
               ))}
-            </React.Fragment>
-          ))}
-        </TableBody>
-      </Table>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {sortedGroupedPermissions.map(({ categoryName, permissions }) => (
+              <React.Fragment key={categoryName}>
+                <TableRow>
+                  <TableCell colSpan={roles.length + 1} sx={{ backgroundColor: '#f5f5f5', py: 1 }}>
+                    <Typography variant="subtitle1" fontWeight="bold">{categoryName}</Typography>
+                  </TableCell>
+                </TableRow>
+                {permissions.map(permission => (
+                  <TableRow key={permission.id} hover>
+                    <TableCell>
+                      <Typography variant="body1" fontWeight="medium">
+                        {permission.display_name || permission.name}
+                      </Typography>
+                      <Typography variant="caption" color="textSecondary" component="div">
+                        Code: {permission.name}
+                      </Typography>
+                      {permission.description && (
+                        <Typography variant="caption" color="textSecondary" component="div">
+                          Desc: {permission.description}
+                        </Typography>
+                      )}
+                    </TableCell>
+                    {roles.map(role => {
+                      const assigned = (roleAssignments[role.id] || []).includes(permission.id);
+                      return (
+                        <TableCell key={`${role.id}-${permission.id}`} align="center">
+                          <Checkbox
+                            checked={assigned}
+                            onChange={() => handleTogglePermissionForRole(role.id, permission.id, assigned)}
+                            color="primary"
+                            disabled={role.is_system_role && permission.name.startsWith('system:')} // Example: disable for system roles + system perms
+                          />
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                ))}
+              </React.Fragment>
+            ))}
+          </TableBody>
+        </Table>
+      )}
     </Paper>
   );
 }

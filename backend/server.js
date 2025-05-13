@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const knex = require('./db/knex');
 const { authenticateToken } = require('./middleware/authMiddleware');
-const checkPermission = require('./middleware/authorizeRoles'); // UPDATED - Assuming you renamed the export or the file's purpose
+const authorizeAccess = require('./middleware/authorizeRoles'); // Keep this one
 
 // --- Import Router Creation Functions ---
 const createAuthRouter = require('./routes/auth');
@@ -32,6 +32,7 @@ const createPermissionCategoriesRouter = require('./routes/permissionCategories'
 const createStoreSettingsRoutes = require('./routes/settings');
 const createCustomersRouter = require('./routes/customers');
 const createAttributesRouter = require('./routes/attributes');
+const createPurchaseOrdersRouter = require('./routes/purchaseOrders');
 
 const app = express();
 
@@ -79,11 +80,8 @@ const mountProtectedRouter = (path, routerFactory) => {
         return;
     }
     try {
-        // Pass all auth tools to the factory; the factory decides how to use them.
-        // The router itself will apply authenticateToken and checkPermission on its specific routes.
-        // Pass checkPermission as the third argument
-        const router = routerFactory(knex, authenticateToken, checkPermission); // Pass the actual checkPermission
-        app.use(path, router); // No need to apply authenticateToken at app.use level if router handles it
+        const router = routerFactory(knex, authenticateToken, authorizeAccess); // Correctly passing authorizeAccess
+        app.use(path, router); 
         console.log(`Mounted ${path} (router handles its own auth)`);
     } catch (error) {
         console.error(`Error creating or mounting router for ${path}:`, error);
@@ -95,6 +93,7 @@ mountProtectedRouter('/api/products', createProductsRouter);
 mountProtectedRouter('/api/users', createUsersRouter); // Assuming createUsersRouter also uses auth tools internally
 mountProtectedRouter('/api/sales', createSalesRouter); // Assuming createSalesRouter also uses auth tools internally
 mountProtectedRouter('/api/employees', createEmployeesRouter); // And so on for other complex routers
+mountProtectedRouter('/api/suppliers', createSuppliersRouter); // Ensure authenticateToken and authorizeAccess are correctly passed
 
 // Simpler helper for routes that might only need path-level authentication 
 // and their factories only take knex (internal routes might not need granular permissions or use a default)
@@ -134,6 +133,7 @@ mountSimpleProtectedRoute('/api/permission-categories', createPermissionCategori
 mountSimpleProtectedRoute('/api/settings', createStoreSettingsRoutes);
 mountSimpleProtectedRoute('/api/customers', createCustomersRouter);
 mountSimpleProtectedRoute('/api/attributes', createAttributesRouter);
+mountProtectedRouter('/api/purchase-orders', createPurchaseOrdersRouter);
 
 
 // --- Global Error Handler ---

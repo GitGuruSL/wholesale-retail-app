@@ -14,7 +14,7 @@ import AccessDeniedPage from './pages/AccessDeniedPage';
 import CustomersList from './components/CustomersList';
 import CustomerForm from './components/CustomerForm';
 import ProductList from './components/ProductList';
-import ProductForm from './components/ProductForm';
+import ProductForm from './components/ProductForm.tsx';
 import ProductAttributeListPage from './components/ProductAttributeList.tsx';
 import ProductAttributeFormPage from './components/ProductAttributeForm';
 import CategoryList from './components/CategoryList';
@@ -55,6 +55,8 @@ import AccessControl from './components/AccessControl';
 import StoreSettings from './components/StoreSettings';
 import InventoryList from './components/InventoryList';
 
+import PurchaseOrderList from './components/PurchaseOrderList.tsx';
+import PurchaseOrderForm from './components/PurchaseOrderForm.tsx';
 
 const HomePage = () => {
     const location = useLocation();
@@ -124,6 +126,11 @@ const AppRoutes = () => {
                     <Route path="suppliers" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['supplier:read']}><SupplierList /></ProtectedRoute>} />
                     <Route path="suppliers/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['supplier:create']}><SupplierForm /></ProtectedRoute>} />
                     <Route path="suppliers/edit/:supplierId" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['supplier:update']}><SupplierForm /></ProtectedRoute>} />
+
+                    {/* Purchase Order Management */}
+                    <Route path="purchase-orders" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['purchase_order:read']}><PurchaseOrderList /></ProtectedRoute>} />
+                    <Route path="purchase-orders/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['purchase_order:create']}><PurchaseOrderForm /></ProtectedRoute>} />
+                    <Route path="purchase-orders/edit/:purchaseOrderId" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['purchase_order:update']}><PurchaseOrderForm /></ProtectedRoute>} />
 
                     {/* Product Catalog Section */}
                     <Route path="categories" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['category:read']}><CategoryList /></ProtectedRoute>} />

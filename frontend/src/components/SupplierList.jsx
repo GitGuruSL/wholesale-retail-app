@@ -36,7 +36,19 @@ function SupplierList() {
         setPageError(null);
         try {
             const response = await apiInstance.get('/suppliers');
-            setSuppliers(response.data || []);
+            // Correctly access the array of suppliers from response.data.data
+            if (response.data && Array.isArray(response.data.data)) {
+                setSuppliers(response.data.data);
+            } else if (response.data && Array.isArray(response.data)) {
+                // Fallback for older API structure if any, though controller sends { data: [...] }
+                setSuppliers(response.data);
+            }
+             else {
+                console.warn("[SupplierList] fetchSuppliers - Invalid data format for suppliers. Expected response.data.data to be an array.");
+                setSuppliers([]);
+                // Optionally set a pageError here if the format is unexpected
+                // setPageError("Received invalid data format from server.");
+            }
         } catch (err) {
             console.error("[SupplierList] Error fetching suppliers:", err);
             setPageError(err.response?.data?.message || 'Failed to fetch suppliers.');

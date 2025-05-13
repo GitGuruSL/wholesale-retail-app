@@ -110,14 +110,15 @@ function ProductList() {
             console.log('[ProductList] fetchProducts - API call params:', params.toString());
             const response = await apiInstance.get(`/products?${params.toString()}`);
             console.log('[ProductList] fetchProducts - API response:', response.data);
+            // This part in fetchProducts should now work:
             if (response.data && Array.isArray(response.data.products)) {
                 setProducts(response.data.products);
                 setCurrentPage(response.data.currentPage);
                 setTotalPages(response.data.totalPages);
-                setTotalProducts(response.data.totalProducts);
-                setLimit(response.data.limit);
+                setTotalProducts(response.data.totalProducts); // Ensure backend sends this as totalProducts
+                setLimit(response.data.limit); // Ensure backend sends this as limit
             } else {
-                console.warn('[ProductList] fetchProducts - Invalid data format for products.');
+                console.warn('[ProductList] fetchProducts - Invalid data format for products. Expected response.data.products to be an array and pagination fields.');
                 setProducts([]);
                 setPageError("Received invalid data format for products.");
             }

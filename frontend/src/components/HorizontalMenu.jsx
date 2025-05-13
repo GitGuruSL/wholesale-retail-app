@@ -149,8 +149,8 @@ const HorizontalMenu = () => {
                 { text: 'Print Barcode', icon: <PrintIcon />, path: '/dashboard/inventory/print-barcode', requiredPermission: 'inventory:print_barcode' },
                 { text: 'Print QR Code', icon: <QrCodeScannerIcon />, path: '/dashboard/inventory/print-qrcode', requiredPermission: 'inventory:print_qrcode' },
                 { text: 'Product Barcodes', icon: <DocumentScannerIcon />, path: '/dashboard/inventory/product-barcodes', requiredPermission: 'product_barcode:manage' },
-                { text: 'Barcode Symbologies', icon: <TuneIcon />, path: '/dashboard/inventory/barcode-symbologies', requiredPermission: 'barcode_symbology:read' }, // Added this line
-                { text: 'Discount Types', icon: <LocalOfferIcon />, path: '/dashboard/inventory/discount-types', requiredPermission: 'discount_type:manage' },
+                { text: 'Barcode Symbologies', icon: <TuneIcon />, path: '/dashboard/barcode-symbologies', requiredPermission: 'barcode_symbology:read' }, // MODIFIED PATH
+                { text: 'Discount Types', icon: <LocalOfferIcon />, path: '/dashboard/discount-types', requiredPermission: 'discount_type:manage' }, // MODIFIED PATH
                 { text: 'Special Categories', icon: <StarIcon />, path: '/dashboard/special-categories', requiredPermission: 'specialcategory:read' },
             ]
         },
@@ -406,11 +406,11 @@ const HorizontalMenu = () => {
                 {
                     text: 'People', icon: <PeopleIcon />, requiredPermission: 'customer:read', // Grouping
                     items: [
-                        { text: 'Customers', icon: <PeopleIcon />, path: '/dashboard/peoples/customers', requiredPermission: 'customer:read' },
-                        { text: 'Billers', icon: <SupervisedUserCircleIcon />, path: '/dashboard/peoples/billers', requiredPermission: 'biller:read' },
-                        { text: 'Suppliers', icon: <LocalShippingIcon />, path: '/dashboard/peoples/suppliers', requiredPermission: 'supplier:read' },
-                        { text: 'Stores', icon: <StoreIcon />, path: '/dashboard/peoples/stores', requiredPermission: 'store:read' },
-                        { text: 'Warehouses', icon: <HomeWorkIcon />, path: '/dashboard/peoples/warehouses', requiredPermission: 'warehouse:read' },
+                        { text: 'Customers', icon: <PeopleIcon />, path: '/dashboard/customers', requiredPermission: 'customer:read' }, // MODIFIED PATH
+                        { text: 'Billers', icon: <SupervisedUserCircleIcon />, path: '/dashboard/peoples/billers', requiredPermission: 'biller:read' }, // Check if '/dashboard/billers' exists in App.jsx or adjust
+                        { text: 'Suppliers', icon: <LocalShippingIcon />, path: '/dashboard/suppliers', requiredPermission: 'supplier:read' }, // MODIFIED PATH
+                        { text: 'Stores', icon: <StoreIcon />, path: '/dashboard/stores', requiredPermission: 'store:read' }, // MODIFIED PATH (matches App.jsx)
+                        { text: 'Warehouses', icon: <HomeWorkIcon />, path: '/dashboard/peoples/warehouses', requiredPermission: 'warehouse:read' }, // Check if '/dashboard/warehouses' exists or adjust
                     ]
                 },
                 {

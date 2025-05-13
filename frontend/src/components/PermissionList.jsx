@@ -116,16 +116,14 @@ function PermissionList() {
   };
 
   const filteredPermissions = permissions.filter(permission => {
-    if (selectedCategoryId && permission.permission_category_id !== parseInt(selectedCategoryId))
-      return false;
-    if (searchTerm) {
-      return (
-        permission.name.toLowerCase().includes(searchTerm) ||
-        permission.display_name.toLowerCase().includes(searchTerm) ||
-        (permission.sub_group_display_name && permission.sub_group_display_name.toLowerCase().includes(searchTerm))
-      );
-    }
-    return true;
+    const name = permission.name || ''; // Fallback to empty string if name is null/undefined
+    const displayName = permission.display_name || ''; // Fallback for display_name
+
+    // Adapt this logic based on which fields you are searching
+    const nameMatches = name.toLowerCase().includes(searchTerm.toLowerCase());
+    const displayNameMatches = displayName.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    return nameMatches || displayNameMatches; // Or however you combine search criteria
   }).sort((a, b) => {
     const categoryA = categories.find(c => c.id === a.permission_category_id);
     const categoryB = categories.find(c => c.id === b.permission_category_id);
