@@ -3,11 +3,11 @@
  * @returns { Promise<void> }
  */
 exports.up = function(knex) {
-  return knex.schema.createTable('product_variations', function(table) {
+  return knex.schema.createTable('Item_variations', function(table) {
     table.increments('id').primary();
-    table.integer('product_id').unsigned().notNullable();
-    // Assuming your main products table is named 'products' and has an 'id' primary key
-    table.foreign('product_id').references('id').inTable('products').onDelete('CASCADE');
+    table.integer('Item_id').unsigned().notNullable();
+    // Assuming your main Items table is named 'Items' and has an 'id' primary key
+    table.foreign('Item_id').references('id').inTable('Items').onDelete('CASCADE');
 
     table.string('sku', 255).unique().nullable(); // Variation-specific SKU
     table.decimal('cost_price', 12, 2).nullable();
@@ -26,5 +26,5 @@ exports.up = function(knex) {
  * @returns { Promise<void> }
  */
 exports.down = function(knex) {
-  return knex.schema.dropTableIfExists('product_variations');
+  return knex.schema.dropTableIfExists('Item_variations');
 };

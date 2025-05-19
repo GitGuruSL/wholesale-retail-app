@@ -80,7 +80,7 @@ function SupplierList() {
             setTimeout(() => setFeedback({ message: null, type: null }), 5000);
             return;
         }
-        if (!window.confirm(`Are you sure you want to delete supplier: "${supplierName}" (ID: ${supplierId})?\nThis might fail if the supplier is linked to products.`)) {
+        if (!window.confirm(`Are you sure you want to delete supplier: "${supplierName}" (ID: ${supplierId})?\nThis might fail if the supplier is linked to Items.`)) {
             return;
         }
         setPageError(null);

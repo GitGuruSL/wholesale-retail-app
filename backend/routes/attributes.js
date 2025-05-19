@@ -32,7 +32,7 @@ function createAttributesRouter(knex) {
 
 
     // GET /api/attributes - List all attributes with their values
-    router.get('/', checkAttributePermission('product_attribute:read'), async (req, res, next) => {
+    router.get('/', checkAttributePermission('Item_attribute:read'), async (req, res, next) => {
         try {
             const attributes = await knex('attributes').select('*').orderBy('name', 'asc');
             const attributesWithValues = [];
@@ -52,7 +52,7 @@ function createAttributesRouter(knex) {
     });
 
     // GET /api/attributes/:id - Get a single attribute by ID with its values
-    router.get('/:id', checkAttributePermission('product_attribute:read'), async (req, res, next) => {
+    router.get('/:id', checkAttributePermission('Item_attribute:read'), async (req, res, next) => {
         const { id } = req.params;
         try {
             const attribute = await knex('attributes').where({ id }).first();
@@ -69,7 +69,7 @@ function createAttributesRouter(knex) {
     });
 
     // POST /api/attributes - Create a new attribute and its values
-    router.post('/', checkAttributePermission('product_attribute:create'), async (req, res, next) => {
+    router.post('/', checkAttributePermission('Item_attribute:create'), async (req, res, next) => {
         const { name, values = [] } = req.body; // `values` is an array of strings
 
         if (!name || typeof name !== 'string' || name.trim() === '') {
@@ -120,7 +120,7 @@ function createAttributesRouter(knex) {
     });
 
     // PUT /api/attributes/:id - Update an attribute and its values
-    router.put('/:id', checkAttributePermission('product_attribute:update'), async (req, res, next) => {
+    router.put('/:id', checkAttributePermission('Item_attribute:update'), async (req, res, next) => {
         const { id } = req.params;
         const { name, values = [] } = req.body; // `values` is an array of strings
 
@@ -165,8 +165,8 @@ function createAttributesRouter(knex) {
                 const valuesToDelete = currentDbValueStrings.filter(v => !newRequestValueStrings.includes(v));
                 
                 if (valuesToDelete.length > 0) {
-                    // Check if any value to be deleted is currently in use by product variations
-                    const usedValues = await trx('product_variation_attribute_values as pvav')
+                    // Check if any value to be deleted is currently in use by Item variations
+                    const usedValues = await trx('Item_variation_attribute_values as pvav')
                         .join('attribute_values as av', 'pvav.attribute_value_id', 'av.id')
                         .where('av.attribute_id', id)
                         .whereIn('av.value', valuesToDelete)
@@ -175,7 +175,7 @@ function createAttributesRouter(knex) {
 
                     if (usedValues.length > 0) {
                         return res.status(400).json({ 
-                            message: `Cannot delete attribute values currently in use by product variations: ${usedValues.join(', ')}. Please remove them from products first.`
+                            message: `Cannot delete attribute values currently in use by Item variations: ${usedValues.join(', ')}. Please remove them from Items first.`
                         });
                     }
                     await trx('attribute_values').where({ attribute_id: id }).whereIn('value', valuesToDelete).del();
@@ -210,7 +210,7 @@ function createAttributesRouter(knex) {
     });
 
     // DELETE /api/attributes/:id - Delete an attribute and its values
-    router.delete('/:id', checkAttributePermission('product_attribute:delete'), async (req, res, next) => {
+    router.delete('/:id', checkAttributePermission('Item_attribute:delete'), async (req, res, next) => {
         const { id } = req.params;
         try {
             await knex.transaction(async trx => {
@@ -219,14 +219,14 @@ function createAttributesRouter(knex) {
                     return res.status(404).json({ message: 'Attribute not found.' });
                 }
 
-                // Check if the attribute (any of its values) is used in product_variation_attribute_values
+                // Check if the attribute (any of its values) is used in Item_variation_attribute_values
                 const isInUse = await trx('attribute_values as av')
-                    .join('product_variation_attribute_values as pvav', 'av.id', 'pvav.attribute_value_id')
+                    .join('Item_variation_attribute_values as pvav', 'av.id', 'pvav.attribute_value_id')
                     .where('av.attribute_id', id)
                     .first();
 
                 if (isInUse) {
-                    return res.status(400).json({ message: 'Cannot delete attribute. It is currently in use by product variations. Please remove it from products first.' });
+                    return res.status(400).json({ message: 'Cannot delete attribute. It is currently in use by Item variations. Please remove it from Items first.' });
                 }
 
                 // If not in use, proceed with deletion

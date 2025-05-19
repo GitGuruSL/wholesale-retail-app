@@ -139,8 +139,8 @@ exports.getPurchaseOrderById = async (req, res) => {
         }
 
         const items = await knex('purchase_order_items')
-            .leftJoin('products', 'purchase_order_items.product_id', 'products.id')
-            .select('purchase_order_items.*', 'products.product_name', 'products.sku')
+            .leftJoin('Items', 'purchase_order_items.Item_id', 'Items.id')
+            .select('purchase_order_items.*', 'Items.Item_name', 'Items.sku')
             .where('purchase_order_items.purchase_order_id', id);
 
         res.status(200).json({ success: true, data: { ...purchaseOrder, items } });
@@ -182,8 +182,8 @@ exports.createPurchaseOrder = async (req, res) => {
     }
     // ... (rest of validation for items remains the same)
     for (const item of items) {
-        if (!item.product_id || item.quantity == null || item.unit_price == null) {
-            return res.status(400).json({ success: false, message: 'Each item must have product_id, quantity, and unit_price.' });
+        if (!item.Item_id || item.quantity == null || item.unit_price == null) {
+            return res.status(400).json({ success: false, message: 'Each item must have Item_id, quantity, and unit_price.' });
         }
         if (parseFloat(item.quantity) <= 0 || parseFloat(item.unit_price) < 0) {
             return res.status(400).json({ success: false, message: 'Item quantity must be positive and unit price non-negative.' });
@@ -201,7 +201,7 @@ exports.createPurchaseOrder = async (req, res) => {
             const subtotal = quantity * unit_price;
             calculatedTotalAmount += subtotal;
             return {
-                product_id: parseInt(item.product_id, 10),
+                Item_id: parseInt(item.Item_id, 10),
                 quantity, unit_price, subtotal,
                 tax_rate: parseFloat(item.tax_rate) || 0.00,
                 discount_amount: parseFloat(item.discount_amount) || 0.00,
@@ -231,8 +231,8 @@ exports.createPurchaseOrder = async (req, res) => {
             .select('purchase_orders.*', 'suppliers.name as supplier_name', 'stores.name as store_name')
             .where('purchase_orders.id', purchaseOrderId).first();
         const createdItems = await knex('purchase_order_items')
-            .leftJoin('products', 'purchase_order_items.product_id', 'products.id')
-            .select('purchase_order_items.*', 'products.product_name', 'products.sku')
+            .leftJoin('Items', 'purchase_order_items.Item_id', 'Items.id')
+            .select('purchase_order_items.*', 'Items.Item_name', 'Items.sku')
             .where('purchase_order_items.purchase_order_id', purchaseOrderId);
 
         res.status(201).json({ success: true, data: { ...createdPO, items: createdItems } });
@@ -240,7 +240,7 @@ exports.createPurchaseOrder = async (req, res) => {
         if (trx) await trx.rollback();
         console.error('Error creating purchase order:', error);
         if (error.routine && (error.routine.includes('_foreign_key_check') || error.message.includes('violates foreign key constraint'))) {
-             return res.status(400).json({ success: false, message: 'Invalid supplier, store, or product ID provided.' });
+             return res.status(400).json({ success: false, message: 'Invalid supplier, store, or Item ID provided.' });
         }
         res.status(500).json({ success: false, message: 'Server error while creating purchase order' });
     }
@@ -266,8 +266,8 @@ exports.updatePurchaseOrder = async (req, res) => {
     }
     if (items) {
         for (const item of items) {
-            if (!item.product_id || item.quantity == null || item.unit_price == null) {
-                return res.status(400).json({ success: false, message: 'Each item must have product_id, quantity, and unit_price.' });
+            if (!item.Item_id || item.quantity == null || item.unit_price == null) {
+                return res.status(400).json({ success: false, message: 'Each item must have Item_id, quantity, and unit_price.' });
             }
              if (parseFloat(item.quantity) <= 0 || parseFloat(item.unit_price) < 0) {
                 return res.status(400).json({ success: false, message: 'Item quantity must be positive and unit price non-negative.' });
@@ -307,7 +307,7 @@ exports.updatePurchaseOrder = async (req, res) => {
                 const subtotal = quantity * unit_price;
                 calculatedTotalAmount += subtotal;
                 return {
-                    purchase_order_id: id, product_id: parseInt(item.product_id, 10),
+                    purchase_order_id: id, Item_id: parseInt(item.Item_id, 10),
                     quantity, unit_price, subtotal,
                     tax_rate: parseFloat(item.tax_rate) || 0.00,
                     discount_amount: parseFloat(item.discount_amount) || 0.00,
@@ -331,8 +331,8 @@ exports.updatePurchaseOrder = async (req, res) => {
             .select('purchase_orders.*', 'suppliers.name as supplier_name', 'stores.name as store_name')
             .where('purchase_orders.id', id).first();
         const updatedItems = await knex('purchase_order_items')
-            .leftJoin('products', 'purchase_order_items.product_id', 'products.id')
-            .select('purchase_order_items.*', 'products.product_name', 'products.sku')
+            .leftJoin('Items', 'purchase_order_items.Item_id', 'Items.id')
+            .select('purchase_order_items.*', 'Items.Item_name', 'Items.sku')
             .where('purchase_order_items.purchase_order_id', id);
 
         res.status(200).json({ success: true, data: { ...finalUpdatedPO, items: updatedItems } });
@@ -340,7 +340,7 @@ exports.updatePurchaseOrder = async (req, res) => {
         if (trx) await trx.rollback();
         console.error(`Error updating purchase order ${id}:`, error);
          if (error.routine && (error.routine.includes('_foreign_key_check') || error.message.includes('violates foreign key constraint'))) {
-             return res.status(400).json({ success: false, message: 'Invalid supplier, store, or product ID provided during update.' });
+             return res.status(400).json({ success: false, message: 'Invalid supplier, store, or Item ID provided during update.' });
         }
         res.status(500).json({ success: false, message: 'Server error' });
     }

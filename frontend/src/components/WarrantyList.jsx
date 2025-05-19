@@ -68,7 +68,7 @@ function WarrantyList() {
             setTimeout(() => setFeedback({ message: null, type: null }), 5000);
             return;
         }
-        if (!window.confirm(`Are you sure you want to delete warranty: "${warrantyName}" (ID: ${warrantyId})?\nThis might fail if it's linked to products.`)) {
+        if (!window.confirm(`Are you sure you want to delete warranty: "${warrantyName}" (ID: ${warrantyId})?\nThis might fail if it's linked to Items.`)) {
             return;
         }
         setPageError(null);

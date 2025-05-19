@@ -12,10 +12,10 @@ import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, parseISO } from 'date-fns';
 
-// ... (interfaces Product, Supplier, Store, PurchaseOrderItemData remain the same) ...
-interface Product {
+// ... (interfaces Item, Supplier, Store, PurchaseOrderItemData remain the same) ...
+interface Item {
     id: string | number;
-    product_name: string;
+    Item_name: string;
     sku: string;
     cost_price?: number;
 }
@@ -32,15 +32,15 @@ interface Store {
 
 interface PurchaseOrderItemData {
     id?: string | number;
-    product_id: string | number | null;
-    product_name?: string;
+    Item_id: string | number | null;
+    Item_name?: string;
     quantity: string;
     unit_price: string;
     subtotal?: number;
 }
 
 const initialItemData: PurchaseOrderItemData = {
-    product_id: null,
+    Item_id: null,
     quantity: '1',
     unit_price: '0.00',
 };
@@ -75,12 +75,12 @@ function PurchaseOrderForm() {
         items: [initialItemData]
     });
 
-    const [products, setProducts] = useState<Product[]>([]);
+    const [Items, setItems] = useState<Item[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [stores, setStores] = useState<Store[]>([]);
 
-    // Keep track of the supplier ID used for the current product list
-    const [productFilterSupplierId, setProductFilterSupplierId] = useState<string | number | null>(null);
+    // Keep track of the supplier ID used for the current Item list
+    const [ItemFilterSupplierId, setItemFilterSupplierId] = useState<string | number | null>(null);
 
     const [initialLoading, setInitialLoading] = useState(true); // Start true for all modes
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -102,7 +102,7 @@ function PurchaseOrderForm() {
         }
     }, [user]);
 
-    // Modified to accept supplierId for filtering products
+    // Modified to accept supplierId for filtering Items
     const fetchDropdownData = useCallback(async (filterBySupplierId: string | number | null) => {
         console.log(`[PurchaseOrderForm] fetchDropdownData called. isAuthenticated: ${isAuthenticated}, filterBySupplierId: ${filterBySupplierId}`);
         if (!isAuthenticated) {
@@ -110,11 +110,11 @@ function PurchaseOrderForm() {
             return;
         }
         try {
-            console.log("[PurchaseOrderForm] fetchDropdownData: Attempting to fetch products and suppliers.");
+            console.log("[PurchaseOrderForm] fetchDropdownData: Attempting to fetch Items and suppliers.");
             
-            let productApiUrl = '/products?limit=1000&include=category,subCategory,store,brand,baseUnit'; // Added include back
+            let ItemApiUrl = '/Items?limit=1000&include=category,subCategory,store,brand,baseUnit'; // Added include back
             if (filterBySupplierId) {
-                productApiUrl += `&supplier_id=${filterBySupplierId}`;
+                ItemApiUrl += `&supplier_id=${filterBySupplierId}`;
             }
             
             // Fetch suppliers only if they are not already loaded or if explicitly needed
@@ -122,29 +122,29 @@ function PurchaseOrderForm() {
                 ? apiInstance.get('/suppliers') 
                 : Promise.resolve({ data: { data: suppliers } }); // Simulate API response if already loaded
 
-            const [productsRes, suppliersRes] = await Promise.all([
-                apiInstance.get(productApiUrl),
+            const [ItemsRes, suppliersRes] = await Promise.all([
+                apiInstance.get(ItemApiUrl),
                 suppliersPromise,
             ]);
 
-            console.log(`[PurchaseOrderForm] fetchDropdownData: Products API URL: ${productApiUrl}`);
-            console.log("[PurchaseOrderForm] fetchDropdownData: Raw productsRes.data:", JSON.stringify(productsRes.data, null, 2));
+            console.log(`[PurchaseOrderForm] fetchDropdownData: Items API URL: ${ItemApiUrl}`);
+            console.log("[PurchaseOrderForm] fetchDropdownData: Raw ItemsRes.data:", JSON.stringify(ItemsRes.data, null, 2));
 
-            const productsData = productsRes.data?.products || productsRes.data?.data; // Adjusted to match product list structure
-            if (Array.isArray(productsData)) {
-                console.log(`[PurchaseOrderForm] fetchDropdownData: Setting products (filtered by supplier: ${filterBySupplierId || 'All'}):`, productsData.length, "items");
-                setProducts(productsData);
-                setProductFilterSupplierId(filterBySupplierId); // Track current filter
+            const ItemsData = ItemsRes.data?.Items || ItemsRes.data?.data; // Adjusted to match Item list structure
+            if (Array.isArray(ItemsData)) {
+                console.log(`[PurchaseOrderForm] fetchDropdownData: Setting Items (filtered by supplier: ${filterBySupplierId || 'All'}):`, ItemsData.length, "items");
+                setItems(ItemsData);
+                setItemFilterSupplierId(filterBySupplierId); // Track current filter
 
-                // After updating products, validate existing items
+                // After updating Items, validate existing items
                 setFormData(prevFormData => {
                     const newItems = prevFormData.items.map(item => {
-                        if (item.product_id && !productsData.some(p => p.id === item.product_id)) {
-                            // Product is no longer in the filtered list, reset it
+                        if (item.Item_id && !ItemsData.some(p => p.id === item.Item_id)) {
+                            // Item is no longer in the filtered list, reset it
                             return {
                                 ...item,
-                                product_id: null,
-                                product_name: '',
+                                Item_id: null,
+                                Item_name: '',
                                 unit_price: '0.00', // Or keep if user manually entered
                             };
                         }
@@ -154,9 +154,9 @@ function PurchaseOrderForm() {
                 });
 
             } else {
-                console.warn("[PurchaseOrderForm] Products API response was not an array. Response:", productsRes.data);
-                setProducts([]);
-                setProductFilterSupplierId(null);
+                console.warn("[PurchaseOrderForm] Items API response was not an array. Response:", ItemsRes.data);
+                setItems([]);
+                setItemFilterSupplierId(null);
             }
 
             if (suppliersRes.data) { // Check if suppliersRes.data exists (it will from Promise.resolve)
@@ -174,13 +174,13 @@ function PurchaseOrderForm() {
             }
 
         } catch (err) {
-            console.error("[PurchaseOrderForm] Error fetching products/suppliers:", err);
-            setPageError("Failed to load required product/supplier data.");
-            setProducts([]);
+            console.error("[PurchaseOrderForm] Error fetching Items/suppliers:", err);
+            setPageError("Failed to load required Item/supplier data.");
+            setItems([]);
             if (suppliers.length === 0) setSuppliers([]); // Only reset if initially fetching
-            setProductFilterSupplierId(null);
+            setItemFilterSupplierId(null);
         }
-    }, [isAuthenticated, suppliers]); // Removed products from dependencies here to avoid loop, manage via productFilterSupplierId
+    }, [isAuthenticated, suppliers]); // Removed Items from dependencies here to avoid loop, manage via ItemFilterSupplierId
 
 
     const fetchPurchaseOrderDetails = useCallback(async () => {
@@ -208,8 +208,8 @@ function PurchaseOrderForm() {
                 notes: poData.notes || '',
                 items: poData.items?.map((item: any) => ({
                     id: item.id,
-                    product_id: item.product_id,
-                    product_name: item.product_name,
+                    Item_id: item.Item_id,
+                    Item_name: item.Item_name,
                     quantity: String(item.quantity || '1'),
                     unit_price: String(item.unit_price || '0.00'),
                     subtotal: item.subtotal
@@ -253,13 +253,13 @@ function PurchaseOrderForm() {
         // For subsequent runs due to minor data changes (like stores list),
         // we might not want to flash the main loader.
 
-        // Fetch products based on current formData.supplier_id
-        // This will run if supplier_id changes or if products haven't been fetched for the current supplier
-        if (isAuthenticated && (productFilterSupplierId !== formData.supplier_id || products.length === 0 && !productFilterSupplierId)) {
-             console.log(`[PurchaseOrderForm] useEffect: Supplier changed or products not loaded. Current form supplier: ${formData.supplier_id}, Product filter supplier: ${productFilterSupplierId}`);
+        // Fetch Items based on current formData.supplier_id
+        // This will run if supplier_id changes or if Items haven't been fetched for the current supplier
+        if (isAuthenticated && (ItemFilterSupplierId !== formData.supplier_id || Items.length === 0 && !ItemFilterSupplierId)) {
+             console.log(`[PurchaseOrderForm] useEffect: Supplier changed or Items not loaded. Current form supplier: ${formData.supplier_id}, Item filter supplier: ${ItemFilterSupplierId}`);
              fetchDropdownData(formData.supplier_id);
         } else if (isAuthenticated && suppliers.length === 0) {
-            // If only suppliers are missing, fetch them (products might be loaded with no filter)
+            // If only suppliers are missing, fetch them (Items might be loaded with no filter)
             fetchDropdownData(null);
         }
 
@@ -270,7 +270,7 @@ function PurchaseOrderForm() {
 
         if (isEditing) {
             // Fetch PO details only if not already fetched or if purchaseOrderId changes
-            // This check might need refinement if PO details depend on products/suppliers being loaded first
+            // This check might need refinement if PO details depend on Items/suppliers being loaded first
             if (!formData.items.some(item => item.id) && purchaseOrderId) { // Simple check if items have IDs (from fetched PO)
                  fetchPurchaseOrderDetails();
             }
@@ -301,7 +301,7 @@ function PurchaseOrderForm() {
                 ...prev,
                 store_id: determinedStoreId, // Update based on determination
                 order_date: prev.order_date || new Date(), // Keep if user already interacted
-                items: prev.items.length > 0 && prev.items[0].product_id ? prev.items : [initialItemData] // More robust reset
+                items: prev.items.length > 0 && prev.items[0].Item_id ? prev.items : [initialItemData] // More robust reset
             }));
             
             if (newPageError) {
@@ -320,13 +320,13 @@ function PurchaseOrderForm() {
         isEditing, authLoading, isAuthenticated, userCan, requiredPermission, user,
         fetchPurchaseOrderDetails, fetchDropdownData, fetchStoresForAdmin,
         reactRouterLocation.search, 
-        // Consider if 'stores', 'products', 'suppliers' are truly needed here
+        // Consider if 'stores', 'Items', 'suppliers' are truly needed here
         // if their fetching is guarded and form updates are handled carefully.
         // For now, keeping 'stores' as it influences store_id logic.
         stores,
-        formData.supplier_id, // Key dependency for re-fetching products
-        productFilterSupplierId, // To compare against formData.supplier_id
-        products.length, // Re-evaluate if products list itself changes
+        formData.supplier_id, // Key dependency for re-fetching Items
+        ItemFilterSupplierId, // To compare against formData.supplier_id
+        Items.length, // Re-evaluate if Items list itself changes
         purchaseOrderId, // Added purchaseOrderId
         suppliers.length // Added suppliers.length
     ]);
@@ -343,9 +343,9 @@ function PurchaseOrderForm() {
         setFormData(newFormData);
 
         if (name === 'supplier_id') {
-            // Products will be refetched by the useEffect due to formData.supplier_id changing
+            // Items will be refetched by the useEffect due to formData.supplier_id changing
             // No need to call fetchDropdownData directly here if useEffect handles it.
-            console.log(`[PurchaseOrderForm] Supplier changed to: ${value}. Product list will update.`);
+            console.log(`[PurchaseOrderForm] Supplier changed to: ${value}. Item list will update.`);
         }
         if (formErrors[name]) setFormErrors(prev => ({ ...prev, [name]: null }));
     };
@@ -360,11 +360,11 @@ function PurchaseOrderForm() {
         const currentItem = { ...newItems[index] };
         (currentItem as any)[field] = value;
 
-        if (field === 'product_id' && value) {
-            const selectedProduct = products.find(p => p.id === value);
-            if (selectedProduct) {
-                currentItem.product_name = selectedProduct.product_name;
-                currentItem.unit_price = String(selectedProduct.cost_price || '0.00');
+        if (field === 'Item_id' && value) {
+            const selectedItem = Items.find(p => p.id === value);
+            if (selectedItem) {
+                currentItem.Item_name = selectedItem.Item_name;
+                currentItem.unit_price = String(selectedItem.cost_price || '0.00');
             }
         }
         
@@ -428,12 +428,12 @@ function PurchaseOrderForm() {
             expected_delivery_date: formData.expected_delivery_date ? formatDateForAPI(formData.expected_delivery_date) : null,
             items: formData.items.map(item => ({
                 ...item,
-                product_id: item.product_id ? parseInt(String(item.product_id), 10) : null,
+                Item_id: item.Item_id ? parseInt(String(item.Item_id), 10) : null,
                 quantity: parseFloat(String(item.quantity)) || 0,
                 unit_price: parseFloat(String(item.unit_price)) || 0,
                 tax_rate: parseFloat(String(item.tax_rate)) || 0,
                 discount_amount: parseFloat(String(item.discount_amount)) || 0,
-            })).filter(item => item.product_id && item.quantity > 0) // Ensure only valid items are sent
+            })).filter(item => item.Item_id && item.quantity > 0) // Ensure only valid items are sent
         };
         console.log("[PurchaseOrderForm] Payload to be sent:", JSON.stringify(payload, null, 2));
 
@@ -625,7 +625,7 @@ function PurchaseOrderForm() {
                         <Table size="small">
                             <TableHead>
                                 <TableRow>
-                                    <TableCell sx={{width: '40%'}}>Product</TableCell>
+                                    <TableCell sx={{width: '40%'}}>Item</TableCell>
                                     <TableCell sx={{width: '15%'}}>Quantity</TableCell>
                                     <TableCell sx={{width: '20%'}}>Unit Price</TableCell>
                                     <TableCell sx={{width: '20%'}}>Subtotal</TableCell>
@@ -641,16 +641,16 @@ function PurchaseOrderForm() {
                                         <TableRow key={index}>
                                             <TableCell>
                                                 <Autocomplete
-                                                    options={products}
-                                                    getOptionLabel={(option) => `${option.product_name} (${option.sku || 'N/A'})`}
-                                                    value={products.find(p => p.id === item.product_id) || null}
-                                                    onChange={(_, newValue) => handleItemChange(index, 'product_id', newValue ? newValue.id : null)}
+                                                    options={Items}
+                                                    getOptionLabel={(option) => `${option.Item_name} (${option.sku || 'N/A'})`}
+                                                    value={Items.find(p => p.id === item.Item_id) || null}
+                                                    onChange={(_, newValue) => handleItemChange(index, 'Item_id', newValue ? newValue.id : null)}
                                                     renderInput={(params) => (
                                                         <TextField
                                                             {...params}
-                                                            placeholder="Select Product"
-                                                            error={Boolean(formErrors[`items[${index}].product_id`])}
-                                                            helperText={formErrors[`items[${index}].product_id`]}
+                                                            placeholder="Select Item"
+                                                            error={Boolean(formErrors[`items[${index}].Item_id`])}
+                                                            helperText={formErrors[`items[${index}].Item_id`]}
                                                             size="small"
                                                         />
                                                     )}

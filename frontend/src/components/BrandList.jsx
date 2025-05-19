@@ -74,7 +74,7 @@ function BrandList() {
         return;
     }
 
-    if (!window.confirm(`Are you sure you want to delete brand: "${brandName}" (ID: ${brandId})? This might fail if it's linked to products.`)) {
+    if (!window.confirm(`Are you sure you want to delete brand: "${brandName}" (ID: ${brandId})? This might fail if it's linked to Items.`)) {
       return;
     }
     setPageError(null); // Clear previous page errors before new action

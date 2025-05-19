@@ -11,7 +11,7 @@ function createManufacturersRouter(knex) {
 
     // --- Helper: Check for dependencies ---
     const isManufacturerInUse = async (manufacturerId) => { /* ... same as before ... */
-        const countResult = await knex('products').where({ manufacturer_id: manufacturerId }).count('id as count').first();
+        const countResult = await knex('Items').where({ manufacturer_id: manufacturerId }).count('id as count').first();
         return countResult && countResult.count > 0;
      };
 
@@ -134,7 +134,7 @@ function createManufacturersRouter(knex) {
 
         try {
             const manufacturerUsed = await isManufacturerInUse(manufacturerId);
-            if (manufacturerUsed) return res.status(409).json({ message: 'Conflict: Cannot delete manufacturer because it is used by products.' });
+            if (manufacturerUsed) return res.status(409).json({ message: 'Conflict: Cannot delete manufacturer because it is used by Items.' });
 
             const count = await knex('manufacturers').where({ id: manufacturerId }).del();
             if (count === 0) return res.status(404).json({ message: `Manufacturer with ID ${id} not found.` });

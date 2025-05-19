@@ -9,9 +9,9 @@ const express = require('express');
 function createBrandsRouter(knex) {
     const router = express.Router();
 
-    // --- Helper: Check for Product dependencies ---
-    const hasProducts = async (brandId) => {
-        const countResult = await knex('products')
+    // --- Helper: Check for Item dependencies ---
+    const hasItems = async (brandId) => {
+        const countResult = await knex('Items')
                                 .where({ brand_id: brandId })
                                 .count('id as count')
                                 .first();
@@ -142,10 +142,10 @@ function createBrandsRouter(knex) {
         }
 
         try {
-            // Check for dependencies (products using this brand)
-            const brandHasProducts = await hasProducts(parseInt(id));
-             if (brandHasProducts) {
-                return res.status(409).json({ message: 'Conflict: Cannot delete brand because it has associated products.' });
+            // Check for dependencies (Items using this brand)
+            const brandHasItems = await hasItems(parseInt(id));
+             if (brandHasItems) {
+                return res.status(409).json({ message: 'Conflict: Cannot delete brand because it has associated Items.' });
             }
 
             // Proceed with deletion

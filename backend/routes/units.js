@@ -10,23 +10,23 @@ function createUnitsRouter(knex) {
     const router = express.Router();
 
     // --- Helper: Check for dependencies ---
-    // Checks if a unit is used as a base unit for any product OR
-    // if it's referenced in the product_units table.
+    // Checks if a unit is used as a base unit for any Item OR
+    // if it's referenced in the Item_units table.
     const isUnitInUse = async (unitId) => {
-        // Check product base units
-        const productBaseCount = await knex('products')
+        // Check Item base units
+        const ItemBaseCount = await knex('Items')
                                      .where({ base_unit_id: unitId })
                                      .count('id as count').first();
-        if (productBaseCount && productBaseCount.count > 0) return true;
+        if (ItemBaseCount && ItemBaseCount.count > 0) return true;
 
-        // Check product_units table (unit_id or base_unit_id)
-        const productUnitsTableExists = await knex.schema.hasTable('product_units');
-        if (productUnitsTableExists) {
-             const productUnitCount = await knex('product_units')
+        // Check Item_units table (unit_id or base_unit_id)
+        const ItemUnitsTableExists = await knex.schema.hasTable('Item_units');
+        if (ItemUnitsTableExists) {
+             const ItemUnitCount = await knex('Item_units')
                                           .where({ unit_id: unitId })
                                           .orWhere({ base_unit_id: unitId })
                                           .count('id as count').first();
-             if (productUnitCount && productUnitCount.count > 0) return true;
+             if (ItemUnitCount && ItemUnitCount.count > 0) return true;
         }
         // Add checks for stock, orders etc. if those tables reference unit_id directly
 
@@ -154,7 +154,7 @@ function createUnitsRouter(knex) {
             // ** Check for dependencies before deleting **
             const unitUsed = await isUnitInUse(unitId);
             if (unitUsed) {
-                 return res.status(409).json({ message: 'Conflict: Cannot delete unit because it is referenced by products or product unit configurations.' });
+                 return res.status(409).json({ message: 'Conflict: Cannot delete unit because it is referenced by Items or Item unit configurations.' });
             }
 
             // Proceed with deletion

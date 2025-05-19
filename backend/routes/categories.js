@@ -23,9 +23,9 @@ function createCategoriesRouter(knex) {
         return countResult && countResult.count > 0;
     };
 
-     // --- Helper: Check for Product dependencies ---
-     const hasProducts = async (categoryId) => {
-        const countResult = await knex('products')
+     // --- Helper: Check for Item dependencies ---
+     const hasItems = async (categoryId) => {
+        const countResult = await knex('Items')
                                 .where({ category_id: categoryId })
                                 .count('id as count')
                                 .first();
@@ -171,9 +171,9 @@ function createCategoriesRouter(knex) {
             if (categoryHasSubCategories) {
                 return res.status(409).json({ message: 'Conflict: Cannot delete category because it has associated sub-categories.' });
             }
-            const categoryHasProducts = await hasProducts(parseInt(id));
-             if (categoryHasProducts) {
-                return res.status(409).json({ message: 'Conflict: Cannot delete category because it has associated products.' });
+            const categoryHasItems = await hasItems(parseInt(id));
+             if (categoryHasItems) {
+                return res.status(409).json({ message: 'Conflict: Cannot delete category because it has associated Items.' });
             }
 
             // Proceed with deletion

@@ -1,8 +1,8 @@
 exports.seed = async function(knex) {
   // Define category IDs (these should match the IDs in your 05_permission_categories.js seed)
   const CAT_USER_ROLE_PERM = 1;
-  const CAT_STORE_PRODUCT_CATALOG = 2;
-  const CAT_PRODUCT_CONFIG = 3;
+  const CAT_STORE_Item_CATALOG = 2;
+  const CAT_Item_CONFIG = 3;
   const CAT_OPERATIONS = 4;
   const CAT_SYSTEM_REPORTS = 5;
   const CAT_OTHER = 6; // For any uncategorized or future permissions
@@ -32,93 +32,93 @@ exports.seed = async function(knex) {
     { id: 23, name: 'permission:delete', display_name: 'Delete Permissions', description: 'Can delete system permissions', permission_category_id: CAT_USER_ROLE_PERM, sub_group_key: 'permission', sub_group_display_name: 'Permission Management' },
 
 
-    // Store Management (Category: Store & Product Catalog)
-    { id: 30, name: 'store:create', display_name: 'Create Stores', description: 'Can create new stores', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'store', sub_group_display_name: 'Store Core' },
-    { id: 31, name: 'store:read', display_name: 'View Stores', description: 'Can view store details', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'store', sub_group_display_name: 'Store Core' },
-    { id: 32, name: 'store:update', display_name: 'Update Stores', description: 'Can update store details', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'store', sub_group_display_name: 'Store Core' },
-    { id: 33, name: 'store:delete', display_name: 'Delete Stores', description: 'Can delete stores', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'store', sub_group_display_name: 'Store Core' },
+    // Store Management (Category: Store & Item Catalog)
+    { id: 30, name: 'store:create', display_name: 'Create Stores', description: 'Can create new stores', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'store', sub_group_display_name: 'Store Core' },
+    { id: 31, name: 'store:read', display_name: 'View Stores', description: 'Can view store details', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'store', sub_group_display_name: 'Store Core' },
+    { id: 32, name: 'store:update', display_name: 'Update Stores', description: 'Can update store details', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'store', sub_group_display_name: 'Store Core' },
+    { id: 33, name: 'store:delete', display_name: 'Delete Stores', description: 'Can delete stores', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'store', sub_group_display_name: 'Store Core' },
 
-    // Product Management (Core) (Category: Store & Product Catalog)
-    { id: 40, name: 'product:create', display_name: 'Create Products', description: 'Can create new products', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'product', sub_group_display_name: 'Product Core' },
-    { id: 41, name: 'product:read', display_name: 'View Products', description: 'Can view products', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'product', sub_group_display_name: 'Product Core' },
-    { id: 42, name: 'product:update', display_name: 'Update Products', description: 'Can update products', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'product', sub_group_display_name: 'Product Core' },
-    { id: 43, name: 'product:delete', display_name: 'Delete Products', description: 'Can delete products', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'product', sub_group_display_name: 'Product Core' },
+    // Item Management (Core) (Category: Store & Item Catalog)
+    { id: 40, name: 'Item:create', display_name: 'Create Items', description: 'Can create new Items', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'Item', sub_group_display_name: 'Item Core' },
+    { id: 41, name: 'Item:read', display_name: 'View Items', description: 'Can view Items', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'Item', sub_group_display_name: 'Item Core' },
+    { id: 42, name: 'Item:update', display_name: 'Update Items', description: 'Can update Items', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'Item', sub_group_display_name: 'Item Core' },
+    { id: 43, name: 'Item:delete', display_name: 'Delete Items', description: 'Can delete Items', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'Item', sub_group_display_name: 'Item Core' },
 
-    // Product Catalog - Categories (Category: Store & Product Catalog)
-    { id: 50, name: 'category:create', display_name: 'Create Categories', description: 'Can create product categories', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'category', sub_group_display_name: 'Product Categories' },
-    { id: 51, name: 'category:read', display_name: 'View Categories', description: 'Can view product categories', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'category', sub_group_display_name: 'Product Categories' },
-    { id: 52, name: 'category:update', display_name: 'Update Categories', description: 'Can update product categories', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'category', sub_group_display_name: 'Product Categories' },
-    { id: 53, name: 'category:delete', display_name: 'Delete Categories', description: 'Can delete product categories', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'category', sub_group_display_name: 'Product Categories' },
+    // Item Catalog - Categories (Category: Store & Item Catalog)
+    { id: 50, name: 'category:create', display_name: 'Create Categories', description: 'Can create Item categories', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'category', sub_group_display_name: 'Item Categories' },
+    { id: 51, name: 'category:read', display_name: 'View Categories', description: 'Can view Item categories', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'category', sub_group_display_name: 'Item Categories' },
+    { id: 52, name: 'category:update', display_name: 'Update Categories', description: 'Can update Item categories', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'category', sub_group_display_name: 'Item Categories' },
+    { id: 53, name: 'category:delete', display_name: 'Delete Categories', description: 'Can delete Item categories', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'category', sub_group_display_name: 'Item Categories' },
 
-    // Product Catalog - Sub-Categories (Category: Store & Product Catalog)
-    { id: 60, name: 'subcategory:create', display_name: 'Create Sub-Categories', description: 'Can create product sub-categories', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'subcategory', sub_group_display_name: 'Product Sub-Categories' },
-    { id: 61, name: 'subcategory:read', display_name: 'View Sub-Categories', description: 'Can view product sub-categories', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'subcategory', sub_group_display_name: 'Product Sub-Categories' },
-    { id: 62, name: 'subcategory:update', display_name: 'Update Sub-Categories', description: 'Can update product sub-categories', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'subcategory', sub_group_display_name: 'Product Sub-Categories' },
-    { id: 63, name: 'subcategory:delete', display_name: 'Delete Sub-Categories', description: 'Can delete product sub-categories', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'subcategory', sub_group_display_name: 'Product Sub-Categories' },
+    // Item Catalog - Sub-Categories (Category: Store & Item Catalog)
+    { id: 60, name: 'subcategory:create', display_name: 'Create Sub-Categories', description: 'Can create Item sub-categories', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'subcategory', sub_group_display_name: 'Item Sub-Categories' },
+    { id: 61, name: 'subcategory:read', display_name: 'View Sub-Categories', description: 'Can view Item sub-categories', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'subcategory', sub_group_display_name: 'Item Sub-Categories' },
+    { id: 62, name: 'subcategory:update', display_name: 'Update Sub-Categories', description: 'Can update Item sub-categories', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'subcategory', sub_group_display_name: 'Item Sub-Categories' },
+    { id: 63, name: 'subcategory:delete', display_name: 'Delete Sub-Categories', description: 'Can delete Item sub-categories', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'subcategory', sub_group_display_name: 'Item Sub-Categories' },
 
-    // Product Catalog - Brands (Category: Store & Product Catalog)
-    { id: 70, name: 'brand:create', display_name: 'Create Brands', description: 'Can create product brands', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'brand', sub_group_display_name: 'Product Brands' },
-    { id: 71, name: 'brand:read', display_name: 'View Brands', description: 'Can view product brands', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'brand', sub_group_display_name: 'Product Brands' },
-    { id: 72, name: 'brand:update', display_name: 'Update Brands', description: 'Can update product brands', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'brand', sub_group_display_name: 'Product Brands' },
-    { id: 73, name: 'brand:delete', display_name: 'Delete Brands', description: 'Can delete product brands', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'brand', sub_group_display_name: 'Product Brands' },
+    // Item Catalog - Brands (Category: Store & Item Catalog)
+    { id: 70, name: 'brand:create', display_name: 'Create Brands', description: 'Can create Item brands', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'brand', sub_group_display_name: 'Item Brands' },
+    { id: 71, name: 'brand:read', display_name: 'View Brands', description: 'Can view Item brands', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'brand', sub_group_display_name: 'Item Brands' },
+    { id: 72, name: 'brand:update', display_name: 'Update Brands', description: 'Can update Item brands', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'brand', sub_group_display_name: 'Item Brands' },
+    { id: 73, name: 'brand:delete', display_name: 'Delete Brands', description: 'Can delete Item brands', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'brand', sub_group_display_name: 'Item Brands' },
 
-    // Product Catalog - Special Categories (Category: Store & Product Catalog)
-    { id: 80, name: 'specialcategory:create', display_name: 'Create Special Categories', description: 'Can create special product categories', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'specialcategory', sub_group_display_name: 'Product Special Categories' },
-    { id: 81, name: 'specialcategory:read', display_name: 'View Special Categories', description: 'Can view special product categories', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'specialcategory', sub_group_display_name: 'Product Special Categories' },
-    { id: 82, name: 'specialcategory:update', display_name: 'Update Special Categories', description: 'Can update special product categories', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'specialcategory', sub_group_display_name: 'Product Special Categories' },
-    { id: 83, name: 'specialcategory:delete', display_name: 'Delete Special Categories', description: 'Can delete special product categories', permission_category_id: CAT_STORE_PRODUCT_CATALOG, sub_group_key: 'specialcategory', sub_group_display_name: 'Product Special Categories' },
+    // Item Catalog - Special Categories (Category: Store & Item Catalog)
+    { id: 80, name: 'specialcategory:create', display_name: 'Create Special Categories', description: 'Can create special Item categories', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'specialcategory', sub_group_display_name: 'Item Special Categories' },
+    { id: 81, name: 'specialcategory:read', display_name: 'View Special Categories', description: 'Can view special Item categories', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'specialcategory', sub_group_display_name: 'Item Special Categories' },
+    { id: 82, name: 'specialcategory:update', display_name: 'Update Special Categories', description: 'Can update special Item categories', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'specialcategory', sub_group_display_name: 'Item Special Categories' },
+    { id: 83, name: 'specialcategory:delete', display_name: 'Delete Special Categories', description: 'Can delete special Item categories', permission_category_id: CAT_STORE_Item_CATALOG, sub_group_key: 'specialcategory', sub_group_display_name: 'Item Special Categories' },
 
-    // Product Configuration - Attributes (Category: Product Configuration)
-    { id: 90, name: 'product_attribute:create', display_name: 'Create Product Attributes', description: 'Can create product attributes', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'product_attribute', sub_group_display_name: 'Product Attributes' },
-    { id: 91, name: 'product_attribute:read', display_name: 'View Product Attributes', description: 'Can view product attributes', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'product_attribute', sub_group_display_name: 'Product Attributes' },
-    { id: 92, name: 'product_attribute:update', display_name: 'Update Product Attributes', description: 'Can update product attributes', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'product_attribute', sub_group_display_name: 'Product Attributes' },
-    { id: 93, name: 'product_attribute:delete', display_name: 'Delete Product Attributes', description: 'Can delete product attributes', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'product_attribute', sub_group_display_name: 'Product Attributes' },
+    // Item Configuration - Attributes (Category: Item Configuration)
+    { id: 90, name: 'Item_attribute:create', display_name: 'Create Item Attributes', description: 'Can create Item attributes', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'Item_attribute', sub_group_display_name: 'Item Attributes' },
+    { id: 91, name: 'Item_attribute:read', display_name: 'View Item Attributes', description: 'Can view Item attributes', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'Item_attribute', sub_group_display_name: 'Item Attributes' },
+    { id: 92, name: 'Item_attribute:update', display_name: 'Update Item Attributes', description: 'Can update Item attributes', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'Item_attribute', sub_group_display_name: 'Item Attributes' },
+    { id: 93, name: 'Item_attribute:delete', display_name: 'Delete Item Attributes', description: 'Can delete Item attributes', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'Item_attribute', sub_group_display_name: 'Item Attributes' },
 
-    // Product Configuration - Tax Types (Category: Product Configuration)
-    { id: 100, name: 'tax_type:create', display_name: 'Create Tax Types', description: 'Can create tax types', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'tax_type', sub_group_display_name: 'Tax Types' },
-    { id: 101, name: 'tax_type:read', display_name: 'View Tax Types', description: 'Can view tax types', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'tax_type', sub_group_display_name: 'Tax Types' },
-    { id: 102, name: 'tax_type:update', display_name: 'Update Tax Types', description: 'Can update tax types', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'tax_type', sub_group_display_name: 'Tax Types' },
-    { id: 103, name: 'tax_type:delete', display_name: 'Delete Tax Types', description: 'Can delete tax types', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'tax_type', sub_group_display_name: 'Tax Types' },
+    // Item Configuration - Tax Types (Category: Item Configuration)
+    { id: 100, name: 'tax_type:create', display_name: 'Create Tax Types', description: 'Can create tax types', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'tax_type', sub_group_display_name: 'Tax Types' },
+    { id: 101, name: 'tax_type:read', display_name: 'View Tax Types', description: 'Can view tax types', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'tax_type', sub_group_display_name: 'Tax Types' },
+    { id: 102, name: 'tax_type:update', display_name: 'Update Tax Types', description: 'Can update tax types', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'tax_type', sub_group_display_name: 'Tax Types' },
+    { id: 103, name: 'tax_type:delete', display_name: 'Delete Tax Types', description: 'Can delete tax types', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'tax_type', sub_group_display_name: 'Tax Types' },
 
-    // Product Configuration - Taxes (Category: Product Configuration)
-    { id: 110, name: 'tax:create', display_name: 'Create Taxes', description: 'Can create taxes', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'tax', sub_group_display_name: 'Taxes' },
-    { id: 111, name: 'tax:read', display_name: 'View Taxes', description: 'Can view taxes', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'tax', sub_group_display_name: 'Taxes' },
-    { id: 112, name: 'tax:update', display_name: 'Update Taxes', description: 'Can update taxes', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'tax', sub_group_display_name: 'Taxes' },
-    { id: 113, name: 'tax:delete', display_name: 'Delete Taxes', description: 'Can delete taxes', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'tax', sub_group_display_name: 'Taxes' },
-    { id: 114, name: 'tax:manage', display_name: 'Manage Taxes', description: 'General permission to manage taxes', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'tax', sub_group_display_name: 'Taxes' },
+    // Item Configuration - Taxes (Category: Item Configuration)
+    { id: 110, name: 'tax:create', display_name: 'Create Taxes', description: 'Can create taxes', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'tax', sub_group_display_name: 'Taxes' },
+    { id: 111, name: 'tax:read', display_name: 'View Taxes', description: 'Can view taxes', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'tax', sub_group_display_name: 'Taxes' },
+    { id: 112, name: 'tax:update', display_name: 'Update Taxes', description: 'Can update taxes', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'tax', sub_group_display_name: 'Taxes' },
+    { id: 113, name: 'tax:delete', display_name: 'Delete Taxes', description: 'Can delete taxes', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'tax', sub_group_display_name: 'Taxes' },
+    { id: 114, name: 'tax:manage', display_name: 'Manage Taxes', description: 'General permission to manage taxes', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'tax', sub_group_display_name: 'Taxes' },
 
-    // Product Configuration - General Settings (Category: Product Configuration)
-    { id: 120, name: 'product_settings:read', display_name: 'Access Product Settings', description: 'Can access product settings section', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'product_settings', sub_group_display_name: 'Product Settings General' },
+    // Item Configuration - General Settings (Category: Item Configuration)
+    { id: 120, name: 'Item_settings:read', display_name: 'Access Item Settings', description: 'Can access Item settings section', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'Item_settings', sub_group_display_name: 'Item Settings General' },
 
-    // Product Configuration - Units (Category: Product Configuration)
-    { id: 121, name: 'unit:create', display_name: 'Create Units', description: 'Can create product units', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'unit', sub_group_display_name: 'Product Units' },
-    { id: 122, name: 'unit:read', display_name: 'View Units', description: 'Can view product units', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'unit', sub_group_display_name: 'Product Units' },
-    { id: 123, name: 'unit:update', display_name: 'Update Units', description: 'Can update product units', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'unit', sub_group_display_name: 'Product Units' },
-    { id: 124, name: 'unit:delete', display_name: 'Delete Units', description: 'Can delete product units', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'unit', sub_group_display_name: 'Product Units' },
+    // Item Configuration - Units (Category: Item Configuration)
+    { id: 121, name: 'unit:create', display_name: 'Create Units', description: 'Can create Item units', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'unit', sub_group_display_name: 'Item Units' },
+    { id: 122, name: 'unit:read', display_name: 'View Units', description: 'Can view Item units', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'unit', sub_group_display_name: 'Item Units' },
+    { id: 123, name: 'unit:update', display_name: 'Update Units', description: 'Can update Item units', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'unit', sub_group_display_name: 'Item Units' },
+    { id: 124, name: 'unit:delete', display_name: 'Delete Units', description: 'Can delete Item units', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'unit', sub_group_display_name: 'Item Units' },
 
-    // Product Configuration - Manufacturers (Category: Product Configuration)
-    { id: 130, name: 'manufacturer:create', display_name: 'Create Manufacturers', description: 'Can create manufacturers', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'manufacturer', sub_group_display_name: 'Product Manufacturers' },
-    { id: 131, name: 'manufacturer:read', display_name: 'View Manufacturers', description: 'Can view manufacturers', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'manufacturer', sub_group_display_name: 'Product Manufacturers' },
-    { id: 132, name: 'manufacturer:update', display_name: 'Update Manufacturers', description: 'Can update manufacturers', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'manufacturer', sub_group_display_name: 'Product Manufacturers' },
-    { id: 133, name: 'manufacturer:delete', display_name: 'Delete Manufacturers', description: 'Can delete manufacturers', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'manufacturer', sub_group_display_name: 'Product Manufacturers' },
+    // Item Configuration - Manufacturers (Category: Item Configuration)
+    { id: 130, name: 'manufacturer:create', display_name: 'Create Manufacturers', description: 'Can create manufacturers', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'manufacturer', sub_group_display_name: 'Item Manufacturers' },
+    { id: 131, name: 'manufacturer:read', display_name: 'View Manufacturers', description: 'Can view manufacturers', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'manufacturer', sub_group_display_name: 'Item Manufacturers' },
+    { id: 132, name: 'manufacturer:update', display_name: 'Update Manufacturers', description: 'Can update manufacturers', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'manufacturer', sub_group_display_name: 'Item Manufacturers' },
+    { id: 133, name: 'manufacturer:delete', display_name: 'Delete Manufacturers', description: 'Can delete manufacturers', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'manufacturer', sub_group_display_name: 'Item Manufacturers' },
 
-    // Product Configuration - Warranties (Category: Product Configuration)
-    { id: 140, name: 'warranty:create', display_name: 'Create Warranties', description: 'Can create warranties', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'warranty', sub_group_display_name: 'Product Warranties' },
-    { id: 141, name: 'warranty:read', display_name: 'View Warranties', description: 'Can view warranties', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'warranty', sub_group_display_name: 'Product Warranties' },
-    { id: 142, name: 'warranty:update', display_name: 'Update Warranties', description: 'Can update warranties', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'warranty', sub_group_display_name: 'Product Warranties' },
-    { id: 143, name: 'warranty:delete', display_name: 'Delete Warranties', description: 'Can delete warranties', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'warranty', sub_group_display_name: 'Product Warranties' },
+    // Item Configuration - Warranties (Category: Item Configuration)
+    { id: 140, name: 'warranty:create', display_name: 'Create Warranties', description: 'Can create warranties', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'warranty', sub_group_display_name: 'Item Warranties' },
+    { id: 141, name: 'warranty:read', display_name: 'View Warranties', description: 'Can view warranties', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'warranty', sub_group_display_name: 'Item Warranties' },
+    { id: 142, name: 'warranty:update', display_name: 'Update Warranties', description: 'Can update warranties', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'warranty', sub_group_display_name: 'Item Warranties' },
+    { id: 143, name: 'warranty:delete', display_name: 'Delete Warranties', description: 'Can delete warranties', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'warranty', sub_group_display_name: 'Item Warranties' },
 
-    // Product Configuration - Barcode Symbologies (Category: Product Configuration)
-    { id: 150, name: 'barcode_symbology:create', display_name: 'Create Barcode Symbologies', description: 'Can create barcode symbologies', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'barcode_symbology', sub_group_display_name: 'Product Barcode Symbologies' },
-    { id: 151, name: 'barcode_symbology:read', display_name: 'View Barcode Symbologies', description: 'Can view barcode symbologies', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'barcode_symbology', sub_group_display_name: 'Product Barcode Symbologies' },
-    { id: 152, name: 'barcode_symbology:update', display_name: 'Update Barcode Symbologies', description: 'Can update barcode symbologies', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'barcode_symbology', sub_group_display_name: 'Product Barcode Symbologies' },
-    { id: 153, name: 'barcode_symbology:delete', display_name: 'Delete Barcode Symbologies', description: 'Can delete barcode symbologies', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'barcode_symbology', sub_group_display_name: 'Product Barcode Symbologies' },
+    // Item Configuration - Barcode Symbologies (Category: Item Configuration)
+    { id: 150, name: 'barcode_symbology:create', display_name: 'Create Barcode Symbologies', description: 'Can create barcode symbologies', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'barcode_symbology', sub_group_display_name: 'Item Barcode Symbologies' },
+    { id: 151, name: 'barcode_symbology:read', display_name: 'View Barcode Symbologies', description: 'Can view barcode symbologies', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'barcode_symbology', sub_group_display_name: 'Item Barcode Symbologies' },
+    { id: 152, name: 'barcode_symbology:update', display_name: 'Update Barcode Symbologies', description: 'Can update barcode symbologies', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'barcode_symbology', sub_group_display_name: 'Item Barcode Symbologies' },
+    { id: 153, name: 'barcode_symbology:delete', display_name: 'Delete Barcode Symbologies', description: 'Can delete barcode symbologies', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'barcode_symbology', sub_group_display_name: 'Item Barcode Symbologies' },
 
-    // Product Configuration - Discount Types (Category: Product Configuration)
-    { id: 160, name: 'discount_type:create', display_name: 'Create Discount Types', description: 'Can create discount types', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'discount_type', sub_group_display_name: 'Product Discount Types' },
-    { id: 161, name: 'discount_type:read', display_name: 'View Discount Types', description: 'Can view discount types', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'discount_type', sub_group_display_name: 'Product Discount Types' },
-    { id: 162, name: 'discount_type:update', display_name: 'Update Discount Types', description: 'Can update discount types', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'discount_type', sub_group_display_name: 'Product Discount Types' },
-    { id: 163, name: 'discount_type:delete', display_name: 'Delete Discount Types', description: 'Can delete discount types', permission_category_id: CAT_PRODUCT_CONFIG, sub_group_key: 'discount_type', sub_group_display_name: 'Product Discount Types' },
+    // Item Configuration - Discount Types (Category: Item Configuration)
+    { id: 160, name: 'discount_type:create', display_name: 'Create Discount Types', description: 'Can create discount types', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'discount_type', sub_group_display_name: 'Item Discount Types' },
+    { id: 161, name: 'discount_type:read', display_name: 'View Discount Types', description: 'Can view discount types', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'discount_type', sub_group_display_name: 'Item Discount Types' },
+    { id: 162, name: 'discount_type:update', display_name: 'Update Discount Types', description: 'Can update discount types', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'discount_type', sub_group_display_name: 'Item Discount Types' },
+    { id: 163, name: 'discount_type:delete', display_name: 'Delete Discount Types', description: 'Can delete discount types', permission_category_id: CAT_Item_CONFIG, sub_group_key: 'discount_type', sub_group_display_name: 'Item Discount Types' },
 
     // Operations - Inventory Management (Category: Operations)
     { id: 170, name: 'inventory:read', display_name: 'View Inventory', description: 'Can view inventory levels', permission_category_id: CAT_OPERATIONS, sub_group_key: 'inventory', sub_group_display_name: 'Inventory Management' },

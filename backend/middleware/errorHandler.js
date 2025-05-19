@@ -10,7 +10,7 @@ function errorHandler(err, req, res, next) {
     const statusCode = typeof err.status === 'number' ? err.status : 500;
 
     // Send a generic error response
-    // Avoid sending detailed error messages in production
+    // Avoid sending detailed error messages in Itemion
     res.status(statusCode).json({
         message: err.message || 'An unexpected server error occurred.',
         // Optionally include stack trace in development

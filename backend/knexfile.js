@@ -19,6 +19,6 @@ module.exports = {
     },
   },
 
-  // Add configurations for staging, production environments later
-  // production: { ... }
+  // Add configurations for staging, Itemion environments later
+  // Itemion: { ... }
 };

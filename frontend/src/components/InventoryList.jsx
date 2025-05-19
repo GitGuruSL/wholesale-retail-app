@@ -173,8 +173,8 @@ const InventoryList = () => {
           <Table>
             <TableHead>
               <TableRow>
-                <TableCell>Product ID</TableCell>
-                <TableCell>Product Name</TableCell>
+                <TableCell>Item ID</TableCell>
+                <TableCell>Item Name</TableCell>
                 <TableCell>Store</TableCell> {/* Assuming store_name is part of inventory item */}
                 <TableCell>Quantity (Base Unit)</TableCell>
                 <TableCell>Last Updated</TableCell>
@@ -190,9 +190,9 @@ const InventoryList = () => {
               ) : (
                 inventory.map((stockItem) => (
                   // Ensure stockItem has a unique 'id' or combine fields for a key
-                  <TableRow key={stockItem.id || `${stockItem.product_id}-${selectedStore}`}>
-                    <TableCell>{stockItem.product_id}</TableCell>
-                    <TableCell>{stockItem.product_name}</TableCell>
+                  <TableRow key={stockItem.id || `${stockItem.Item_id}-${selectedStore}`}>
+                    <TableCell>{stockItem.Item_id}</TableCell>
+                    <TableCell>{stockItem.Item_name}</TableCell>
                     <TableCell>{stockItem.store_name || user.store_name || 'N/A'}</TableCell> {/* Display store name */}
                     <TableCell>{stockItem.quantity}</TableCell>
                     <TableCell>{new Date(stockItem.updated_at).toLocaleString()}</TableCell>

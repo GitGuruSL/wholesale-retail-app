@@ -11,7 +11,7 @@ function createBarcodeSymbologiesRouter(knex) {
 
     // --- Helper: Check for dependencies ---
     const isSymbologyInUse = async (symbologyId) => {
-        const countResult = await knex('products')
+        const countResult = await knex('Items')
                                 .where({ barcode_symbology_id: symbologyId })
                                 .count('id as count').first();
         return countResult && countResult.count > 0;
@@ -98,7 +98,7 @@ function createBarcodeSymbologiesRouter(knex) {
         try {
             // Check for dependencies
             const symbologyUsed = await isSymbologyInUse(symbologyId);
-            if (symbologyUsed) return res.status(409).json({ message: 'Conflict: Cannot delete symbology because it is used by products.' });
+            if (symbologyUsed) return res.status(409).json({ message: 'Conflict: Cannot delete symbology because it is used by Items.' });
 
             const count = await knex('barcode_symbologies').where({ id: symbologyId }).del();
             if (count === 0) return res.status(404).json({ message: `Symbology with ID ${id} not found.` });

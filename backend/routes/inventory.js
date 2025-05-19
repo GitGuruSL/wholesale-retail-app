@@ -28,20 +28,20 @@ module.exports = () => {
     }
   });
 
-  // GET: Retrieve inventory for a specific product in a store
-  router.get('/:productId', async (req, res, next) => {
-    const { productId } = req.params;
+  // GET: Retrieve inventory for a specific Item in a store
+  router.get('/:ItemId', async (req, res, next) => {
+    const { ItemId } = req.params;
     const storeId = getStoreId(req);
     if (!storeId) {
       return res.status(400).json({ message: 'Store ID is required.' });
     }
     try {
-      const inventory = await inventoryService.getInventoryByProductAndStore(productId, storeId);
+      const inventory = await inventoryService.getInventoryByItemAndStore(ItemId, storeId);
       if (inventory) {
         res.status(200).json(inventory);
       } else {
         res.status(200).json({
-          product_id: parseInt(productId, 10),
+          Item_id: parseInt(ItemId, 10),
           store_id: parseInt(storeId, 10),
           quantity: 0,
           low_stock_threshold: null,
@@ -52,9 +52,9 @@ module.exports = () => {
     }
   });
 
-  // PUT: Adjust inventory for a specific product
-  router.put('/adjust/:productId', async (req, res, next) => {
-    const { productId } = req.params;
+  // PUT: Adjust inventory for a specific Item
+  router.put('/adjust/:ItemId', async (req, res, next) => {
+    const { ItemId } = req.params;
     const adjustment = Number(req.body.adjustment);
     const storeId = getStoreId(req);
     if (isNaN(adjustment) || adjustment === 0) {
@@ -64,7 +64,7 @@ module.exports = () => {
       return res.status(400).json({ message: 'Store ID is required.' });
     }
     try {
-      const updatedInventory = await inventoryService.adjustInventory(productId, storeId, adjustment);
+      const updatedInventory = await inventoryService.adjustInventory(ItemId, storeId, adjustment);
       res.status(200).json(updatedInventory[0]);
     } catch (err) {
       next(err);
@@ -73,17 +73,17 @@ module.exports = () => {
 
   // POST: Create an initial inventory record
   router.post('/', async (req, res, next) => {
-    const { product_id, quantity, low_stock_threshold } = req.body;
+    const { Item_id, quantity, low_stock_threshold } = req.body;
     const storeId = getStoreId(req);
-    if (!product_id || !storeId) {
-      return res.status(400).json({ message: 'Product ID and Store ID are required.' });
+    if (!Item_id || !storeId) {
+      return res.status(400).json({ message: 'Item ID and Store ID are required.' });
     }
     try {
-      const newInventory = await inventoryService.createInitialInventory(product_id, storeId, quantity, low_stock_threshold);
+      const newInventory = await inventoryService.createInitialInventory(Item_id, storeId, quantity, low_stock_threshold);
       res.status(201).json(newInventory[0]);
     } catch (err) {
       if (err.code === '23505') {
-        return res.status(409).json({ message: 'Inventory record already exists for this product in this store.' });
+        return res.status(409).json({ message: 'Inventory record already exists for this Item in this store.' });
       }
       next(err);
     }

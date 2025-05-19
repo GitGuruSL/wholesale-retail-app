@@ -25,8 +25,8 @@ exports.up = function(knex) {
       table.increments('id').primary();
       table.integer('purchase_order_id').unsigned().notNullable();
       table.foreign('purchase_order_id').references('id').inTable('purchase_orders').onDelete('CASCADE');
-      table.integer('product_id').unsigned().notNullable();
-      table.foreign('product_id').references('id').inTable('products').onDelete('RESTRICT');
+      table.integer('Item_id').unsigned().notNullable();
+      table.foreign('Item_id').references('id').inTable('Items').onDelete('RESTRICT');
       table.decimal('quantity', 10, 2).notNullable(); // Add .checkPositive() if available and desired, or handle in app
       table.decimal('unit_price', 10, 2).notNullable(); // Add .checkNegative(false) if available, or handle in app
       table.decimal('subtotal', 12, 2).notNullable();
@@ -35,7 +35,7 @@ exports.up = function(knex) {
       table.timestamps(true, true); // Adds created_at and updated_at
 
       table.index('purchase_order_id');
-      table.index('product_id');
+      table.index('Item_id');
     });
 };
 

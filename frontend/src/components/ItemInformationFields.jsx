@@ -14,10 +14,10 @@ import {
     Checkbox
 } from '@mui/material';
 
-function ProductInformationFields({
+function ItemInformationFields({
     formData,
     onFormChange,
-    onProductTypeChange,
+    onItemTypeChange,
     stores,
     categories,
     // subCategories, // Now using filteredSubCategories passed from parent
@@ -30,14 +30,14 @@ function ProductInformationFields({
 }) {
     return (
         <Box component="fieldset" sx={{ border: 1, borderColor: 'divider', p: 2, borderRadius: 1 }}>
-            <Typography component="legend" variant="h6" sx={{ mb: 2 }}>Product Information</Typography>
+            <Typography component="legend" variant="h6" sx={{ mb: 2 }}>Item Information</Typography>
             <Grid container spacing={2}>
                 <Grid item xs={12} sm={6} md={4}>
                     <TextField 
-                        id="product_name" 
-                        label="Product Name *" 
-                        name="product_name" 
-                        value={formData.product_name} 
+                        id="item_name" 
+                        label="Item Name *" 
+                        name="item_name" 
+                        value={formData.item_name || ''} 
                         onChange={onFormChange} 
                         fullWidth 
                         required 
@@ -58,7 +58,7 @@ function ProductInformationFields({
                  <Grid item xs={12} sm={6} md={4}>
                     <TextField 
                         id="sku" 
-                        label={formData.product_type === 'Variable' ? "Parent SKU (Optional)" : "SKU"} 
+                        label={formData.item_type === 'Variable' ? "Parent SKU (Optional)" : "SKU"} // CHANGED from Item_type
                         name="sku" 
                         value={formData.sku} 
                         onChange={onFormChange} 
@@ -205,7 +205,7 @@ function ProductInformationFields({
                      <FormControl variant="outlined" fullWidth sx={commonFormControlSx}>
                         <InputLabel id="store-label">Store (Optional)</InputLabel>
                         <Select labelId="store-label" id="store_id" name="store_id" value={formData.store_id} label="Store (Optional)" onChange={onFormChange}>
-                            <MenuItem value=""><em>-- Global Product --</em></MenuItem>
+                            <MenuItem value=""><em>-- Global Item --</em></MenuItem>
                             {stores.map(o => <MenuItem key={o.id} value={o.id.toString()}>{o.name}</MenuItem>)}
                         </Select>
                     </FormControl>
@@ -236,18 +236,18 @@ function ProductInformationFields({
                 </Grid>
                 <Grid item xs={12} sm={6} md={4}>
                     <FormControl component="fieldset" fullWidth sx={commonFormControlSx}>
-                        <Typography variant="subtitle2" gutterBottom>Product Type *</Typography>
+                        <Typography variant="subtitle2" gutterBottom>Item Type *</Typography>
                         <Box sx={{ display: 'flex', gap: 1 }}>
                             <Button 
-                                variant={formData.product_type === 'Standard' ? 'contained' : 'outlined'} 
-                                onClick={() => onProductTypeChange('Standard')} 
+                                variant={formData.item_type === 'Standard' ? 'contained' : 'outlined'} // CHANGED from Item_type
+                                onClick={() => onItemTypeChange('Standard')} 
                                 fullWidth
                             >
                                 Standard
                             </Button>
-                            <Button 
-                                variant={formData.product_type === 'Variable' ? 'contained' : 'outlined'} 
-                                onClick={() => onProductTypeChange('Variable')} 
+                            <Button
+                                variant={formData.item_type === 'Variable' ? 'contained' : 'outlined'} // CHANGED from Item_type
+                                onClick={() => onItemTypeChange('Variable')}
                                 fullWidth
                             >
                                 Variable
@@ -268,4 +268,4 @@ function ProductInformationFields({
     );
 }
 
-export default ProductInformationFields;
+export default ItemInformationFields;

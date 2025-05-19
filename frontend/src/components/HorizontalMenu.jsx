@@ -12,7 +12,7 @@ import AccountBalanceIcon from '@mui/icons-material/AccountBalance'; // Balance 
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet'; // Money Transfer
 import AccountCircleIcon from '@mui/icons-material/AccountCircle'; // Profile, Profile Settings
 import AccessTimeIcon from '@mui/icons-material/AccessTime'; // Shifts
-import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline'; // Create Product
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline'; // Create Item
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings'; // Roles & Permissions, Admin Leaves/Attendance
 import AppSettingsAltIcon from '@mui/icons-material/AppSettingsAlt'; // App Settings
 import AppsIcon from '@mui/icons-material/Apps'; // Main Menu
@@ -22,11 +22,11 @@ import AssignmentIndIcon from '@mui/icons-material/AssignmentInd'; // Designatio
 import AssignmentReturnIcon from '@mui/icons-material/AssignmentReturn'; // Sales Return, Purchase Return
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney'; // Pricing, Currencies
 import BadgeIcon from '@mui/icons-material/Badge'; // Employees, HRM
-import DocumentScannerIcon from '@mui/icons-material/DocumentScanner'; // Product Barcodes (replaces BarcodeIcon)
+import DocumentScannerIcon from '@mui/icons-material/DocumentScanner'; // Item Barcodes (replaces BarcodeIcon)
 import BookIcon from '@mui/icons-material/Book'; // Blog
 import BusinessIcon from '@mui/icons-material/Business'; // Brands, Company Profile, Company Settings
 import CardGiftcardIcon from '@mui/icons-material/CardGiftcard'; // Gift Cards
-import CategoryIcon from '@mui/icons-material/Category'; // Product Category, Sub Category, Expense Category, Income Category, Blog Categories
+import CategoryIcon from '@mui/icons-material/Category'; // Item Category, Sub Category, Expense Category, Income Category, Blog Categories
 import ChangeHistoryIcon from '@mui/icons-material/ChangeHistory'; // Changelog
 import ChecklistIcon from '@mui/icons-material/Checklist'; // Preference
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'; // For nested menu indicator
@@ -50,12 +50,12 @@ import FingerprintIcon from '@mui/icons-material/Fingerprint'; // Security Setti
 import GTranslateIcon from '@mui/icons-material/GTranslate'; // Localization, Languages
 import GroupIcon from '@mui/icons-material/Group'; // Supplier Report, Customer Report
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline'; // FAQ, Forgot Password
-import HistoryIcon from '@mui/icons-material/History'; // Expired Products
+import HistoryIcon from '@mui/icons-material/History'; // Expired Items
 import HolidayVillageIcon from '@mui/icons-material/HolidayVillage'; // Holidays
 import HomeWorkIcon from '@mui/icons-material/HomeWork'; // Warehouses
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty'; // Trial Balance
 import InputIcon from '@mui/icons-material/Input'; // Custom Field
-import InventoryIcon from '@mui/icons-material/Inventory'; // Inventory, Products
+import InventoryIcon from '@mui/icons-material/Inventory'; // Inventory, Items
 import LanguageIcon from '@mui/icons-material/Language'; // Website Settings
 import ListAltIcon from '@mui/icons-material/ListAlt'; // Leave Types
 import LocalMallIcon from '@mui/icons-material/LocalMall'; // Purchase Order
@@ -104,7 +104,7 @@ import StorefrontIcon from '@mui/icons-material/Storefront'; // POS Orders
 import StorageIcon from '@mui/icons-material/Storage'; // Storage Settings
 import StraightenIcon from '@mui/icons-material/Straighten'; // Units
 import StyleIcon from '@mui/icons-material/Style'; // Variant Attributes
-import SummarizeIcon from '@mui/icons-material/Summarize'; // Product Report, Expense Report
+import SummarizeIcon from '@mui/icons-material/Summarize'; // Item Report, Expense Report
 import SupervisedUserCircleIcon from '@mui/icons-material/SupervisedUserCircle'; // Billers
 import TransferWithinAStationIcon from '@mui/icons-material/TransferWithinAStation'; // Stock Transfer
 import TrendingDownIcon from '@mui/icons-material/TrendingDown'; // Low Stocks, Expenses
@@ -135,21 +135,21 @@ const HorizontalMenu = () => {
             ]
         },
         {
-            id: "inventory", label: "Inventory", icon: <InventoryIcon />, requiredPermission: 'product:read',
+            id: "inventory", label: "Inventory", icon: <InventoryIcon />, requiredPermission: 'item:read', // Item:read -> item:read
             items: [
-                { text: 'Products', icon: <InventoryIcon />, path: '/dashboard/products', requiredPermission: 'product:read' },
-                { text: 'Create Product', icon: <AddCircleOutlineIcon />, path: '/dashboard/products/new', requiredPermission: 'product:create' },
-                { text: 'Expired Products', icon: <HistoryIcon />, path: '/dashboard/inventory/expired', requiredPermission: 'inventory:read_expired' },
+                { text: 'Items', icon: <InventoryIcon />, path: '/dashboard/items', requiredPermission: 'item:read' }, // Items -> Items, /Items -> /items, Item:read -> item:read
+                { text: 'Create Item', icon: <AddCircleOutlineIcon />, path: '/dashboard/items/new', requiredPermission: 'item:create' }, // Create Item -> Create Item, /Items/new -> /items/new, Item:create -> item:create
+                { text: 'Expired Items', icon: <HistoryIcon />, path: '/dashboard/inventory/expired', requiredPermission: 'inventory:read_expired' }, // Expired Items -> Expired Items
                 { text: 'Low Stocks', icon: <TrendingDownIcon />, path: '/dashboard/inventory/low-stocks', requiredPermission: 'inventory:read_lowstock' },
                 { text: 'Category', icon: <CategoryIcon />, path: '/dashboard/categories', requiredPermission: 'category:read' },
                 { text: 'Sub Category', icon: <CategoryIcon />, path: '/dashboard/sub-categories', requiredPermission: 'subcategory:read' },
                 { text: 'Brands', icon: <BusinessIcon />, path: '/dashboard/brands', requiredPermission: 'brand:read' },
                 { text: 'Units', icon: <StraightenIcon />, path: '/dashboard/units', requiredPermission: 'unit:read' },
-                { text: 'Variant Attributes', icon: <StyleIcon />, path: '/dashboard/attributes', requiredPermission: 'product_attribute:read' },
+                { text: 'Variant Attributes', icon: <StyleIcon />, path: '/dashboard/attributes', requiredPermission: 'item_attribute:read' }, // Item_attribute:read -> item_attribute:read
                 { text: 'Warranties', icon: <VerifiedUserIcon />, path: '/dashboard/warranties', requiredPermission: 'warranty:read' },
                 { text: 'Print Barcode', icon: <PrintIcon />, path: '/dashboard/inventory/print-barcode', requiredPermission: 'inventory:print_barcode' },
                 { text: 'Print QR Code', icon: <QrCodeScannerIcon />, path: '/dashboard/inventory/print-qrcode', requiredPermission: 'inventory:print_qrcode' },
-                { text: 'Product Barcodes', icon: <DocumentScannerIcon />, path: '/dashboard/inventory/product-barcodes', requiredPermission: 'product_barcode:manage' },
+                { text: 'Item Barcodes', icon: <DocumentScannerIcon />, path: '/dashboard/inventory/item-barcodes', requiredPermission: 'item_barcode:manage' }, // Item Barcodes -> Item Barcodes, /Item-barcodes -> /item-barcodes, Item_barcode:manage -> item_barcode:manage
                 { text: 'Barcode Symbologies', icon: <TuneIcon />, path: '/dashboard/barcode-symbologies', requiredPermission: 'barcode_symbology:read' }, // MODIFIED PATH
                 { text: 'Discount Types', icon: <LocalOfferIcon />, path: '/dashboard/discount-types', requiredPermission: 'discount_type:manage' }, // MODIFIED PATH
                 { text: 'Special Categories', icon: <StarIcon />, path: '/dashboard/special-categories', requiredPermission: 'specialcategory:read' },
@@ -317,7 +317,7 @@ const HorizontalMenu = () => {
                 { text: 'Invoice Report', icon: <MonetizationOnIcon />, path: '/dashboard/reports/invoice', requiredPermission: 'report:read_invoice' },
                 { text: 'Supplier Report', icon: <GroupIcon />, path: '/dashboard/reports/supplier', requiredPermission: 'report:read_supplier' },
                 { text: 'Customer Report', icon: <GroupIcon />, path: '/dashboard/reports/customer', requiredPermission: 'report:read_customer' },
-                { text: 'Product Report', icon: <SummarizeIcon />, path: '/dashboard/reports/product', requiredPermission: 'report:read_product' },
+                { text: 'Item Report', icon: <SummarizeIcon />, path: '/dashboard/reports/item', requiredPermission: 'report:read_item' }, // Item Report -> Item Report, /Item -> /item, report:read_Item -> report:read_item
                 { text: 'Expense Report', icon: <SummarizeIcon />, path: '/dashboard/reports/expense', requiredPermission: 'report:read_expense' },
                 { text: 'Income Report', icon: <MonetizationOnIcon />, path: '/dashboard/reports/income', requiredPermission: 'report:read_income' },
                 { text: 'Tax Report', icon: <MonetizationOnIcon />, path: '/dashboard/reports/tax', requiredPermission: 'report:read_tax' },

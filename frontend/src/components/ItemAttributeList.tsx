@@ -46,30 +46,28 @@ interface FeedbackState {
     type: AlertColor | null;
 }
 
-function ProductAttributeListPage(): JSX.Element {
+function ItemAttributeListPage(): JSX.Element {
     const [attributes, setAttributes] = useState<Attribute[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
     const [feedback, setFeedback] = useState<FeedbackState>({ message: null, type: null });
 
-    const { userCan } = useAuth(); // It's crucial that AuthContext provides a correctly typed userCan
+    const { userCan } = useAuth();
 
     const fetchAttributes = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
-            // Explicitly type the expected response for apiInstance.get
             const response = await apiInstance.get<AttributesApiResponse | Attribute[]>('/attributes');
             
             let fetchedData: Attribute[] = [];
-            // Check if response.data itself is the array (older API) or if it's nested (newer API)
             if (Array.isArray(response.data)) {
-                 fetchedData = response.data as Attribute[]; // Case where API returns Attribute[] directly
+                 fetchedData = response.data as Attribute[];
             } else if (response.data && Array.isArray((response.data as AttributesApiResponse).data)) {
-                fetchedData = (response.data as AttributesApiResponse).data; // Case where API returns { data: Attribute[] }
+                fetchedData = (response.data as AttributesApiResponse).data;
             }
             setAttributes(fetchedData);
-        } catch (err: any) { // Consider more specific error typing if possible
+        } catch (err: any) {
             const errorMessage = err.response?.data?.message || err.message || 'Failed to fetch attributes.';
             setError(errorMessage);
             console.error("Fetch attributes error:", err);
@@ -83,19 +81,18 @@ function ProductAttributeListPage(): JSX.Element {
     }, [fetchAttributes]);
 
     const handleDelete = async (attributeId: number | string, attributeName: string) => {
-        // Runtime check for userCan, robust against potential 'never' type from AuthContext
-        if (typeof userCan !== 'function' || !userCan('product_attribute:delete')) {
+        if (typeof userCan !== 'function' || !userCan('attribute:delete')) {
             setFeedback({ message: 'You do not have permission to delete attributes.', type: 'error' });
             return;
         }
 
         if (window.confirm(`Are you sure you want to delete the attribute "${attributeName}"? This might affect products using it.`)) {
-            setLoading(true); // Indicate loading state during delete operation
+            setLoading(true);
             try {
                 await apiInstance.delete(`/attributes/${attributeId}`);
                 setFeedback({ message: `Attribute "${attributeName}" deleted successfully.`, type: 'success' });
-                await fetchAttributes(); // Refresh list after successful deletion
-            } catch (err: any) { // Consider more specific error typing
+                await fetchAttributes();
+            } catch (err: any) {
                 const errorMessage = err.response?.data?.message || err.message || 'Failed to delete attribute.';
                 setFeedback({ message: errorMessage, type: 'error' });
                 console.error("Delete attribute error:", err);
@@ -105,7 +102,6 @@ function ProductAttributeListPage(): JSX.Element {
         }
     };
 
-    // Effect to clear feedback messages after a delay
     useEffect(() => {
         let timer: NodeJS.Timeout;
         if (feedback.message) {
@@ -114,7 +110,7 @@ function ProductAttributeListPage(): JSX.Element {
         return () => clearTimeout(timer);
     }, [feedback.message]);
 
-    if (loading && attributes.length === 0) { // Show main loader only on initial load
+    if (loading && attributes.length === 0) {
         return (
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 120px)' }}>
                 <CircularProgress />
@@ -126,14 +122,14 @@ function ProductAttributeListPage(): JSX.Element {
     return (
         <Paper sx={{ p: { xs: 2, md: 3 }, m: { xs: 1, md: 2 } }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                <Typography variant="h4" component="h1">Product Attributes</Typography>
-                {typeof userCan === 'function' && userCan('product_attribute:create') && (
+                <Typography variant="h4" component="h1">Item Attributes</Typography>
+                {typeof userCan === 'function' && userCan('attribute:create') && (
                     <Button
                         variant="contained"
                         startIcon={<AddIcon />}
                         component={RouterLink}
                         to="/dashboard/attributes/new"
-                        aria-label="Add new product attribute"
+                        aria-label="Add new item attribute"
                     >
                         Add New
                     </Button>
@@ -147,7 +143,7 @@ function ProductAttributeListPage(): JSX.Element {
                 </Alert>
             )}
             
-            {loading && attributes.length > 0 && ( // Inline loader for refresh
+            {loading && attributes.length > 0 && (
                 <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
                     <CircularProgress size={24} />
                     <Typography sx={{ml: 1}} variant="body2">Refreshing data...</Typography>
@@ -169,7 +165,7 @@ function ProductAttributeListPage(): JSX.Element {
                             <TableRow>
                                 <TableCell colSpan={4} align="center" sx={{ py: 3 }}>
                                     <Typography>No attributes found.</Typography>
-                                    {typeof userCan === 'function' && userCan('product_attribute:create') && (
+                                    {typeof userCan === 'function' && userCan('attribute:create') && (
                                          <Button
                                             variant="outlined"
                                             startIcon={<AddIcon />}
@@ -193,7 +189,7 @@ function ProductAttributeListPage(): JSX.Element {
                                         : <Typography variant="caption" color="textSecondary">No values defined</Typography>}
                                 </TableCell>
                                 <TableCell sx={{ textAlign: 'right' }}>
-                                    {typeof userCan === 'function' && userCan('product_attribute:update') && (
+                                    {typeof userCan === 'function' && userCan('attribute:update') && (
                                         <Tooltip title="Edit Attribute">
                                             <IconButton
                                                 component={RouterLink}
@@ -206,14 +202,14 @@ function ProductAttributeListPage(): JSX.Element {
                                             </IconButton>
                                         </Tooltip>
                                     )}
-                                    {typeof userCan === 'function' && userCan('product_attribute:delete') && (
+                                    {typeof userCan === 'function' && userCan('attribute:delete') && (
                                         <Tooltip title="Delete Attribute">
                                             <IconButton
                                                 onClick={() => handleDelete(attr.id, attr.name)}
                                                 color="error"
                                                 size="small"
                                                 aria-label={`Delete attribute ${attr.name}`}
-                                                disabled={loading} // Disable delete button while another operation is in progress
+                                                disabled={loading}
                                             >
                                                 <DeleteIcon />
                                             </IconButton>
@@ -229,4 +225,4 @@ function ProductAttributeListPage(): JSX.Element {
     );
 }
 
-export default ProductAttributeListPage;
+export default ItemAttributeListPage;

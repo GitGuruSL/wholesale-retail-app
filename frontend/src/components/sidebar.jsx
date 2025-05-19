@@ -76,14 +76,14 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
     const mainMenuItems = useMemo(() => [
         { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard', requiredPermission: 'user:read_self' },
         { text: 'Stores', icon: <StoreIcon />, path: '/dashboard/stores', requiredPermission: 'store:read' },
-        { text: 'Products', icon: <ListAltIcon />, path: '/dashboard/products', requiredPermission: 'product:read' },
+        { text: 'Items', icon: <ListAltIcon />, path: '/dashboard/Items', requiredPermission: 'Item:read' },
         { text: 'Customers', icon: <PeopleIcon />, path: '/dashboard/customers', requiredPermission: 'customer:read' },
         { text: 'Suppliers', icon: <SupplierIcon />, path: '/dashboard/suppliers', requiredPermission: 'supplier:read' },
     ], []);
 
     const collapsibleSectionsData = useMemo(() => [
         {
-            id: "productCatalog", label: "Product Catalog", icon: <CategoryIcon />, requiredPermission: 'product:read',
+            id: "ItemCatalog", label: "Item Catalog", icon: <CategoryIcon />, requiredPermission: 'Item:read',
             items: [
                 { text: 'Categories', icon: <CategoryIcon />, path: '/dashboard/categories', requiredPermission: 'category:read' },
                 { text: 'Sub-Categories', icon: <SubCategoryIcon />, path: '/dashboard/sub-categories', requiredPermission: 'subcategory:read' },
@@ -92,16 +92,16 @@ const Sidebar = ({ drawerWidth, open, handleDrawerToggle }) => {
             ]
         },
         {
-            id: "productAttributesManagement",
+            id: "ItemAttributesManagement",
             label: "Attributes",
             icon: <StyleIcon />,
-            requiredPermission: 'product_attribute:read',
+            requiredPermission: 'Item_attribute:read',
             items: [
-                { text: 'Manage Attributes', icon: <ListAltIcon />, path: '/dashboard/attributes', requiredPermission: 'product_attribute:read' },
+                { text: 'Manage Attributes', icon: <ListAltIcon />, path: '/dashboard/attributes', requiredPermission: 'Item_attribute:read' },
             ]
         },
         {
-            id: "productSettings", label: "Product Settings", icon: <SettingsSuggestIcon />, requiredPermission: 'product_settings:read',
+            id: "ItemSettings", label: "Item Settings", icon: <SettingsSuggestIcon />, requiredPermission: 'Item_settings:read',
             items: [
                 { text: 'Tax Types', icon: <MonetizationOnIcon />, path: '/dashboard/tax-types', requiredPermission: 'tax:read' },
                 { text: 'Taxes', icon: <MonetizationOnIcon />, path: '/dashboard/taxes', requiredPermission: 'tax:manage' },

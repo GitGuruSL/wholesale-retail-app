@@ -67,7 +67,7 @@ function CategoryList() {
             setTimeout(() => setFeedback({ message: null, type: null }), 5000);
             return;
         }
-        if (!window.confirm(`Are you sure you want to delete category: "${categoryName}" (ID: ${categoryId})?\nThis might fail if it's linked to products or sub-categories.`)) {
+        if (!window.confirm(`Are you sure you want to delete category: "${categoryName}" (ID: ${categoryId})?\nThis might fail if it's linked to Items or sub-categories.`)) {
             return;
         }
         setPageError(null);

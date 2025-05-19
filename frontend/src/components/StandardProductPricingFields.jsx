@@ -1,4 +1,4 @@
-// filepath: d:/Development/wholesale-retail-app/frontend/src/components/StandardProductPricingFields.jsx
+// filepath: d:/Development/wholesale-retail-app/frontend/src/components/StandardItemPricingFields.jsx
 import React from 'react';
 import {
     Box,
@@ -11,7 +11,7 @@ import {
     Grid
 } from '@mui/material';
 
-function StandardProductPricingFields({
+function StandardItemPricingFields({
     formData,
     onFormChange,
     taxes,
@@ -20,7 +20,7 @@ function StandardProductPricingFields({
 }) {
     return (
         <Box component="fieldset" sx={{ border: 1, borderColor: 'divider', p: 2, borderRadius: 1, mt: 2 }}>
-            <Typography component="legend" variant="h6" sx={{ mb: 2 }}>Standard Product Pricing & Tax</Typography>
+            <Typography component="legend" variant="h6" sx={{ mb: 2 }}>Standard Item Pricing & Tax</Typography>
             <Grid container spacing={2}>
                 <Grid item xs={12} sm={6} md={4}>
                     <TextField
@@ -31,7 +31,7 @@ function StandardProductPricingFields({
                         value={formData.cost_price}
                         onChange={onFormChange}
                         fullWidth
-                        required={formData.product_type === 'Standard'}
+                        required={formData.Item_type === 'Standard'}
                         InputProps={{ inputProps: { min: 0, step: "0.01" } }}
                         sx={commonFormControlSx}
                     />
@@ -45,7 +45,7 @@ function StandardProductPricingFields({
                         value={formData.retail_price}
                         onChange={onFormChange}
                         fullWidth
-                        required={formData.product_type === 'Standard'}
+                        required={formData.Item_type === 'Standard'}
                         InputProps={{ inputProps: { min: 0, step: "0.01" } }}
                         sx={commonFormControlSx}
                     />
@@ -115,4 +115,4 @@ function StandardProductPricingFields({
     );
 }
 
-export default StandardProductPricingFields;
+export default StandardItemPricingFields;

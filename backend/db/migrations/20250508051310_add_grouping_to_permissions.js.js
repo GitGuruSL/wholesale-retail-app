@@ -8,7 +8,7 @@ exports.up = function(knex) {
            .onDelete('SET NULL'); // Or 'CASCADE' if a permission must belong to a category
   
       table.string('sub_group_key', 50).nullable()
-           .comment('A key for the sub-group this permission belongs to (e.g., user, role, product_core).');
+           .comment('A key for the sub-group this permission belongs to (e.g., user, role, Item_core).');
       table.string('sub_group_display_name', 100).nullable()
            .comment('The display name for the sub-group (e.g., User Management, Role Management).');
     });

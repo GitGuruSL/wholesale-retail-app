@@ -136,7 +136,7 @@ function PermissionForm() {
       errors.permission_category_id = 'Permission category is required.';
     }
     if (!formData.sub_group_key.trim()) {
-        errors.sub_group_key = 'Sub-group key is required (e.g., user, product_core).';
+        errors.sub_group_key = 'Sub-group key is required (e.g., user, Item_core).';
     } else if (!/^[a-z0-9_]+$/.test(formData.sub_group_key.trim())) {
         errors.sub_group_key = 'Sub-group key can only contain lowercase letters, numbers, and underscores.';
     }
@@ -232,7 +232,7 @@ function PermissionForm() {
                 name="name"
                 value={formData.name}
                 onChange={handleChange}
-                placeholder="e.g., user:create, product:edit"
+                placeholder="e.g., user:create, Item:edit"
                 disabled={isEditing || isSubmitting}
                 error={Boolean(formErrors.name)}
                 helperText={formErrors.name || (isEditing ? 'The permission name (code) cannot be changed after creation.' : 'Must be unique. e.g., resource:action')}
@@ -246,7 +246,7 @@ function PermissionForm() {
                 name="display_name"
                 value={formData.display_name}
                 onChange={handleChange}
-                placeholder="e.g., Create Users, Edit Products"
+                placeholder="e.g., Create Users, Edit Items"
                 error={Boolean(formErrors.display_name)}
                 helperText={formErrors.display_name}
                 disabled={isSubmitting}
@@ -281,7 +281,7 @@ function PermissionForm() {
                 name="sub_group_key"
                 value={formData.sub_group_key}
                 onChange={handleChange}
-                placeholder="e.g., user, product_core"
+                placeholder="e.g., user, Item_core"
                 error={Boolean(formErrors.sub_group_key)}
                 helperText={formErrors.sub_group_key || "Lowercase, use underscores. e.g. user_settings"}
                 disabled={isSubmitting}

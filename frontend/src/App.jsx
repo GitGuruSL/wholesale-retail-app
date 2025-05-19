@@ -12,11 +12,11 @@ import LoginPage from "./pages/LoginPage";
 import AccessDeniedPage from './pages/AccessDeniedPage';
 
 import CustomersList from './components/CustomersList';
-import CustomerForm from './components/CustomerForm';
-import ProductList from './components/ProductList';
-import ProductForm from './components/ProductForm.tsx';
-import ProductAttributeListPage from './components/ProductAttributeList.tsx';
-import ProductAttributeFormPage from './components/ProductAttributeForm';
+import CustomerForm from "./components/CustomerForm";
+import ItemList from "./components/ItemList.jsx"; // Added .jsx extension
+import ItemForm from "./components/ItemForm.jsx";
+import ItemAttributeListPage from './components/ItemAttributeList.tsx'; // New
+import ItemAttributeFormPage from './components/ItemAttributeForm'; // New
 import CategoryList from './components/CategoryList';
 import CategoryForm from './components/CategoryForm';
 import SubCategoryList from './components/SubCategoryList';
@@ -112,10 +112,10 @@ const AppRoutes = () => {
                     <Route path="stores/new" element={<ProtectedRoute roles={globalAdminOnly} permissions={['store:create']}><StoreForm /></ProtectedRoute>} />
                     <Route path="stores/edit/:storeId" element={<ProtectedRoute roles={globalAdminOnly} permissions={['store:update']}><StoreForm /></ProtectedRoute>} />
 
-                    {/* Product Management */}
-                    <Route path="products" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['product:read']}><ProductList /></ProtectedRoute>} />
-                    <Route path="products/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['product:create']}><ProductForm /></ProtectedRoute>} />
-                    <Route path="products/edit/:productId" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['product:update']}><ProductForm /></ProtectedRoute>} />
+                    {/* Item Management (Formerly Item Management) */}
+                    <Route path="items" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['item:read']}><ItemList /></ProtectedRoute>} />
+                    <Route path="items/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['item:create']}><ItemForm /></ProtectedRoute>} />
+                    <Route path="items/edit/:itemId" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['item:update']}><ItemForm /></ProtectedRoute>} />
 
                     {/* Customer Management */}
                     <Route path="customers" element={<ProtectedRoute roles={globalAdminOnly}><CustomersList /></ProtectedRoute>} />
@@ -132,7 +132,7 @@ const AppRoutes = () => {
                     <Route path="purchase-orders/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['purchase_order:create']}><PurchaseOrderForm /></ProtectedRoute>} />
                     <Route path="purchase-orders/edit/:purchaseOrderId" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['purchase_order:update']}><PurchaseOrderForm /></ProtectedRoute>} />
 
-                    {/* Product Catalog Section */}
+                    {/* Item Catalog Section (Formerly Item Catalog) */}
                     <Route path="categories" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['category:read']}><CategoryList /></ProtectedRoute>} />
                     <Route path="categories/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['category:create']}><CategoryForm /></ProtectedRoute>} />
                     <Route path="categories/edit/:categoryId" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['category:update']}><CategoryForm /></ProtectedRoute>} />
@@ -146,11 +146,10 @@ const AppRoutes = () => {
                     <Route path="special-categories/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['specialcategory:create']}><SpecialCategoryForm /></ProtectedRoute>} />
                     <Route path="special-categories/edit/:specialCategoryId" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['specialcategory:update']}><SpecialCategoryForm /></ProtectedRoute>} />
 
-                    {/* Product Attributes Section - UPDATED */}
-                    <Route path="attributes" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['product_attribute:read']}><ProductAttributeListPage /></ProtectedRoute>} />
-                    <Route path="attributes/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['product_attribute:create']}><ProductAttributeFormPage /></ProtectedRoute>} />
-                    {/* Ensure this :attributeId matches what ProductAttributeFormPage expects from useParams */}
-                    <Route path="attributes/edit/:attributeId" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['product_attribute:update']}><ProductAttributeFormPage /></ProtectedRoute>} />
+                    {/* Item Attributes Section (Formerly Item Attributes) */}
+                    <Route path="attributes" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['item_attribute:read']}><ItemAttributeListPage /></ProtectedRoute>} />
+                    <Route path="attributes/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['item_attribute:create']}><ItemAttributeFormPage /></ProtectedRoute>} />
+                    <Route path="attributes/edit/:attributeId" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['item_attribute:update']}><ItemAttributeFormPage /></ProtectedRoute>} />
                     
                     {/* Tax Management */}
                     <Route path="tax-types" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['tax_type:read']}><TaxTypeList /></ProtectedRoute>} />
@@ -160,7 +159,7 @@ const AppRoutes = () => {
                     <Route path="taxes/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['tax:create']}><TaxForm /></ProtectedRoute>} />
                     <Route path="taxes/edit/:taxId" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['tax:update']}><TaxForm /></ProtectedRoute>} />
 
-                    {/* Product Settings Section */}
+                    {/* Item Settings Section (Formerly Item Settings) */}
                     <Route path="units" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['unit:read']}><UnitList /></ProtectedRoute>} />
                     <Route path="units/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['unit:create']}><UnitForm /></ProtectedRoute>} />
                     <Route path="units/edit/:unitId" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['unit:update']}><UnitForm /></ProtectedRoute>} />
@@ -228,7 +227,10 @@ function App() {
     // No Router wrapper here anymore
     // AuthProvider and StoreProvider are also removed as they are in main.jsx
     return (
-        <AppRoutes />
+        <div>
+            <h1>My Wholesale/Retail App</h1>
+            <AppRoutes />
+        </div>
     );
 }
 

@@ -20,7 +20,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 
 // Props this component now expects:
 // - formData (for context, e.g., base SKU if needed for default variation SKUs)
-// - productVariations (array of variation objects)
+// - ItemVariations (array of variation objects)
 // - onGenerateVariations (function to call when "Generate Variations" is clicked)
 // - onVariationChange (function to handle changes in variation fields like SKU, price)
 // - onRemoveVariation (function to remove a variation)
@@ -29,9 +29,9 @@ import DeleteIcon from '@mui/icons-material/Delete';
 // - setVariationGenerationError (function to clear the error)
 // - setError (general error reporting, if needed)
 
-function VariableProductFields({
+function VariableItemFields({
     formData,
-    productVariations,
+    ItemVariations,
     onGenerateVariations,
     onVariationChange,
     onRemoveVariation,
@@ -42,23 +42,23 @@ function VariableProductFields({
 }) {
 
     // REMOVE any state or logic related to:
-    // - productAttributes (the old array of {name, values_string})
+    // - ItemAttributes (the old array of {name, values_string})
     // - newAttribute (the old state for a new attribute being typed)
     // - functions like handleAttributeNameChange, handleAttributeValuesChange, handleAddNewAttributeToList etc.
 
     // The UI for defining attributes (like TextFields for "Variant Attribute" and "Values")
-    // should be REMOVED from this component. That logic is now in ProductForm.jsx.
+    // should be REMOVED from this component. That logic is now in ItemForm.jsx.
 
     // Line 64 was likely part of the removed UI. For example, if it was trying to render
-    // a TextField for an attribute name from an old `productAttributes` prop.
+    // a TextField for an attribute name from an old `ItemAttributes` prop.
 
     return (
         <Box component="fieldset" sx={{ border: 1, borderColor: 'divider', p: 2, borderRadius: 1, mt: 2 }}>
             <Typography component="legend" variant="h6" sx={{ mb: 2 }}>
-                Product Variations
+                Item Variations
             </Typography>
 
-            {/* Button to generate variations based on attributes_config from ProductForm */}
+            {/* Button to generate variations based on attributes_config from ItemForm */}
             <Button
                 variant="contained"
                 onClick={() => {
@@ -77,14 +77,20 @@ function VariableProductFields({
                 </Alert>
             )}
 
-            {productVariations && productVariations.length > 0 && (
+            {ItemVariations && ItemVariations.length > 0 && (
                 <TableContainer component={Paper} sx={{ mt: 2 }}>
                     <Table size="small">
                         <TableHead>
                             <TableRow>
-                                {Object.keys(productVariations[0].attribute_combination).map(attrName => (
-                                    <TableCell key={attrName} sx={{ fontWeight: 'bold', textTransform: 'capitalize' }}>{attrName}</TableCell>
-                                ))}
+                                {ItemVariations[0] && typeof ItemVariations[0].attribute_combination === 'object' && ItemVariations[0].attribute_combination !== null ? (
+                                    Object.keys(ItemVariations[0].attribute_combination).map(attrName => (
+                                        <TableCell key={attrName} sx={{ fontWeight: 'bold', textTransform: 'capitalize' }}>{attrName}</TableCell>
+                                    ))
+                                ) : (
+                                    // Optional: Render a placeholder or null if attribute_combination is invalid for the first item
+                                    // This case should ideally not happen if data is consistent.
+                                    null 
+                                )}
                                 <TableCell sx={{ fontWeight: 'bold' }}>SKU</TableCell>
                                 <TableCell sx={{ fontWeight: 'bold' }}>Cost Price</TableCell>
                                 <TableCell sx={{ fontWeight: 'bold' }}>Retail Price</TableCell>
@@ -93,11 +99,16 @@ function VariableProductFields({
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {productVariations.map((variation, index) => (
+                            {ItemVariations.map((variation, index) => (
                                 <TableRow key={variation.id || `var-${index}`}>
-                                    {Object.entries(variation.attribute_combination).map(([key, value]) => (
-                                        <TableCell key={key}>{value}</TableCell>
-                                    ))}
+                                    {/* Ensure each variation also has a valid attribute_combination for rendering its cells */}
+                                    {ItemVariations[0] && typeof ItemVariations[0].attribute_combination === 'object' && ItemVariations[0].attribute_combination !== null ? (
+                                        Object.keys(ItemVariations[0].attribute_combination).map(attrName => (
+                                            <TableCell key={`${variation.id || index}-${attrName}`}>
+                                                {variation.attribute_combination && typeof variation.attribute_combination === 'object' ? variation.attribute_combination[attrName] : ''}
+                                            </TableCell>
+                                        ))
+                                    ) : null}
                                     <TableCell>
                                         <TextField
                                             fullWidth
@@ -155,7 +166,7 @@ function VariableProductFields({
                     </Table>
                 </TableContainer>
             )}
-            {productVariations && productVariations.length === 0 && !variationGenerationError && !loadingVariations && (
+            {ItemVariations && ItemVariations.length === 0 && !variationGenerationError && !loadingVariations && (
                  <Typography sx={{mt: 2, color: 'text.secondary'}}>
                     No variations generated. Configure attributes in the section above and click "Generate Variations".
                 </Typography>
@@ -164,4 +175,4 @@ function VariableProductFields({
     );
 }
 
-export default VariableProductFields;
+export default VariableItemFields;

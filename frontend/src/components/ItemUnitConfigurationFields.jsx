@@ -7,9 +7,9 @@ import {
 } from '@mui/material';
 import { FaTrashAlt, FaPlus } from 'react-icons/fa';
 
-function ProductUnitConfigurationFields({
-    // productId, // Not directly used in this component's rendering logic, but passed to handlers
-    productUnits = [],
+function ItemUnitConfigurationFields({
+    // ItemId, // Not directly used in this component's rendering logic, but passed to handlers
+    ItemUnits = [],
     newUnitConfig,
     onNewUnitConfigChange,
     onAddUnitConfig, // This will be handleAddLocalUnitConfig (new) or handleAddUnitConfigAPI (edit)
@@ -39,7 +39,7 @@ function ProductUnitConfigurationFields({
     
     return (
         <Paper sx={{ p: 2, mt: 2, mb:2, border: '1px solid', borderColor: 'divider', borderRadius:1 }}>
-            <Typography variant="h6" sx={{ mb: 1 }}>Product Unit Configurations</Typography>
+            <Typography variant="h6" sx={{ mb: 1 }}>Item Unit Configurations</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                 Define alternative units (e.g., Box, Case) and their conversion factor relative to the <strong>{baseUnitName}</strong>.
                 The base unit itself must be added here with a factor of 1.
@@ -128,7 +128,7 @@ function ProductUnitConfigurationFields({
                 </Grid>
             </Box>
 
-            {productUnits.length > 0 && (
+            {ItemUnits.length > 0 && (
                 <TableContainer component={Paper} variant="outlined" sx={{mt:1}}>
                     <Table size="small" aria-label="configured units table">
                         <TableHead sx={{backgroundColor: 'grey.100'}}>
@@ -141,7 +141,7 @@ function ProductUnitConfigurationFields({
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {productUnits.map((pu) => (
+                            {ItemUnits.map((pu) => (
                                 <TableRow key={pu.id} hover>
                                     <TableCell component="th" scope="row">
                                         {pu.unit_name || units.find(u => u.id?.toString() === pu.unit_id?.toString())?.name || 'N/A'}
@@ -166,7 +166,7 @@ function ProductUnitConfigurationFields({
                     </Table>
                 </TableContainer>
             )}
-            {productUnits.length === 0 && !loadingUnitConfig && (
+            {ItemUnits.length === 0 && !loadingUnitConfig && (
                 <Typography sx={{textAlign: 'center', p:2, color: 'text.secondary', fontStyle: 'italic'}}>
                     No alternative unit configurations defined yet.
                 </Typography>
@@ -175,4 +175,4 @@ function ProductUnitConfigurationFields({
     );
 }
 
-export default ProductUnitConfigurationFields;
+export default ItemUnitConfigurationFields;

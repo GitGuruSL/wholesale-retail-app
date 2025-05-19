@@ -31,20 +31,20 @@ exports.seed = async function(knex) {
 
 
   // --- 2. STORE_ADMIN: Define specific permissions ---
-  // Example: A Store Admin can manage products, inventory, and sales for their store,
+  // Example: A Store Admin can manage Items, inventory, and sales for their store,
   // view users in their store, and manage store-specific settings.
   const storeAdminPermissions = [
     'user:read_self', 'user:update_self', // Manage own profile
     // 'user:read_store_users', // Custom permission if you want them to see users only in their store
-    'product:create', 'product:read', 'product:update', 'product:delete',
+    'Item:create', 'Item:read', 'Item:update', 'Item:delete',
     'category:create', 'category:read', 'category:update', 'category:delete',
     'subcategory:create', 'subcategory:read', 'subcategory:update', 'subcategory:delete',
     'brand:create', 'brand:read', 'brand:update', 'brand:delete',
     'specialcategory:create', 'specialcategory:read', 'specialcategory:update', 'specialcategory:delete',
-    'product_attribute:create', 'product_attribute:read', 'product_attribute:update', 'product_attribute:delete',
+    'Item_attribute:create', 'Item_attribute:read', 'Item_attribute:update', 'Item_attribute:delete',
     'tax_type:create', 'tax_type:read', 'tax_type:update', 'tax_type:delete',
     'tax:create', 'tax:read', 'tax:update', 'tax:delete', 'tax:manage',
-    'product_settings:read',
+    'Item_settings:read',
     'unit:create', 'unit:read', 'unit:update', 'unit:delete',
     'manufacturer:create', 'manufacturer:read', 'manufacturer:update', 'manufacturer:delete',
     'warranty:create', 'warranty:read', 'warranty:update', 'warranty:delete',
@@ -71,10 +71,10 @@ exports.seed = async function(knex) {
 
 
   // --- 3. SALES_PERSON: Define specific permissions ---
-  // Example: A Sales Person can view products, create sales, and view their own sales history.
+  // Example: A Sales Person can view Items, create sales, and view their own sales history.
   const salesPersonPermissions = [
     'user:read_self', 'user:update_self',
-    'product:read', // To see product details
+    'Item:read', // To see Item details
     'category:read', // To browse categories
     'subcategory:read',
     'brand:read',

@@ -23,7 +23,7 @@ exports.up = function(knex) {
       .createTable('sale_items', (table) => {
         table.increments('id').primary();
         table.integer('sale_id').unsigned().notNullable().references('id').inTable('sales').onDelete('CASCADE'); // Delete items if sale is deleted
-        table.integer('product_id').unsigned().notNullable().references('id').inTable('products').onDelete('RESTRICT'); // Don't allow deleting product if sales exist
+        table.integer('Item_id').unsigned().notNullable().references('id').inTable('Items').onDelete('RESTRICT'); // Don't allow deleting Item if sales exist
         table.decimal('quantity', 10, 3).notNullable(); // Allow fractional quantities if needed
         table.decimal('unit_price', 12, 2).notNullable(); // Price per unit at the time of sale
         table.decimal('discount_per_unit', 12, 2).notNullable().defaultTo(0.00);

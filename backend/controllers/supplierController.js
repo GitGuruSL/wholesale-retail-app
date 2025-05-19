@@ -3,11 +3,11 @@ const knex = require('../db/knex'); // Adjust path if your knex instance is else
 // --- Helper: Check for dependencies ---
 // This function is similar to the one in your routes, good to have it here or in a shared utility
 const isSupplierInUse = async (supplierId) => {
-    // Check in products table
-    const productTableExists = await knex.schema.hasTable('products');
-    if (productTableExists && await knex.schema.hasColumn('products', 'supplier_id')) {
-        const productCount = await knex('products').where({ supplier_id: supplierId }).count('id as count').first();
-        if (productCount && productCount.count > 0) return true;
+    // Check in Items table
+    const ItemTableExists = await knex.schema.hasTable('Items');
+    if (ItemTableExists && await knex.schema.hasColumn('Items', 'supplier_id')) {
+        const ItemCount = await knex('Items').where({ supplier_id: supplierId }).count('id as count').first();
+        if (ItemCount && ItemCount.count > 0) return true;
     }
     // Check in purchase_orders table
     const purchaseOrderTableExists = await knex.schema.hasTable('purchase_orders');
@@ -188,7 +188,7 @@ const deleteSupplier = async (req, res, next) => {
         // Check if the supplier is in use
         const inUse = await isSupplierInUse(id);
         if (inUse) {
-            return res.status(400).json({ success: false, message: `Supplier (ID: ${id}) cannot be deleted because it is currently in use (e.g., linked to products or purchase orders).` });
+            return res.status(400).json({ success: false, message: `Supplier (ID: ${id}) cannot be deleted because it is currently in use (e.g., linked to Items or purchase orders).` });
         }
 
         const numDeleted = await knex('suppliers').where({ id }).del();

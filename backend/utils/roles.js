@@ -10,12 +10,12 @@ const PERMISSIONS = {
     USER_ASSIGN_ROLE: 'user:assign_role',
     USER_ASSIGN_STORE: 'user:assign_store',
 
-    // Product Permissions
-    PRODUCT_CREATE: 'product:create',
-    PRODUCT_READ: 'product:read', // General read access
-    PRODUCT_UPDATE: 'product:update',
-    PRODUCT_DELETE: 'product:delete',
-    PRODUCT_MANAGE_PRICE: 'product:manage_price', // For managing product prices
+    // Item Permissions
+    Item_CREATE: 'Item:create',
+    Item_READ: 'Item:read', // General read access
+    Item_UPDATE: 'Item:update',
+    Item_DELETE: 'Item:delete',
+    Item_MANAGE_PRICE: 'Item:manage_price', // For managing Item prices
 
     // Category/SubCategory Permissions
     CATEGORY_CREATE: 'category:create',

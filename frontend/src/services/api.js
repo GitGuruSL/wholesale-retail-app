@@ -1,47 +1,199 @@
 // filepath: d:\Development\wholesale-retail-app\frontend\src\services\api.js
 import axios from 'axios';
 
-// This line reads the VITE_API_URL from your frontend/.env file
-// It falls back to 'http://localhost:5001/api' if VITE_API_URL is not set,
-// but it's best to have it explicitly in .env
-const VITE_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'; // Ensure this matches your backend URL
 
-console.log('API Base URL configured to:', VITE_API_URL); // For debugging
-
-const apiInstance = axios.create({
-    baseURL: VITE_API_URL,
+const apiClient = axios.create({
+  baseURL: API_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
 });
 
-apiInstance.interceptors.request.use(
-    (config) => {
-        const token = localStorage.getItem('token');
-        if (token) {
-            config.headers['Authorization'] = `Bearer ${token}`;
-        }
-        return config;
-    },
-    (error) => {
-        console.error('Request interceptor error:', error);
-        return Promise.reject(error);
+// Add a request interceptor to include the token if available
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
     }
+    return config;
+  },
+  (error) => {
+    console.error('Request interceptor error:', error); // Added console log for debugging
+    return Promise.reject(error);
+  }
 );
 
-apiInstance.interceptors.response.use(
-    (response) => response,
-    (error) => {
-        console.error('API Response Error:', error.response?.data || error.message || error);
-
-        if (error.response && error.response.status === 401) {
-            console.warn('Unauthorized (401) response detected. Logging out.');
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
-            window.dispatchEvent(new CustomEvent('auth-error-401'));
-            if (window.location.pathname !== '/login') {
-                window.location.href = '/login';
-            }
-        }
-        return Promise.reject(error);
+// Optional: Add a response interceptor for global error handling (like 401)
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    console.error('API Response Error:', error.response?.data || error.message || error);
+    if (error.response && error.response.status === 401) {
+      console.warn('Unauthorized (401) response detected. Logging out.');
+      // Example: Clear token and redirect to login
+      localStorage.removeItem('token');
+      localStorage.removeItem('user'); // If you store user info
+      // Dispatch an event or use a state management solution to notify other parts of the app
+      window.dispatchEvent(new CustomEvent('auth-error-401')); 
+      if (window.location.pathname !== '/login') { // Avoid redirect loop if already on login
+          window.location.href = '/login'; 
+      }
     }
+    return Promise.reject(error);
+  }
 );
 
-export default apiInstance;
+
+export const fetchItems = async () => {
+  try {
+    console.log('Fetching items from API...');
+    const response = await apiClient.get('/items');
+    console.log('Items API response:', response.data);
+    return response.data.items || response.data; 
+  } catch (error) {
+    console.error('Error fetching items:', error.response ? error.response.data : error.message);
+    throw error;
+  }
+};
+
+export const fetchItemById = async (id) => {
+  try {
+    console.log(`Fetching item by ID: ${id} from API...`);
+    const response = await apiClient.get(`/items/${id}`);
+    console.log(`Item ID ${id} API response:`, response.data);
+    return response.data;
+  } catch (error) {
+    console.error(`Error fetching item by ID ${id}:`, error.response ? error.response.data : error.message);
+    throw error;
+  }
+};
+
+export const fetchItemVariations = async (itemId) => {
+  try {
+    console.log(`Fetching variations for item ID: ${itemId}`);
+    const response = await apiClient.get(`/items/${itemId}/variations`);
+    return response.data; // Expected to be an array of variations
+  } catch (error) {
+    console.error(`Error fetching variations for item ${itemId}:`, error.response ? error.response.data : error.message);
+    throw error;
+  }
+};
+
+export const addItem = async (itemData) => {
+  try {
+    console.log('Adding new item via API:', itemData);
+    const response = await apiClient.post('/items', itemData);
+    console.log('Add item API response:', response.data);
+    return response.data; // Should return the newly created item
+  } catch (error) {
+    console.error('Error adding item:', error.response ? error.response.data : error.message);
+    throw error;
+  }
+};
+
+// Helper function to fetch generic resources - UPDATED
+export const fetchResource = async (resourceName, params = {}) => {
+  try {
+    console.log(`Fetching ${resourceName} from API with params:`, params);
+    const response = await apiClient.get(`/${resourceName}`, { params });
+    console.log(`${resourceName} API response:`, response.data);
+
+    let dataArray = [];
+    if (response.data && Array.isArray(response.data[resourceName])) {
+      dataArray = response.data[resourceName];
+    } else if (response.data && Array.isArray(response.data.data)) {
+      dataArray = response.data.data;
+    } else if (Array.isArray(response.data)) {
+      dataArray = response.data;
+    } else {
+      // If the response.data is an object but not one of the expected array structures,
+      // and it's a 2xx response, it might be an unexpected successful response.
+      // Log a warning and return an empty array to prevent crashes.
+      console.warn(`Fetched ${resourceName}, but the response data was not in an expected array format:`, response.data);
+      // dataArray remains [], which is a safe default
+    }
+    return dataArray;
+  } catch (error) {
+    console.error(`Error fetching ${resourceName}:`, error.response ? error.response.data : error.message);
+    throw error; // Let axios's error handling (or Promise.all's catch) deal with non-2xx
+  }
+};
+
+export const fetchCategories = async (params) => fetchResource('categories', params);
+export const fetchBrands = async (params) => fetchResource('brands', params);
+export const fetchUnits = async (params) => fetchResource('units', params);
+export const fetchSuppliers = async (params) => fetchResource('suppliers', params);
+export const fetchManufacturers = async (params) => fetchResource('manufacturers', params);
+export const fetchStores = async (params) => fetchResource('stores', params);
+export const fetchTaxes = async (params) => fetchResource('taxes', params);
+export const fetchSubCategories = async (params) => fetchResource('sub-categories', params);
+export const fetchAttributes = async (params) => fetchResource('attributes', params);
+export const fetchSpecialCategories = async (params) => fetchResource('special-categories', params); // <-- ADD THIS LINE
+
+// API functions for Item Unit Configurations
+export const fetchItemUnitConfigs = async (itemId) => { // Removed unused 'params' argument for now
+  if (!itemId) {
+    console.warn("fetchItemUnitConfigs called without itemId");
+    return []; // Or throw an error
+  }
+  try {
+    const response = await apiClient.get('/item-units', { params: { itemId } });
+    return response.data;
+  } catch (error) {
+    console.error(`Error fetching unit configs for item ${itemId}:`, error.response ? error.response.data : error.message);
+    throw error; // Re-throw to be caught by the caller
+  }
+};
+
+export const addItemUnitConfig = async (data) => {
+    console.log('Adding new item unit config via API to /item-units:', data);
+    try {
+        // Change path to /item-units
+        const response = await apiClient.post('/item-units', data); 
+        console.log('API response for add item unit config:', response.data);
+        return response.data;
+    } catch (error) {
+        console.error("Error adding item unit config (raw error object):", error);
+        const errorResponse = error.response;
+        console.error("Error adding item unit config (error.response):", errorResponse);
+        console.error("Error adding item unit config (error.response.data):", errorResponse ? errorResponse.data : 'No response data');
+        throw errorResponse ? errorResponse.data : new Error("Network error or server unreachable when adding unit config.");
+    }
+};
+
+export const deleteItemUnitConfig = async (configIdToDelete) => {
+    console.log(`Deleting item unit config with ID: ${configIdToDelete} via API from /item-units`);
+    try {
+        // Change path to /item-units
+        const response = await apiClient.delete(`/item-units/${configIdToDelete}`);
+        console.log('API response for delete item unit config:', response.data);
+        return response.data;
+    } catch (error) {
+        console.error("Error deleting item unit config (raw error object):", error);
+        const errorResponse = error.response;
+        console.error("Error deleting item unit config (error.response):", errorResponse);
+        console.error("Error deleting item unit config (error.response.data):", errorResponse ? errorResponse.data : 'No response data');
+        throw errorResponse ? errorResponse.data : new Error("Network error or server unreachable when deleting unit config.");
+    }
+};
+
+// Function to update an item
+export const updateItem = async (itemId, itemData) => {
+  try {
+    console.log(`Updating item ID ${itemId} via API:`, itemData);
+    // Using POST with _method=PUT for compatibility if backend expects it for FormData
+    // If your backend directly supports PUT with FormData, you can use apiClient.put
+    const response = await apiClient.post(`/items/${itemId}`, { ...itemData, _method: 'PUT' });
+    // If using true PUT: const response = await apiClient.put(`/items/${itemId}`, itemData);
+    console.log('Update item API response:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error(`Error updating item ${itemId}:`, error.response ? error.response.data : error.message);
+    throw error;
+  }
+};
+
+
+export default apiClient;

@@ -15,8 +15,8 @@ const createDiscountTypesRouter = require('./routes/discount_types');
 const createEmployeesRouter = require('./routes/employees');
 const createInventoryRouter = require('./routes/inventory');
 const createManufacturersRouter = require('./routes/manufacturers');
-const createProductUnitsRouter = require('./routes/product_units'); // ADD THIS LINE
-const createProductsRouter = require('./routes/products');
+const createItemUnitsRouterFunction = require('./routes/item_units'); // Correctly imported
+const createItemsRouter = require('./routes/items');
 const createSalesRouter = require('./routes/sales');
 const createSpecialCategoriesRouter = require('./routes/special_categories');
 const createStoresRouter = require('./routes/stores');
@@ -38,6 +38,7 @@ const createPurchaseOrdersRouter = require('./routes/purchaseOrders');
 const app = express();
 
 // --- Core Middleware ---
+// ... your cors, express.json, express.urlencoded, methodOverride middleware ...
 const allowedOrigins = ['http://localhost:5173', 'http://localhost:5174'];
 const corsOptions = {
   origin: function (origin, callback) {
@@ -52,45 +53,35 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// Body parsers - These are important for method-override to inspect req.body for non-multipart forms
-// For multipart/form-data, multer handles parsing at the route level.
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true }));
 
-// Configure method-override
-// It should come AFTER body parsers if it needs to inspect req.body for non-multipart forms.
-// For multipart forms, multer (used in your route) will populate req.body with text fields.
 app.use(methodOverride(function (req, res) {
-  console.log('[MethodOverride] Original Method:', req.method, 'URL:', req.originalUrl);
-  // console.log('[MethodOverride] req.body:', JSON.stringify(req.body)); // req.body will be undefined here for multipart before multer
-  console.log('[MethodOverride] req.query:', JSON.stringify(req.query)); // Log req.query
+  // console.log('[MethodOverride] Original Method:', req.method, 'URL:', req.originalUrl);
+  // console.log('[MethodOverride] req.query:', JSON.stringify(req.query));
 
   let methodToOverride;
 
-  // Check query parameter first (most reliable for multipart forms)
   if (req.query && typeof req.query === 'object' && '_method' in req.query) {
     methodToOverride = req.query._method;
-    console.log(`[MethodOverride] _method found in query: ${methodToOverride}. Overriding.`);
-    // Optionally, delete req.query._method if you want to clean it up, though not strictly necessary
-    // delete req.query._method; 
+    // console.log(`[MethodOverride] _method found in query: ${methodToOverride}. Overriding.`);
     return methodToOverride;
   }
   
-  // Fallback to check body (for non-multipart forms where body is parsed earlier)
   if (req.body && typeof req.body === 'object' && '_method' in req.body) {
     methodToOverride = req.body._method;
-    console.log(`[MethodOverride] _method found in body: ${methodToOverride}. Overriding.`);
+    // console.log(`[MethodOverride] _method found in body: ${methodToOverride}. Overriding.`);
     delete req.body._method; 
     return methodToOverride;
   }
 
-  console.log('[MethodOverride] _method not found in body or query.');
-  return undefined; // If not found, continue with the original method
+  // console.log('[MethodOverride] _method not found in body or query.');
+  return undefined;
 }));
+
 
 // --- Request Logging Middleware ---
 app.use((req, res, next) => {
-    // Ensure req.user is accessed safely, as authenticateToken might not have run yet for all paths
     const userId = req.user ? req.user.id : (req.user === null ? 'AuthFailed' : 'Guest');
     console.log(`${new Date().toISOString()} - ${req.method} ${req.originalUrl} - User: ${userId}`);
     next();
@@ -107,7 +98,13 @@ try {
     console.error('Error mounting /api/auth:', e);
 }
 
-// Helper for most protected routes whose factories take (knex, authenticateToken, checkPermission)
+// Pass knex, authenticateToken, authorizeAccess when creating the router instance
+const itemsRouter = createItemsRouter(knex, authenticateToken, authorizeAccess);
+app.use('/api/items', itemsRouter);
+console.log('Mounted /api/items');
+
+
+// Helper for most protected routes whose factories take (knex, authenticateToken, authorizeAccess)
 // and are expected to use these for internal route protection.
 const mountProtectedRouter = (path, routerFactory) => {
     if (typeof routerFactory !== 'function') {
@@ -115,7 +112,7 @@ const mountProtectedRouter = (path, routerFactory) => {
         return;
     }
     try {
-        const router = routerFactory(knex, authenticateToken, authorizeAccess); // Correctly passing authorizeAccess
+        const router = routerFactory(knex, authenticateToken, authorizeAccess); // authorizeAccess is your checkPermission equivalent
         app.use(path, router); 
         console.log(`Mounted ${path} (router handles its own auth)`);
     } catch (error) {
@@ -123,23 +120,26 @@ const mountProtectedRouter = (path, routerFactory) => {
     }
 };
 
-// Apply to routers that are structured to use authenticateToken and checkPermission internally
-mountProtectedRouter('/api/products', createProductsRouter);
-mountProtectedRouter('/api/users', createUsersRouter); // Assuming createUsersRouter also uses auth tools internally
-mountProtectedRouter('/api/sales', createSalesRouter); // Assuming createSalesRouter also uses auth tools internally
-mountProtectedRouter('/api/employees', createEmployeesRouter); // And so on for other complex routers
-mountProtectedRouter('/api/suppliers', createSuppliersRouter); // Ensure authenticateToken and authorizeAccess are correctly passed
+// Apply to routers that are structured to use authenticateToken and authorizeAccess internally
+mountProtectedRouter('/api/users', createUsersRouter);
+mountProtectedRouter('/api/sales', createSalesRouter);
+mountProtectedRouter('/api/employees', createEmployeesRouter);
+mountProtectedRouter('/api/suppliers', createSuppliersRouter);
+mountProtectedRouter('/api/purchase-orders', createPurchaseOrdersRouter);
+// ***** CORRECTED MOUNTING FOR ITEM UNITS *****
+mountProtectedRouter('/api/item-units', createItemUnitsRouterFunction); // Use correct variable and helper
+
 
 // Simpler helper for routes that might only need path-level authentication 
-// and their factories only take knex (internal routes might not need granular permissions or use a default)
+// and their factories only take knex
 const mountSimpleProtectedRoute = (path, routerFactory) => {
     if (typeof routerFactory !== 'function') {
         console.warn(`Router factory for ${path} is not a function. Skipping.`);
         return;
     }
     try {
-        const router = routerFactory(knex); // Factory only takes knex
-        app.use(path, authenticateToken, router); // Apply blanket authenticateToken for the path
+        const router = routerFactory(knex);
+        app.use(path, authenticateToken, router); // Applies authenticateToken at the path level
         console.log(`Mounted ${path} with path-level authenticateToken`);
     } catch (e) {
         console.error(`Error mounting ${path}:`, e);
@@ -153,11 +153,10 @@ mountSimpleProtectedRoute('/api/categories', createCategoriesRouter);
 mountSimpleProtectedRoute('/api/discount-types', createDiscountTypesRouter);
 mountSimpleProtectedRoute('/api/inventory', createInventoryRouter);
 mountSimpleProtectedRoute('/api/manufacturers', createManufacturersRouter);
-mountSimpleProtectedRoute('/api/product-units', createProductUnitsRouter); // ADD THIS LINE
+// mountSimpleProtectedRoute('/api/Item-units', createItemUnitsRouterFunction); // REMOVE THIS LINE or ensure it's not duplicated
 mountSimpleProtectedRoute('/api/special-categories', createSpecialCategoriesRouter);
 mountSimpleProtectedRoute('/api/stores', createStoresRouter);
 mountSimpleProtectedRoute('/api/sub-categories', createSubCategoriesRouter);
-mountSimpleProtectedRoute('/api/suppliers', createSuppliersRouter);
 mountSimpleProtectedRoute('/api/tax-types', createTaxTypesRouter);
 mountSimpleProtectedRoute('/api/taxes', createTaxesRouter);
 mountSimpleProtectedRoute('/api/units', createUnitsRouter);
@@ -168,24 +167,23 @@ mountSimpleProtectedRoute('/api/permission-categories', createPermissionCategori
 mountSimpleProtectedRoute('/api/settings', createStoreSettingsRoutes);
 mountSimpleProtectedRoute('/api/customers', createCustomersRouter);
 mountSimpleProtectedRoute('/api/attributes', createAttributesRouter);
-mountProtectedRouter('/api/purchase-orders', createPurchaseOrdersRouter);
 
 
 // --- Global Error Handler ---
-// (Keep your existing global error handler)
+// ... your global error handler ...
 app.use((err, req, res, next) => {
     console.error("Global Error Handler Caught:", err.message, err.stack || '');
     const statusCode = err.statusCode || 500;
     const message = err.message || 'An unexpected error occurred on the server.';
 
-    if (err.name === 'UnauthorizedError') { // Specific check for JWT errors if you use express-jwt
+    if (err.name === 'UnauthorizedError') { // Specific check for jwt errors
         res.status(401).json({ status: 'error', statusCode: 401, message: 'Invalid or expired token.' });
     } else if (err.status === 401) { // General 401
         res.status(401).json({ status: 'error', statusCode: 401, message: err.message || 'Unauthorized.' });
     } else if (err.status === 403) { // General 403
         res.status(403).json({ status: 'error', statusCode: 403, message: err.message || 'Forbidden.' });
     }
-    else {
+    else { // Default to 500 or provided status
         res.status(statusCode).json({
             status: 'error',
             statusCode,
@@ -195,10 +193,9 @@ app.use((err, req, res, next) => {
     }
 });
 
+
 // --- Start Server ---
-// (Keep your existing server start logic)
 const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
     console.log(`Backend server running on port ${PORT}`);
-    // ... other startup logs
 });

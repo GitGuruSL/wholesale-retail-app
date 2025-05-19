@@ -18,7 +18,7 @@ import {
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 
-function ProductAttributeFormPage() {
+function ItemAttributeFormPage() { // Renamed from ItemAttributeFormPage
     // Correctly get 'attributeId' from useParams and you can alias it to 'id' if you prefer
     // or just use 'attributeId' throughout the component.
     // Let's alias it to 'id' to minimize other changes in your existing code.
@@ -174,6 +174,7 @@ function ProductAttributeFormPage() {
 
         } catch (err) {
             console.error('Error saving attribute:', err);
+// ...existing code...
             const backendErrorMessage = err.response?.data?.message || 'Failed to save attribute. Please check your input.';
             // const detailedError = err.response?.data?.errorDetails || (err.isAxiosError ? err.toJSON() : err);
             // console.error('Detailed error object:', detailedError);
@@ -188,7 +189,7 @@ function ProductAttributeFormPage() {
         <Container maxWidth="md" sx={{ mt: 4 }}>
             <Paper elevation={3} sx={{ p: 4 }}>
                 <Typography variant="h4" component="h1" gutterBottom>
-                    {isEditing ? 'Edit Product Attribute' : 'Create New Product Attribute'}
+                    {isEditing ? 'Edit Item Attribute' : 'Create New Item Attribute'}
                 </Typography>
 
                 {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -270,4 +271,4 @@ function ProductAttributeFormPage() {
     );
 }
 
-export default ProductAttributeFormPage;
+export default ItemAttributeFormPage; // Renamed from ItemAttributeFormPage

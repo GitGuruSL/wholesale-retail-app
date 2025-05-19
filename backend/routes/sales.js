@@ -17,8 +17,8 @@ function createSalesRouter(knex) {
         if (!storeId || !Array.isArray(items) || items.length === 0) {
             return res.status(400).json({ message: 'storeId and a non-empty items array are required.' });
         }
-        if (!items.every(item => item.productId && item.quantity > 0 && item.unitPrice >= 0)) {
-            return res.status(400).json({ message: 'Each item must have productId, quantity > 0, and unitPrice >= 0.' });
+        if (!items.every(item => item.ItemId && item.quantity > 0 && item.unitPrice >= 0)) {
+            return res.status(400).json({ message: 'Each item must have ItemId, quantity > 0, and unitPrice >= 0.' });
         }
 
         // --- Transaction ---
@@ -35,7 +35,7 @@ function createSalesRouter(knex) {
                     const lineTotal = (item.unitPrice - discountPerUnit + taxPerUnit) * item.quantity;
                     calculatedSubTotal += lineTotal;
                     return {
-                        product_id: item.productId,
+                        Item_id: item.ItemId,
                         quantity: item.quantity,
                         unit_price: item.unitPrice,
                         discount_per_unit: discountPerUnit,
@@ -75,29 +75,29 @@ function createSalesRouter(knex) {
                 // 4. Update inventory for each item
                 console.log(`[Sales POST] Updating inventory for sale ${saleId}...`);
                 for (const item of itemsToInsert) {
-                    const productId = item.product_id;
+                    const ItemId = item.Item_id;
                     const quantitySold = item.quantity;
 
                     // Decrement inventory quantity
                     const updatedRows = await trx('inventory')
-                        .where({ product_id: productId, store_id: storeId })
+                        .where({ Item_id: ItemId, store_id: storeId })
                         .decrement('quantity', quantitySold);
 
                     if (updatedRows === 0) {
-                        // If no row was updated, it means the product might not exist in inventory for that store
+                        // If no row was updated, it means the Item might not exist in inventory for that store
                         // OR the quantity went below zero if constraints are set up.
                         // For simplicity here, we assume an inventory record should exist.
                         // A more robust solution checks existence first or handles upsert.
-                        console.warn(`[Sales POST] Inventory record not found or not updated for product ${productId} in store ${storeId}. Potential issue.`);
+                        console.warn(`[Sales POST] Inventory record not found or not updated for Item ${ItemId} in store ${storeId}. Potential issue.`);
                         // Decide if this should cause a rollback:
-                        // throw new Error(`Inventory update failed for product ${productId}. Record not found or insufficient stock if constraints exist.`);
+                        // throw new Error(`Inventory update failed for Item ${ItemId}. Record not found or insufficient stock if constraints exist.`);
                     } else {
-                         console.log(`[Sales POST] Decremented inventory for product ${productId} by ${quantitySold} in store ${storeId}`);
+                         console.log(`[Sales POST] Decremented inventory for Item ${ItemId} by ${quantitySold} in store ${storeId}`);
                     }
                     // Optional: Check if quantity went below zero if DB doesn't enforce it
-                    // const currentInv = await trx('inventory').where({ product_id: productId, store_id: storeId }).first('quantity');
+                    // const currentInv = await trx('inventory').where({ Item_id: ItemId, store_id: storeId }).first('quantity');
                     // if (currentInv && currentInv.quantity < 0) {
-                    //     throw new Error(`Insufficient stock for product ${productId} in store ${storeId}.`);
+                    //     throw new Error(`Insufficient stock for Item ${ItemId} in store ${storeId}.`);
                     // }
                 }
                 console.log(`[Sales POST] Inventory update complete for sale ${saleId}`);
@@ -160,9 +160,9 @@ function createSalesRouter(knex) {
             }
 
             const items = await knex('sale_items')
-                .join('products', 'sale_items.product_id', 'products.id')
+                .join('Items', 'sale_items.Item_id', 'Items.id')
                 .where('sale_items.sale_id', saleId)
-                .select('sale_items.*', 'products.product_name as product_name', 'products.sku'); // Select all from items + product name/sku
+                .select('sale_items.*', 'Items.Item_name as Item_name', 'Items.sku'); // Select all from items + Item name/sku
 
             res.status(200).json({ ...sale, items });
         } catch (err) {

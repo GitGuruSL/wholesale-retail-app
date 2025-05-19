@@ -10,9 +10,9 @@ function createWarrantiesRouter(knex) {
     const router = express.Router();
 
     // --- Helper: Check for dependencies ---
-    // Checks if a warranty is used by any products
+    // Checks if a warranty is used by any Items
     const isWarrantyInUse = async (warrantyId) => {
-        const countResult = await knex('products')
+        const countResult = await knex('Items')
                                 .where({ warranty_id: warrantyId })
                                 .count('id as count').first();
         return countResult && countResult.count > 0;
@@ -136,9 +136,9 @@ function createWarrantiesRouter(knex) {
         if (isNaN(warrantyId)) return res.status(400).json({ message: 'Invalid warranty ID.' });
 
         try {
-            // Check for dependencies (products using this warranty)
+            // Check for dependencies (Items using this warranty)
             const warrantyUsed = await isWarrantyInUse(warrantyId);
-            if (warrantyUsed) return res.status(409).json({ message: 'Conflict: Cannot delete warranty because it is used by products.' });
+            if (warrantyUsed) return res.status(409).json({ message: 'Conflict: Cannot delete warranty because it is used by Items.' });
 
             const count = await knex('warranties').where({ id: warrantyId }).del();
             if (count === 0) return res.status(404).json({ message: `Warranty with ID ${id} not found.` });

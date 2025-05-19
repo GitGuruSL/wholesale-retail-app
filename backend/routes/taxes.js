@@ -10,9 +10,9 @@ function createTaxesRouter(knex) {
     const router = express.Router();
 
     // --- Helper: Check for dependencies ---
-    // Checks if a tax is used by any products
+    // Checks if a tax is used by any Items
     const isTaxInUse = async (taxId) => {
-        const countResult = await knex('products')
+        const countResult = await knex('Items')
                                 .where({ tax_id: taxId })
                                 .count('id as count').first();
         return countResult && countResult.count > 0;
@@ -146,9 +146,9 @@ function createTaxesRouter(knex) {
         if (isNaN(taxId)) return res.status(400).json({ message: 'Invalid tax ID.' });
 
         try {
-            // Check for dependencies (products using this tax)
+            // Check for dependencies (Items using this tax)
             const taxUsed = await isTaxInUse(taxId);
-            if (taxUsed) return res.status(409).json({ message: 'Conflict: Cannot delete tax because it is used by products.' });
+            if (taxUsed) return res.status(409).json({ message: 'Conflict: Cannot delete tax because it is used by Items.' });
 
             const count = await knex('taxes').where({ id: taxId }).del();
             if (count === 0) return res.status(404).json({ message: `Tax with ID ${id} not found.` });

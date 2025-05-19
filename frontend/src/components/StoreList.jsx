@@ -69,7 +69,7 @@ function StoreList() {
             setTimeout(() => setFeedback({ message: null, type: null }), 5000);
             return;
         }
-        if (!window.confirm(`Are you sure you want to delete store: "${storeName}" (ID: ${storeId})?\nThis might fail if it's linked to products, stock, or orders.`)) {
+        if (!window.confirm(`Are you sure you want to delete store: "${storeName}" (ID: ${storeId})?\nThis might fail if it's linked to Items, stock, or orders.`)) {
             return;
         }
         setPageError(null);

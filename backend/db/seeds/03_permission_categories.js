@@ -1,8 +1,8 @@
 exports.seed = async function(knex) {
   const categories = [
     { id: 1, name: 'User, Role & Permission Mgmt', display_order: 10 },
-    { id: 2, name: 'Store & Product Catalog', display_order: 20 },
-    { id: 3, name: 'Product Configuration', display_order: 30 },
+    { id: 2, name: 'Store & Item Catalog', display_order: 20 },
+    { id: 3, name: 'Item Configuration', display_order: 30 },
     { id: 4, name: 'Operations', display_order: 40 },
     { id: 5, name: 'System & Reports', display_order: 50 },
     { id: 6, name: 'Other Permissions', display_order: 999 }, // For any uncategorized

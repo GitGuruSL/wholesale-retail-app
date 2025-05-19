@@ -10,9 +10,9 @@ function createSpecialCategoriesRouter(knex) {
     const router = express.Router();
 
     // --- Helper: Check for dependencies ---
-    // Checks if a special category is used by any products
+    // Checks if a special category is used by any Items
     const isSpecialCategoryInUse = async (categoryId) => {
-        const countResult = await knex('products')
+        const countResult = await knex('Items')
                                 .where({ special_category_id: categoryId })
                                 .count('id as count').first();
         return countResult && countResult.count > 0;
@@ -115,7 +115,7 @@ function createSpecialCategoriesRouter(knex) {
         try {
             // Check for dependencies
             const categoryUsed = await isSpecialCategoryInUse(categoryId);
-            if (categoryUsed) return res.status(409).json({ message: 'Conflict: Cannot delete special category because it is used by products.' });
+            if (categoryUsed) return res.status(409).json({ message: 'Conflict: Cannot delete special category because it is used by Items.' });
 
             const count = await knex('special_categories').where({ id: categoryId }).del();
             if (count === 0) return res.status(404).json({ message: `Special category with ID ${id} not found.` });

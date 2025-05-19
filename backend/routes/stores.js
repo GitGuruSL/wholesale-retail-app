@@ -11,7 +11,7 @@ function createStoresRouter(knex) {
     // Helper: Check if a store is referenced in other tables
     const isStoreInUse = async (storeId) => {
         const tablesToCheck = [
-            { table: 'products', column: 'store_id' },
+            { table: 'Items', column: 'store_id' },
             { table: 'stock', column: 'store_id' },
             { table: 'purchase_orders', column: 'store_id' },
             { table: 'sales_orders', column: 'store_id' },

@@ -10,9 +10,9 @@ function createDiscountTypesRouter(knex) {
     const router = express.Router();
 
     // --- Helper: Check for dependencies ---
-    // Checks if a discount type is used by any products
+    // Checks if a discount type is used by any Items
     const isDiscountTypeInUse = async (typeId) => {
-        const countResult = await knex('products')
+        const countResult = await knex('Items')
                                 .where({ discount_type_id: typeId })
                                 .count('id as count').first();
         return countResult && countResult.count > 0;
@@ -99,7 +99,7 @@ function createDiscountTypesRouter(knex) {
         try {
             // Check for dependencies
             const typeUsed = await isDiscountTypeInUse(typeId);
-            if (typeUsed) return res.status(409).json({ message: 'Conflict: Cannot delete discount type because it is used by products.' });
+            if (typeUsed) return res.status(409).json({ message: 'Conflict: Cannot delete discount type because it is used by Items.' });
 
             const count = await knex('discount_types').where({ id: typeId }).del();
             if (count === 0) return res.status(404).json({ message: `Discount type with ID ${id} not found.` });

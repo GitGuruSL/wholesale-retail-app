@@ -9,13 +9,13 @@ const express = require('express');
 function createSubCategoriesRouter(knex) {
     const router = express.Router();
 
-     // --- Helper: Check for Product dependencies ---
-     const hasProducts = async (subCategoryId) => {
-        const hasSubCategoryColumn = await knex.schema.hasColumn('products', 'sub_category_id');
+     // --- Helper: Check for Item dependencies ---
+     const hasItems = async (subCategoryId) => {
+        const hasSubCategoryColumn = await knex.schema.hasColumn('Items', 'sub_category_id');
         if (!hasSubCategoryColumn) {
             return false;
         }
-        const countResult = await knex('products')
+        const countResult = await knex('Items')
                                 .where({ sub_category_id: subCategoryId })
                                 .count('id as count')
                                 .first();
@@ -185,9 +185,9 @@ function createSubCategoriesRouter(knex) {
         }
 
         try {
-            const subCategoryHasProducts = await hasProducts(parseInt(id));
-             if (subCategoryHasProducts) {
-                return res.status(409).json({ message: 'Conflict: Cannot delete sub-category because it has associated products.' });
+            const subCategoryHasItems = await hasItems(parseInt(id));
+             if (subCategoryHasItems) {
+                return res.status(409).json({ message: 'Conflict: Cannot delete sub-category because it has associated Items.' });
             }
 
             const count = await knex('sub_categories').where({ id: parseInt(id) }).del();
