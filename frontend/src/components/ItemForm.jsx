@@ -239,25 +239,22 @@ function ItemForm() {
             setUnitConfigError("Unit and Conversion Factor are required.");
             return;
         }
-        if (isEditing && itemId) { // API call for existing items
-            setLoadingUnitConfig(true);
-            setUnitConfigError(null);
-            setUnitConfigFeedback('');
-            try {
-                const addedUnit = await addItemUnitConfig({ ...newUnitConfig, item_id: parseInt(itemId) });
-                setItemUnits(prev => [...prev, addedUnit.itemUnit || addedUnit]); // Adjust based on API response
-                setNewUnitConfig(initialNewUnitConfig);
-                setUnitConfigFeedback('Unit configuration added successfully.');
-            } catch (err) {
-                setUnitConfigError(err.response?.data?.message || err.message || "Failed to add unit config.");
-            } finally {
-                setLoadingUnitConfig(false);
+        // Determine if this is the base unit
+        const isBaseUnit = (
+            newUnitConfig.unit_id.toString() === formData.base_unit_id?.toString() &&
+            Number(newUnitConfig.conversion_factor) === 1
+        );
+        const unitName = units.find(u => u.id.toString() === newUnitConfig.unit_id)?.name || 'Unknown Unit';
+        setItemUnits(prev => [
+            ...prev,
+            {
+                ...newUnitConfig,
+                id: `temp-${Date.now()}`,
+                unit_name: unitName,
+                is_base_unit: isBaseUnit // <-- Add this line
             }
-        } else { // Local update for new items
-            const unitName = units.find(u => u.id.toString() === newUnitConfig.unit_id)?.name || 'Unknown Unit';
-            setItemUnits(prev => [...prev, { ...newUnitConfig, id: `temp-${Date.now()}`, unit_name: unitName }]);
-            setNewUnitConfig(initialNewUnitConfig);
-        }
+        ]);
+        setNewUnitConfig(initialNewUnitConfig);
     };
 
     const handleDeleteUnitConfig = async (configIdToDelete, unitName) => {
@@ -301,13 +298,17 @@ function ItemForm() {
             setVariationGenerationError("Please configure at least one attribute with values to generate variations.");
             return;
         }
-        // Basic Cartesian product logic (can be complex)
+        // Use itemId if editing, otherwise use a temporary unique string
+        const itemSkuPrefix = (formData.sku || formData.item_name || 'ITEM').replace(/\s+/g, '-').toUpperCase();
+        const uniqueItemPart = isEditing && itemId ? itemId : `NEW${Date.now()}`;
+        const skuPrefix = `${itemSkuPrefix}-${uniqueItemPart}`;
+
+        // Basic Cartesian product logic
         const generate = (configs) => {
             if (!configs || configs.length === 0) return [{}];
             const [first, ...rest] = configs;
             const restGenerated = generate(rest);
-            if (!first.values || first.values.length === 0) return restGenerated; // Skip if no values for this attr
-
+            if (!first.values || first.values.length === 0) return restGenerated;
             return first.values.flatMap(val =>
                 restGenerated.map(sg => ({ [first.name || `attr_${first.attribute_id}`]: val, ...sg }))
             );
@@ -315,14 +316,14 @@ function ItemForm() {
         const combinations = generate(itemAttributesConfig.filter(attr => attr.attribute_id && attr.values && attr.values.length > 0));
         const newVariations = combinations.map((combo, idx) => ({
             id: `new-${idx}-${Date.now()}`,
-            sku: `${formData.sku || 'VAR'}-${Object.values(combo).join('-').toUpperCase()}`.slice(0,50), // Example SKU
+            sku: `${skuPrefix}-${Object.values(combo).join('-').toUpperCase()}`.slice(0, 50),
             cost_price: formData.cost_price || '',
             retail_price: formData.retail_price || '',
             wholesale_price: formData.wholesale_price || '',
             attribute_combination: combo,
         }));
         setItemVariations(newVariations);
-        console.log("Generated Variations (placeholder logic):", newVariations);
+        console.log("Generated Variations (with unique SKUs):", newVariations);
     };
     const handleVariationChange = (index, field, value) => {
         setItemVariations(prev => prev.map((v, i) => i === index ? { ...v, [field]: value } : v));
@@ -355,18 +356,55 @@ function ItemForm() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        // ... (validation for item_name, category_id, base_unit_id) ...
-        if (!formData.item_name.trim()) { /* ... */ }
-        if (!formData.category_id) { /* ... */ }
-        if (!formData.base_unit_id) { /* ... */ }
+
+        // Check for at least one base unit
+        const hasBaseUnit = itemUnits.some(
+            u => Number(u.conversion_factor) === 1
+        );
+        if (!hasBaseUnit) {
+            setError("You must add at least one unit with a conversion factor of 1 (the base unit).");
+            setCurrentTab(2); // Switch to Unit Configuration tab
+            return;
+        }
+
+        // Check for duplicate SKUs in variations
+        if (itemVariations && itemVariations.length > 0) {
+            const skuSet = new Set();
+            for (const v of itemVariations) {
+                if (!v.sku) continue;
+                if (skuSet.has(v.sku)) {
+                    setError(`Duplicate SKU found in variations: "${v.sku}". SKUs must be unique.`);
+                    setCurrentTab(3); // Switch to Variations tab
+                    return;
+                }
+                skuSet.add(v.sku);
+            }
+        }
 
         setIsLoading(true);
         setError(null);
         setSuccessMessage(null);
 
+        // Ensure one unit is marked as base unit
+        let updatedItemUnits = itemUnits.map(u => {
+            // Mark as base if matches base_unit_id and conversion_factor === 1
+            const isBase = (
+                u.unit_id?.toString() === formData.base_unit_id?.toString() &&
+                Number(u.conversion_factor) === 1
+            );
+            return { ...u, is_base_unit: isBase };
+        });
+
+        // If no base unit found, show error and stop
+        if (!updatedItemUnits.some(u => u.is_base_unit)) {
+            setError("You must have at least one unit with conversion factor 1 and marked as base unit.");
+            setCurrentTab(2);
+            return;
+        }
+
         const payload = { ...formData };
         // Add complex data from their dedicated states
-        payload.item_units_config = itemUnits;
+        payload.item_units_config = updatedItemUnits;
         payload.attributes_config = itemAttributesConfig; // Config used to generate variations
         payload.variations_data = itemVariations;
         

@@ -15,7 +15,7 @@ const createDiscountTypesRouter = require('./routes/discount_types');
 const createEmployeesRouter = require('./routes/employees');
 const createInventoryRouter = require('./routes/inventory');
 const createManufacturersRouter = require('./routes/manufacturers');
-const createItemUnitsRouterFunction = require('./routes/item_units'); // Correctly imported
+const createItemUnitsRouterFunction = require('./routes/item_units'); 
 const createItemsRouter = require('./routes/items');
 const createSalesRouter = require('./routes/sales');
 const createSpecialCategoriesRouter = require('./routes/special_categories');
@@ -34,6 +34,7 @@ const createStoreSettingsRoutes = require('./routes/settings');
 const createCustomersRouter = require('./routes/customers');
 const createAttributesRouter = require('./routes/attributes');
 const createPurchaseOrdersRouter = require('./routes/purchaseOrders');
+const createItemVariantsRouter = require('./routes/itemVariants'); 
 
 const app = express();
 
@@ -57,53 +58,27 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use(methodOverride(function (req, res) {
-  // console.log('[MethodOverride] Original Method:', req.method, 'URL:', req.originalUrl);
-  // console.log('[MethodOverride] req.query:', JSON.stringify(req.query));
-
   let methodToOverride;
-
   if (req.query && typeof req.query === 'object' && '_method' in req.query) {
     methodToOverride = req.query._method;
-    // console.log(`[MethodOverride] _method found in query: ${methodToOverride}. Overriding.`);
     return methodToOverride;
   }
-  
   if (req.body && typeof req.body === 'object' && '_method' in req.body) {
     methodToOverride = req.body._method;
-    // console.log(`[MethodOverride] _method found in body: ${methodToOverride}. Overriding.`);
     delete req.body._method; 
     return methodToOverride;
   }
-
-  // console.log('[MethodOverride] _method not found in body or query.');
   return undefined;
 }));
 
-
 // --- Request Logging Middleware ---
 app.use((req, res, next) => {
-    const userId = req.user ? req.user.id : (req.user === null ? 'AuthFailed' : 'Guest');
+    const userId = req.user ? req.user.user_id : (req.user === null ? 'AuthFailed' : 'Guest'); // Corrected to req.user.user_id
     console.log(`${new Date().toISOString()} - ${req.method} ${req.originalUrl} - User: ${userId}`);
     next();
 });
 
-// --- Mount Routers ---
-
-// Public Route
-try {
-    const authRouter = createAuthRouter(knex);
-    app.use('/api/auth', authRouter);
-    console.log('Mounted /api/auth');
-} catch (e) {
-    console.error('Error mounting /api/auth:', e);
-}
-
-// Pass knex, authenticateToken, authorizeAccess when creating the router instance
-const itemsRouter = createItemsRouter(knex, authenticateToken, authorizeAccess);
-app.use('/api/items', itemsRouter);
-console.log('Mounted /api/items');
-
-
+// --- DEFINE HELPER FUNCTIONS BEFORE USE ---
 // Helper for most protected routes whose factories take (knex, authenticateToken, authorizeAccess)
 // and are expected to use these for internal route protection.
 const mountProtectedRouter = (path, routerFactory) => {
@@ -119,16 +94,6 @@ const mountProtectedRouter = (path, routerFactory) => {
         console.error(`Error creating or mounting router for ${path}:`, error);
     }
 };
-
-// Apply to routers that are structured to use authenticateToken and authorizeAccess internally
-mountProtectedRouter('/api/users', createUsersRouter);
-mountProtectedRouter('/api/sales', createSalesRouter);
-mountProtectedRouter('/api/employees', createEmployeesRouter);
-mountProtectedRouter('/api/suppliers', createSuppliersRouter);
-mountProtectedRouter('/api/purchase-orders', createPurchaseOrdersRouter);
-// ***** CORRECTED MOUNTING FOR ITEM UNITS *****
-mountProtectedRouter('/api/item-units', createItemUnitsRouterFunction); // Use correct variable and helper
-
 
 // Simpler helper for routes that might only need path-level authentication 
 // and their factories only take knex
@@ -146,6 +111,36 @@ const mountSimpleProtectedRoute = (path, routerFactory) => {
     }
 };
 
+// --- Mount Routers ---
+
+// Public Route
+try {
+    const authRouter = createAuthRouter(knex);
+    app.use('/api/auth', authRouter);
+    console.log('Mounted /api/auth');
+} catch (e) {
+    console.error('Error mounting /api/auth:', e);
+}
+
+// Pass knex, authenticateToken, authorizeAccess when creating the router instance
+const itemsRouter = createItemsRouter(knex, authenticateToken, authorizeAccess);
+app.use('/api/items', itemsRouter);
+console.log('Mounted /api/items');
+
+// Mount the new item variants router
+const itemVariantRoutes = require('./routes/itemVariants'); // No factory function call
+app.use('/api/item-variants', itemVariantRoutes);
+console.log('Mounted /api/item-variants');
+
+// Apply to routers that are structured to use authenticateToken and authorizeAccess internally
+mountProtectedRouter('/api/users', createUsersRouter);
+mountProtectedRouter('/api/sales', createSalesRouter);
+mountProtectedRouter('/api/employees', createEmployeesRouter);
+mountProtectedRouter('/api/suppliers', createSuppliersRouter);
+mountProtectedRouter('/api/purchase-orders', createPurchaseOrdersRouter);
+mountProtectedRouter('/api/item-units', createItemUnitsRouterFunction); 
+
+
 // Use for routers whose factories only expect `knex` and auth is handled at path level
 mountSimpleProtectedRoute('/api/barcode-symbologies', createBarcodeSymbologiesRouter);
 mountSimpleProtectedRoute('/api/brands', createBrandsRouter);
@@ -153,7 +148,6 @@ mountSimpleProtectedRoute('/api/categories', createCategoriesRouter);
 mountSimpleProtectedRoute('/api/discount-types', createDiscountTypesRouter);
 mountSimpleProtectedRoute('/api/inventory', createInventoryRouter);
 mountSimpleProtectedRoute('/api/manufacturers', createManufacturersRouter);
-// mountSimpleProtectedRoute('/api/Item-units', createItemUnitsRouterFunction); // REMOVE THIS LINE or ensure it's not duplicated
 mountSimpleProtectedRoute('/api/special-categories', createSpecialCategoriesRouter);
 mountSimpleProtectedRoute('/api/stores', createStoresRouter);
 mountSimpleProtectedRoute('/api/sub-categories', createSubCategoriesRouter);
@@ -176,14 +170,14 @@ app.use((err, req, res, next) => {
     const statusCode = err.statusCode || 500;
     const message = err.message || 'An unexpected error occurred on the server.';
 
-    if (err.name === 'UnauthorizedError') { // Specific check for jwt errors
+    if (err.name === 'UnauthorizedError') { 
         res.status(401).json({ status: 'error', statusCode: 401, message: 'Invalid or expired token.' });
-    } else if (err.status === 401) { // General 401
+    } else if (err.status === 401) { 
         res.status(401).json({ status: 'error', statusCode: 401, message: err.message || 'Unauthorized.' });
-    } else if (err.status === 403) { // General 403
+    } else if (err.status === 403) { 
         res.status(403).json({ status: 'error', statusCode: 403, message: err.message || 'Forbidden.' });
     }
-    else { // Default to 500 or provided status
+    else { 
         res.status(statusCode).json({
             status: 'error',
             statusCode,

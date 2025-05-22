@@ -81,7 +81,8 @@ function ItemAttributeListPage(): JSX.Element {
     }, [fetchAttributes]);
 
     const handleDelete = async (attributeId: number | string, attributeName: string) => {
-        if (typeof userCan !== 'function' || !userCan('attribute:delete')) {
+        // Corrected permission check
+        if (typeof userCan !== 'function' || !userCan('item_attribute:delete')) {
             setFeedback({ message: 'You do not have permission to delete attributes.', type: 'error' });
             return;
         }
@@ -123,7 +124,8 @@ function ItemAttributeListPage(): JSX.Element {
         <Paper sx={{ p: { xs: 2, md: 3 }, m: { xs: 1, md: 2 } }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Typography variant="h4" component="h1">Item Attributes</Typography>
-                {typeof userCan === 'function' && userCan('attribute:create') && (
+                {/* Corrected permission check */}
+                {typeof userCan === 'function' && userCan('item_attribute:create') && (
                     <Button
                         variant="contained"
                         startIcon={<AddIcon />}
@@ -165,7 +167,8 @@ function ItemAttributeListPage(): JSX.Element {
                             <TableRow>
                                 <TableCell colSpan={4} align="center" sx={{ py: 3 }}>
                                     <Typography>No attributes found.</Typography>
-                                    {typeof userCan === 'function' && userCan('attribute:create') && (
+                                    {/* Corrected permission check */}
+                                    {typeof userCan === 'function' && userCan('item_attribute:create') && (
                                          <Button
                                             variant="outlined"
                                             startIcon={<AddIcon />}
@@ -189,7 +192,8 @@ function ItemAttributeListPage(): JSX.Element {
                                         : <Typography variant="caption" color="textSecondary">No values defined</Typography>}
                                 </TableCell>
                                 <TableCell sx={{ textAlign: 'right' }}>
-                                    {typeof userCan === 'function' && userCan('attribute:update') && (
+                                    {/* Corrected permission check */}
+                                    {typeof userCan === 'function' && userCan('item_attribute:update') && (
                                         <Tooltip title="Edit Attribute">
                                             <IconButton
                                                 component={RouterLink}
@@ -202,7 +206,8 @@ function ItemAttributeListPage(): JSX.Element {
                                             </IconButton>
                                         </Tooltip>
                                     )}
-                                    {typeof userCan === 'function' && userCan('attribute:delete') && (
+                                    {/* Corrected permission check */}
+                                    {typeof userCan === 'function' && userCan('item_attribute:delete') && (
                                         <Tooltip title="Delete Attribute">
                                             <IconButton
                                                 onClick={() => handleDelete(attr.id, attr.name)}

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
     Box, Typography, Button, TextField, FormControl, InputLabel,
     Select, MenuItem, Grid, Paper, Table, TableBody, TableCell,
@@ -7,14 +7,13 @@ import {
 } from '@mui/material';
 import { FaTrashAlt, FaPlus } from 'react-icons/fa';
 
-function ItemUnitConfigurationFields({
-    // ItemId, // Not directly used in this component's rendering logic, but passed to handlers
+const ItemUnitConfigurationFields = ({
     ItemUnits = [],
     newUnitConfig,
     onNewUnitConfigChange,
-    onAddUnitConfig, // This will be handleAddLocalUnitConfig (new) or handleAddUnitConfigAPI (edit)
-    onDeleteUnitConfig, // This will be handleDeleteLocalUnitConfig (new) or handleDeleteUnitConfigAPI (edit)
-    units = [],
+    onAddUnitConfig,
+    onDeleteUnitConfig,
+    units = [], // <-- Default to empty array
     baseUnitId,
     loadingUnitConfig,
     unitConfigError,
@@ -22,11 +21,20 @@ function ItemUnitConfigurationFields({
     unitConfigFeedback,
     setUnitConfigFeedback,
     commonFormControlSx,
-    isAuthenticated // To ensure component doesn't render if not auth
-}) {
+    isAuthenticated
+}) => {
+
+    // Add this log to see when the prop updates
+    useEffect(() => {
+        console.log('[ItemUnitConfigurationFields] Received itemUnits prop update:', JSON.parse(JSON.stringify(ItemUnits || [])));
+    }, [ItemUnits]);
 
     if (!isAuthenticated) {
         return null; // Don't render if not authenticated
+    }
+
+    if (!Array.isArray(units) || units.length === 0) {
+        return <div>Loading units...</div>;
     }
 
     const baseUnitName = units.find(u => u.id?.toString() === baseUnitId?.toString())?.name || 'Base Unit';
@@ -144,7 +152,7 @@ function ItemUnitConfigurationFields({
                             {ItemUnits.map((pu) => (
                                 <TableRow key={pu.id} hover>
                                     <TableCell component="th" scope="row">
-                                        {pu.unit_name || units.find(u => u.id?.toString() === pu.unit_id?.toString())?.name || 'N/A'}
+                                        {pu.unit_name || (units || []).find(u => u.id?.toString() === pu.unit_id?.toString())?.name || 'N/A'}
                                     </TableCell>
                                     <TableCell align="right">{pu.conversion_factor}</TableCell>
                                     <TableCell align="center">{pu.is_purchase_unit ? 'Yes' : 'No'}</TableCell>

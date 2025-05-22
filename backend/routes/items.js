@@ -11,10 +11,35 @@ module.exports = function(knex, authenticateToken, authorizeAccess) {
     // Apply middleware to all item routes or specific ones as needed
     // Example: router.use(authenticateToken);
 
-    // --- Item Routes ---
+    // NEW ROUTES FOR PURCHASE ORDER FORM DROPDOWNS - MOVED UP
+    router.get(
+        '/purchase-product-lines',
+        authenticateToken,
+        authorizeAccess('purchase_order:create'), // Or 'item:read' or 'purchase_order:read' - ensure this is the intended permission
+        itemController.getPurchasableProductLines
+    );
+
+    router.get(
+        '/purchase-product-lines/:base_item_id/variations',
+        authenticateToken,
+        authorizeAccess('purchase_order:create'), // Or 'item:read' or 'purchase_order:read' - ensure this is the intended permission
+        itemController.getVariationsForProductLine
+    );
+
+    // --- Standard Item CRUD Routes ---
     // Ensure itemController.getAllItems is defined in itemController.js
     router.get('/', authenticateToken, authorizeAccess('item:read'), itemController.getAllItems);
     router.post('/', authenticateToken, authorizeAccess('item:create'), itemController.createItem);
+
+    // NEW ROUTE for fetching variations of a specific item
+    router.get(
+        '/:itemId/variations', // Matches /api/items/52/variations
+        authenticateToken,
+        authorizeAccess('item:read'), // Or a more specific permission if needed
+        itemController.getVariationsForItem // New controller function
+    );
+
+    // Parameterized routes AFTER more specific ones
     router.get('/:id', authenticateToken, authorizeAccess('item:read'), itemController.getItemById);
     router.put('/:id', authenticateToken, authorizeAccess('item:update'), itemController.updateItem);
     router.delete('/:id', authenticateToken, authorizeAccess('item:delete'), itemController.deleteItem);

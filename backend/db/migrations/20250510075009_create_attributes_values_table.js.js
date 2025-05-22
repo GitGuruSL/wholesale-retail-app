@@ -1,23 +1,16 @@
-/**
- * @param { import("knex").Knex } knex
- * @returns { Promise<void> }
- */
-exports.up = function(knex) {
-  return knex.schema.createTable('attribute_values', function(table) {
-    table.increments('id').primary();
-    table.integer('attribute_id').unsigned().notNullable();
-    table.foreign('attribute_id').references('id').inTable('attributes').onDelete('CASCADE');
-    table.string('value', 255).notNullable();
-    table.timestamps(true, true);
+// This migration should ONLY create the 'attribute_values' table,
+// assuming 'attributes' table was created by '20250510074929_create_attributes_table.js.js'
 
-    table.unique(['attribute_id', 'value']); // Ensure a value is unique for a given attribute
+exports.up = async function(knex) { // UNCOMMENTED THIS LINE and the function body
+  await knex.schema.createTable('attribute_values', function(table) {
+    table.increments('id').primary();
+    table.integer('attribute_id').unsigned().notNullable().references('id').inTable('attributes').onDelete('CASCADE');
+    table.string('value').notNullable();
+    table.timestamps(true, true);
+    table.unique(['attribute_id', 'value']);
   });
 };
 
-/**
- * @param { import("knex").Knex } knex
- * @returns { Promise<void> }
- */
-exports.down = function(knex) {
-  return knex.schema.dropTableIfExists('attribute_values');
+exports.down = async function(knex) {
+  await knex.schema.dropTableIfExists('attribute_values');
 };

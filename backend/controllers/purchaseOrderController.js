@@ -133,17 +133,45 @@ exports.getPurchaseOrderById = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Purchase order not found' });
         }
 
-        // Security: Non-global admin can only access POs from their store
         if (req.user.role_name !== GLOBAL_ADMIN_ROLE_NAME && purchaseOrder.store_id !== req.user.store_id) {
             return res.status(403).json({ success: false, message: 'Access denied to this purchase order.' });
         }
 
-        const items = await knex('purchase_order_items')
-            .leftJoin('Items', 'purchase_order_items.Item_id', 'Items.id')
-            .select('purchase_order_items.*', 'Items.Item_name', 'Items.sku')
-            .where('purchase_order_items.purchase_order_id', id);
+        const items = await knex('purchase_order_items as poi')
+            .leftJoin('item_variants as iv', 'poi.item_variant_id', 'iv.id') // Correct: join on item_variant_id
+            .leftJoin('items as i', 'iv.item_id', 'i.id')
+            .select(
+                'poi.*',
+                // Construct variant name if you have separate attribute tables, or use a direct column if available
+                // For now, let's assume iv.variant_name or similar exists or you'll adapt this
+                // This part needs to align with how you get variation_display_name in itemController
+                knex.raw(`COALESCE(iv.variant_name, i.item_name || ' - Default') as resolved_item_name`), // Placeholder for actual name construction
+                'iv.sku as item_variant_sku',
+                'i.item_name as base_item_name',
+                'iv.item_id as base_item_id'
+                // poi.item_variant_id is already selected by 'poi.*'
+            )
+            .where('poi.purchase_order_id', id);
 
-        res.status(200).json({ success: true, data: { ...purchaseOrder, items } });
+        // If you need to reconstruct the full variation display name like in the dropdown:
+        const detailedItems = await Promise.all(items.map(async (item) => {
+            if (item.item_variant_id) { // Check if it's a variation
+                 const attributes = await knex('item_variation_attribute_values as ivav')
+                    .join('attribute_values as av', 'ivav.attribute_value_id', 'av.id')
+                    .join('attributes as a', 'av.attribute_id', 'a.id')
+                    .where('ivav.item_variation_id', item.item_variant_id)
+                    .select('a.name as attribute_name', 'av.value as attribute_value')
+                    .orderBy('a.name');
+                const displayNameParts = attributes.map(attr => `${attr.attribute_value}`);
+                item.resolved_item_name = `${item.base_item_name} - ${displayNameParts.join(' / ')}` || item.base_item_name;
+            } else {
+                item.resolved_item_name = item.base_item_name || 'N/A';
+            }
+            return item;
+        }));
+
+
+        res.status(200).json({ success: true, data: { ...purchaseOrder, items: detailedItems } }); // Use detailedItems
     } catch (error) {
         console.error(`Error fetching purchase order ${id}:`, error);
         res.status(500).json({ success: false, message: 'Server error' });
@@ -156,8 +184,9 @@ exports.getPurchaseOrderById = async (req, res) => {
  * @access  Private (requires purchase_order:create permission)
  */
 exports.createPurchaseOrder = async (req, res) => {
+    // Expect item_variant_id in items array
     const { supplier_id, order_date, expected_delivery_date, status = 'Pending', notes, items } = req.body;
-    let { store_id } = req.body; // store_id from request body
+    let { store_id } = req.body;
 
     if (!req.user) return res.status(401).json({ success: false, message: 'User not authenticated.' });
 
@@ -180,67 +209,99 @@ exports.createPurchaseOrder = async (req, res) => {
     if (!supplier_id || !order_date || !store_id || !items || !Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ success: false, message: 'Store ID, supplier, order date, and at least one item are required.' });
     }
-    // ... (rest of validation for items remains the same)
+
     for (const item of items) {
-        if (!item.Item_id || item.quantity == null || item.unit_price == null) {
-            return res.status(400).json({ success: false, message: 'Each item must have Item_id, quantity, and unit_price.' });
+        const itemVariantIdNum = parseInt(item.item_variant_id, 10);
+
+        if (isNaN(itemVariantIdNum) || itemVariantIdNum <= 0) {
+            return res.status(400).json({ success: false, message: `Each item must have a valid positive item_variant_id. Received: '${item.item_variant_id}'.` });
         }
-        if (parseFloat(item.quantity) <= 0 || parseFloat(item.unit_price) < 0) {
-            return res.status(400).json({ success: false, message: 'Item quantity must be positive and unit price non-negative.' });
+        if (item.quantity == null || parseFloat(item.quantity) <= 0) {
+            return res.status(400).json({ success: false, message: 'Item quantity must be a positive number.' });
+        }
+        if (item.unit_price == null || parseFloat(item.unit_price) < 0) {
+            return res.status(400).json({ success: false, message: 'Item unit price must be a non-negative number.' });
         }
     }
-
 
     let trx;
     try {
         trx = await knex.transaction();
         let calculatedTotalAmount = 0;
+
         const poItemsToInsert = items.map(item => {
             const quantity = parseFloat(item.quantity);
             const unit_price = parseFloat(item.unit_price);
             const subtotal = quantity * unit_price;
             calculatedTotalAmount += subtotal;
             return {
-                Item_id: parseInt(item.Item_id, 10),
-                quantity, unit_price, subtotal,
+                // Use item_variant_id for the database column
+                item_variant_id: parseInt(item.item_variant_id, 10), // This is correct
+                quantity,
+                unit_price,
+                subtotal,
                 tax_rate: parseFloat(item.tax_rate) || 0.00,
                 discount_amount: parseFloat(item.discount_amount) || 0.00,
             };
         });
-        
+
         const [newPurchaseOrder] = await trx('purchase_orders')
             .insert({
                 supplier_id: parseInt(supplier_id, 10),
-                store_id: parseInt(store_id, 10), // Use determined store_id
+                store_id: parseInt(store_id, 10),
                 order_date,
                 expected_delivery_date: expected_delivery_date || null,
                 status,
                 notes,
-                total_amount: calculatedTotalAmount
+                total_amount: calculatedTotalAmount, // Initial total
             })
             .returning('*');
 
         const purchaseOrderId = newPurchaseOrder.id;
-        const finalPoItems = poItemsToInsert.map(item => ({ ...item, purchase_order_id: purchaseOrderId }));
-        await trx('purchase_order_items').insert(finalPoItems);
+
+        const finalPoItems = poItemsToInsert.map(poItem => ({
+            ...poItem,
+            purchase_order_id: purchaseOrderId,
+        }));
+
+        if (finalPoItems.length > 0) {
+            // THIS IS THE KEY PART - it will now match the (new) DB column name
+            await trx('purchase_order_items').insert(finalPoItems);
+        }
+        
+        // Ensure total_amount is correctly updated if calculated after items insert
+        // (though in this flow, it's calculated before PO insert)
+        // If you recalculate based on inserted items, update here:
+        // await trx('purchase_orders').where({ id: purchaseOrderId }).update({ total_amount: calculatedTotalAmount });
+
+
         await trx.commit();
 
         const createdPO = await knex('purchase_orders')
             .leftJoin('suppliers', 'purchase_orders.supplier_id', 'suppliers.id')
             .leftJoin('stores', 'purchase_orders.store_id', 'stores.id')
             .select('purchase_orders.*', 'suppliers.name as supplier_name', 'stores.name as store_name')
-            .where('purchase_orders.id', purchaseOrderId).first();
-        const createdItems = await knex('purchase_order_items')
-            .leftJoin('Items', 'purchase_order_items.Item_id', 'Items.id')
-            .select('purchase_order_items.*', 'Items.Item_name', 'Items.sku')
-            .where('purchase_order_items.purchase_order_id', purchaseOrderId);
+            .where('purchase_orders.id', purchaseOrderId)
+            .first();
+
+        // Fetch created items with variant details
+        const createdItems = await knex('purchase_order_items as poi')
+            .leftJoin('item_variants as iv', 'poi.item_variant_id', 'iv.id')
+            .leftJoin('items as i', 'iv.item_id', 'i.id') // Join to base items table
+            .select(
+                'poi.*', // All columns from purchase_order_items
+                'iv.variant_name',
+                'iv.sku as item_variant_sku',
+                'i.item_name as base_item_name'
+            )
+            .where('poi.purchase_order_id', purchaseOrderId);
 
         res.status(201).json({ success: true, data: { ...createdPO, items: createdItems } });
     } catch (error) {
         if (trx) await trx.rollback();
         console.error('Error creating purchase order:', error);
         if (error.routine && (error.routine.includes('_foreign_key_check') || error.message.includes('violates foreign key constraint'))) {
-             return res.status(400).json({ success: false, message: 'Invalid supplier, store, or Item ID provided.' });
+            return res.status(400).json({ success: false, message: 'Invalid supplier, store, or item variant ID provided.' });
         }
         res.status(500).json({ success: false, message: 'Server error while creating purchase order' });
     }
@@ -255,26 +316,10 @@ exports.createPurchaseOrder = async (req, res) => {
 exports.updatePurchaseOrder = async (req, res) => {
     const { id } = req.params;
     const { supplier_id, order_date, expected_delivery_date, status, notes, items } = req.body;
-    // store_id is generally not updatable for a PO. If it were, similar logic to create would apply.
-    // For this example, we assume store_id of a PO cannot be changed.
+    let { store_id: new_store_id_from_request } = req.body;
 
     if (!req.user) return res.status(401).json({ success: false, message: 'User not authenticated.' });
     
-    // ... (validation for items remains the same) ...
-    if (items && (!Array.isArray(items))) {
-        return res.status(400).json({ success: false, message: 'Items must be an array if provided.' });
-    }
-    if (items) {
-        for (const item of items) {
-            if (!item.Item_id || item.quantity == null || item.unit_price == null) {
-                return res.status(400).json({ success: false, message: 'Each item must have Item_id, quantity, and unit_price.' });
-            }
-             if (parseFloat(item.quantity) <= 0 || parseFloat(item.unit_price) < 0) {
-                return res.status(400).json({ success: false, message: 'Item quantity must be positive and unit price non-negative.' });
-            }
-        }
-    }
-
     let trx;
     try {
         trx = await knex.transaction();
@@ -284,63 +329,116 @@ exports.updatePurchaseOrder = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Purchase order not found' });
         }
 
-        // Security: Non-global admin can only update POs from their store
         if (req.user.role_name !== GLOBAL_ADMIN_ROLE_NAME && existingPO.store_id !== req.user.store_id) {
             await trx.rollback();
             return res.status(403).json({ success: false, message: 'Access denied to update this purchase order.' });
         }
 
-        let calculatedTotalAmount = 0;
-        const poUpdateData = {};
-        if (supplier_id) poUpdateData.supplier_id = parseInt(supplier_id, 10);
-        // store_id is typically not changed. If it were, add: if (req.body.store_id && req.user.role_name === GLOBAL_ADMIN_ROLE_NAME) poUpdateData.store_id = parseInt(req.body.store_id, 10);
-        if (order_date) poUpdateData.order_date = order_date;
-        if (expected_delivery_date !== undefined) poUpdateData.expected_delivery_date = expected_delivery_date || null;
-        if (status) poUpdateData.status = status;
-        if (notes !== undefined) poUpdateData.notes = notes;
+        let effectiveStoreId = existingPO.store_id;
+        if (new_store_id_from_request) {
+            if (req.user.role_name === GLOBAL_ADMIN_ROLE_NAME) {
+                effectiveStoreId = parseInt(new_store_id_from_request, 10);
+            } else {
+                if (parseInt(new_store_id_from_request, 10) !== req.user.store_id) {
+                    await trx.rollback();
+                    return res.status(403).json({ success: false, message: 'Access denied to change store for this purchase order.' });
+                }
+                effectiveStoreId = req.user.store_id;
+            }
+        }
 
-        if (items) {
-            await trx('purchase_order_items').where({ purchase_order_id: id }).del();
+        await trx('purchase_orders')
+            .where({ id: existingPO.id })
+            .update({
+                supplier_id: parseInt(supplier_id, 10),
+                store_id: effectiveStoreId,
+                order_date,
+                expected_delivery_date: expected_delivery_date || null,
+                status,
+                notes,
+            });
+
+        await trx('purchase_order_items').where({ purchase_order_id: existingPO.id }).del();
+
+        let calculatedTotalAmount = 0;
+
+        if (items && Array.isArray(items) && items.length > 0) {
             const poItemsToInsert = items.map(item => {
-                const quantity = parseFloat(item.quantity);
-                const unit_price = parseFloat(item.unit_price);
+                const quantity = parseFloat(item.quantity) || 0;
+                const unit_price = parseFloat(item.unit_price) || 0;
                 const subtotal = quantity * unit_price;
                 calculatedTotalAmount += subtotal;
+
+                // Ensure item_variant_id is present and valid
+                if (!item.item_variant_id) {
+                    throw new Error('Missing item_variant_id for an item in purchase order update.');
+                }
+
                 return {
-                    purchase_order_id: id, Item_id: parseInt(item.Item_id, 10),
-                    quantity, unit_price, subtotal,
+                    purchase_order_id: existingPO.id,
+                    item_variant_id: parseInt(item.item_variant_id, 10), // Corrected: use item_variant_id
+                    quantity: quantity,
+                    unit_price: unit_price,
+                    subtotal: subtotal,
                     tax_rate: parseFloat(item.tax_rate) || 0.00,
                     discount_amount: parseFloat(item.discount_amount) || 0.00,
                 };
             });
+
             if (poItemsToInsert.length > 0) {
                 await trx('purchase_order_items').insert(poItemsToInsert);
             }
-            poUpdateData.total_amount = calculatedTotalAmount;
         }
-        
-        if (Object.keys(poUpdateData).length > 0 || items) { // Only update if there are changes
-             await trx('purchase_orders').where({ id }).update(poUpdateData);
-        }
+
+        await trx('purchase_orders')
+            .where({ id: existingPO.id })
+            .update({ total_amount: calculatedTotalAmount });
 
         await trx.commit();
         
+        // Fetch the updated PO with its items for the response
         const finalUpdatedPO = await knex('purchase_orders')
             .leftJoin('suppliers', 'purchase_orders.supplier_id', 'suppliers.id')
             .leftJoin('stores', 'purchase_orders.store_id', 'stores.id')
             .select('purchase_orders.*', 'suppliers.name as supplier_name', 'stores.name as store_name')
             .where('purchase_orders.id', id).first();
-        const updatedItems = await knex('purchase_order_items')
-            .leftJoin('Items', 'purchase_order_items.Item_id', 'Items.id')
-            .select('purchase_order_items.*', 'Items.Item_name', 'Items.sku')
-            .where('purchase_order_items.purchase_order_id', id);
 
-        res.status(200).json({ success: true, data: { ...finalUpdatedPO, items: updatedItems } });
+        const updatedPoItemsData = await knex('purchase_order_items as poi')
+            .leftJoin('item_variants as iv', 'poi.item_variant_id', 'iv.id') // Correct join
+            .leftJoin('items as i', 'iv.item_id', 'i.id')
+            .select(
+                'poi.*',
+                // Construct variant name (similar to getPurchaseOrderById)
+                knex.raw(`COALESCE(iv.variant_name, i.item_name || ' - Default') as resolved_item_name`), // Placeholder
+                'iv.sku as item_variant_sku',
+                'i.item_name as base_item_name',
+                'iv.item_id as base_item_id'
+            )
+            .where('poi.purchase_order_id', id);
+        
+        // Enrich with full display name if needed (similar to getPurchaseOrderById)
+        const detailedUpdatedItems = await Promise.all(updatedPoItemsData.map(async (item) => {
+            if (item.item_variant_id) {
+                 const attributes = await knex('item_variation_attribute_values as ivav')
+                    .join('attribute_values as av', 'ivav.attribute_value_id', 'av.id')
+                    .join('attributes as a', 'av.attribute_id', 'a.id')
+                    .where('ivav.item_variation_id', item.item_variant_id)
+                    .select('a.name as attribute_name', 'av.value as attribute_value')
+                    .orderBy('a.name');
+                const displayNameParts = attributes.map(attr => `${attr.attribute_value}`);
+                item.resolved_item_name = `${item.base_item_name} - ${displayNameParts.join(' / ')}` || item.base_item_name;
+            } else {
+                 item.resolved_item_name = item.base_item_name || 'N/A';
+            }
+            return item;
+        }));
+
+        res.status(200).json({ success: true, data: { ...finalUpdatedPO, items: detailedUpdatedItems } }); // Use detailedUpdatedItems
     } catch (error) {
         if (trx) await trx.rollback();
         console.error(`Error updating purchase order ${id}:`, error);
          if (error.routine && (error.routine.includes('_foreign_key_check') || error.message.includes('violates foreign key constraint'))) {
-             return res.status(400).json({ success: false, message: 'Invalid supplier, store, or Item ID provided during update.' });
+             return res.status(400).json({ success: false, message: 'Invalid supplier, store, or item variant ID provided during update.' });
         }
         res.status(500).json({ success: false, message: 'Server error' });
     }

@@ -132,6 +132,22 @@ export const fetchSubCategories = async (params) => fetchResource('sub-categorie
 export const fetchAttributes = async (params) => fetchResource('attributes', params);
 export const fetchSpecialCategories = async (params) => fetchResource('special-categories', params); // <-- ADD THIS LINE
 
+// NEW FUNCTION for fetching item variants suitable for purchase
+export const fetchItemVariantsForPurchase = async (params = {}) => {
+  try {
+    console.log('Fetching item variants for purchase from API with params:', params);
+    // Assuming your endpoint is /item-variants and it can be filtered,
+    // or a specific endpoint like /item-variants/for-purchase
+    const response = await apiClient.get('/item-variants/for-purchase', { params }); 
+    console.log('Item variants for purchase API response:', response.data);
+    // Adjust based on your actual API response structure
+    return response.data?.data || response.data || []; 
+  } catch (error) {
+    console.error('Error fetching item variants for purchase:', error.response ? error.response.data : error.message);
+    throw error;
+  }
+};
+
 // API functions for Item Unit Configurations
 export const fetchItemUnitConfigs = async (itemId) => { // Removed unused 'params' argument for now
   if (!itemId) {
@@ -195,5 +211,112 @@ export const updateItem = async (itemId, itemData) => {
   }
 };
 
+export const fetchPurchaseProductLines = async (params) => {
+    try {
+        const response = await apiClient.get('/items/purchase-product-lines', { params }); // { params } will send { supplier_id: '...' } as query string
+        console.log('API Response for fetchPurchaseProductLines:', response.data);
+        if (response.data && response.data.success) {
+            return response.data.data;
+        }
+        console.warn('fetchPurchaseProductLines did not return expected data structure or success was false:', response.data);
+        return [];
+    } catch (error) {
+        console.error("Error fetching purchase product lines (in api.js):", error.response?.data || error.message, error);
+        throw error; // This throw causes the .catch() in PurchaseOrderForm.tsx to trigger
+    }
+};
+
+export const fetchVariationsForProductLine = async (baseItemId) => {
+    try {
+        // Path assumes apiInstance.defaults.baseURL is 'http://localhost:5001/api'
+        const response = await apiClient.get(`/items/purchase-product-lines/${baseItemId}/variations`);
+        console.log(`API Response for fetchVariationsForProductLine (base_item_id: ${baseItemId}):`, response.data);
+        if (response.data && response.data.success) {
+            return response.data.data;
+        }
+        console.warn(`fetchVariationsForProductLine (base_item_id: ${baseItemId}) did not return expected data structure:`, response.data);
+        return [];
+    } catch (error) {
+        console.error(`Error fetching variations for product line ${baseItemId}:`, error.response?.data || error.message, error);
+        throw error;
+    }
+};
+
+export const createPurchaseOrder = async (purchaseOrderData) => {
+    try {
+        console.log('Creating purchase order with data:', purchaseOrderData);
+        const response = await apiClient.post('/purchase-orders', purchaseOrderData);
+        console.log('Create purchase order API response:', response.data);
+        return response.data;
+    } catch (error) {
+        console.error('Error creating purchase order:', error.response?.data || error.message, error);
+        throw error;
+    }
+};
+
+export const fetchPurchaseOrderById = async (id) => {
+    try {
+        console.log(`Fetching purchase order by ID: ${id}`);
+        const response = await apiClient.get(`/purchase-orders/${id}`);
+        console.log(`Purchase order ID ${id} API response:`, response.data);
+        return response.data.data || response.data; // Adjust if your backend wraps in 'data'
+    } catch (error) {
+        console.error(`Error fetching purchase order by ID ${id}:`, error.response?.data || error.message, error);
+        throw error;
+    }
+};
+
+export const updatePurchaseOrder = async (id, purchaseOrderData) => {
+    try {
+        console.log(`Updating purchase order ID ${id} with data:`, purchaseOrderData);
+        const response = await apiClient.put(`/purchase-orders/${id}`, purchaseOrderData);
+        console.log('Update purchase order API response:', response.data);
+        return response.data;
+    } catch (error) {
+        console.error(`Error updating purchase order ${id}:`, error.response?.data || error.message, error);
+        throw error;
+    }
+};
+
+export const deleteItemVariation = async (variationId) => {
+    try {
+        const response = await apiClient.delete(`/items/variations/${variationId}`); // Adjust endpoint as needed
+        return response.data;
+    } catch (error) {
+        console.error(`Error deleting item variation ${variationId}:`, error.response || error);
+        throw error;
+    }
+};
+
+// If it's named deleteItem:
+export const deleteItem = async (id) => {
+    try {
+        const response = await apiClient.delete(`/items/${id}`);
+        return response.data;
+    } catch (error) {
+        console.error(`Error deleting item ${id}:`, error.response || error);
+        throw error;
+    }
+};
+
+export const deleteItemById = async (id) => {
+    try {
+        // Your console.log or any other pre-request logic can go here
+        console.log(`Attempting to delete item with ID: ${id} via API.`);
+        const response = await apiClient.delete(`/items/${id}`); // Ensure this endpoint is correct
+        console.log(`Successfully deleted item ${id}. API response:`, response.data);
+        return response.data; // Or handle success/failure based on response
+    } catch (error) {
+        // Log the detailed error object
+        console.error(`Error in deleteItemById for ID ${id}:`, error.response || error.request || error.message, error);
+        // Re-throw the error so the calling function can catch it and handle UI updates (e.g., show an error message)
+        throw error;
+    }
+};
+
+// Make sure this is the VERY LAST line if you have a default export
+// If you only have named exports (like above), you might not need a default export of apiClient
+// or you might have it already. Just ensure it doesn't conflict.
+// The error is about named exports, so the default export isn't the immediate issue.
 
 export default apiClient;

@@ -111,7 +111,7 @@ export const AuthProvider = ({ children }) => {
             console.log('[AuthContext userCan] User or user.permissions is null/undefined. Required:', requiredPermission, 'Result: false');
             return false;
         }
-        console.log('[AuthContext userCan] User permissions:', user.permissions); // Log the permissions array
+        //console.log('[AuthContext userCan] User permissions:', user.permissions); // Log the permissions array
         console.log('[AuthContext userCan] Checking if user has permission:', requiredPermission);
 
         const hasPerm = user.permissions.includes(requiredPermission);

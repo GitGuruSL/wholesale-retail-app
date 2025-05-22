@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Fragment, useMemo } from 'react'; // Added useMemo
-import { fetchItems, fetchItemVariations } from '../services/api';
+import { fetchItems, fetchItemVariations, deleteItemById as deleteItemAPI } from '../services/api'; // Changed 'deleteItem' to 'deleteItemById'
 import { useNavigate } from 'react-router-dom';
 
 import Container from '@mui/material/Container';
@@ -96,11 +96,14 @@ function ItemList() {
 
   const handleDeleteItem = async (id) => {
     if (window.confirm(`Are you sure you want to delete item ${id}?`)) {
-      alert(`Placeholder: Delete item ${id}. Implement actual API call.`);
-      // After successful deletion, you might want to refetch items:
-      // const data = await fetchItems();
-      // const sortedData = (data || []).sort((a, b) => a.id - b.id);
-      // setAllItems(sortedData);
+      try {
+        await deleteItemAPI(id); // If you created a specific function in api.js
+        setAllItems((prevItems) => prevItems.filter((item) => item.id !== id)); // Update local state
+        console.log(`Item ${id} deleted successfully.`);
+      } catch (error) {
+        console.error(`Failed to delete item ${id}:`, error);
+        // Display error to user
+      }
     }
   };
 
