@@ -1,19 +1,19 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom'; // Import BrowserRouter
 import App from './App';
-import { BrowserRouter as Router } from 'react-router-dom'; // Keep Router here
-import { AuthProvider } from './context/AuthContext';
-import { StoreProvider } from './context/StoreContext';
+import { AuthProvider } from './context/AuthContext'; // Assuming AuthProvider is here
+import { StoreProvider } from './context/StoreContext'; // Assuming StoreProvider is here
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <Router> {/* Single Router at the top level */}
+    <BrowserRouter> {/* <--- THIS IS THE SINGLE, TOP-LEVEL ROUTER */}
       <AuthProvider>
-        <StoreProvider>
+        <StoreProvider> {/* Ensure StoreProvider wraps App if needed */}
           <App />
         </StoreProvider>
       </AuthProvider>
-    </Router>
+    </BrowserRouter>
   </React.StrictMode>
 );

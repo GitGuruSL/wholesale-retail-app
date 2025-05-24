@@ -553,7 +553,7 @@ exports.deleteItem = async (req, res) => {
 
 // NEW Endpoint 1: For the first dropdown (Product Lines)
 exports.getPurchasableProductLines = async (req, res) => {
-    const { supplier_id } = req.query; // supplier_id will be a string from req.query or undefined
+    const { supplier_id } = req.query;
     console.log(`[itemController.getPurchasableProductLines] Received request. Query parameters:`, req.query);
 
     try {
@@ -565,10 +565,17 @@ exports.getPurchasableProductLines = async (req, res) => {
                 'i.cost_price as base_cost_price',
                 'i.item_type',
                 knex.raw("CASE WHEN i.item_type = 'Variable' THEN false ELSE true END as is_directly_purchasable"),
-                // If item_variant_id_if_direct for Standard/Service items should come from a default variant in item_variations table,
-                // this logic would need to be more complex (e.g., a subquery or a more involved join).
-                // For now, assuming i.id can act as a stand-in if the item itself is the purchasable entity.
-                knex.raw("CASE WHEN i.item_type != 'Variable' THEN i.id ELSE null END as item_variant_id_if_direct"),
+                // --- FIX: Always use a real item_variations.id for Standard/Service items ---
+                knex.raw(`
+                    CASE 
+                        WHEN i.item_type != 'Variable' THEN (
+                            SELECT iv.id FROM item_variations iv
+                            WHERE iv.item_id = i.id AND iv.is_active = true
+                            ORDER BY iv.id ASC LIMIT 1
+                        )
+                        ELSE null
+                    END as item_variant_id_if_direct
+                `),
                 knex.raw("CASE WHEN i.item_type != 'Variable' THEN i.cost_price ELSE null END as unit_price_if_direct")
             )
             .where('i.is_active', true)
@@ -578,14 +585,13 @@ exports.getPurchasableProductLines = async (req, res) => {
             const parsedSupplierId = parseInt(supplier_id, 10);
             if (!isNaN(parsedSupplierId)) {
                 console.log(`[itemController.getPurchasableProductLines] Filtering by supplier_id: ${parsedSupplierId}`);
-                query.andWhere('i.supplier_id', parsedSupplierId); // Add the supplier filter
+                query.andWhere('i.supplier_id', parsedSupplierId);
             } else {
                 console.error(`[itemController.getPurchasableProductLines] Invalid non-numeric supplier_id received: '${supplier_id}'. Returning 400.`);
                 return res.status(400).json({ success: false, message: `Invalid supplier ID format: ${supplier_id}`, data: [] });
             }
         } else {
             console.log('[itemController.getPurchasableProductLines] No supplier_id provided or it is empty. Fetching all active product lines.');
-            // No supplier filter is added, so it fetches all active items.
         }
 
         console.log("[itemController.getPurchasableProductLines] Executing query:", query.toString());

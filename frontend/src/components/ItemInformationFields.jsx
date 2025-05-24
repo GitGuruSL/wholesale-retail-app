@@ -20,12 +20,12 @@ function ItemInformationFields({
     onItemTypeChange,
     stores,
     categories,
-    // subCategories, // Now using filteredSubCategories passed from parent
+    filteredSubCategories,
     specialCategories,
     brands,
     units,
     manufacturers,
-    filteredSubCategories, // Use this for the sub-category dropdown
+    suppliers, // <-- Add this line
     commonFormControlSx
 }) {
     return (
@@ -207,6 +207,24 @@ function ItemInformationFields({
                         <Select labelId="store-label" id="store_id" name="store_id" value={formData.store_id} label="Store (Optional)" onChange={onFormChange}>
                             <MenuItem value=""><em>-- Global Item --</em></MenuItem>
                             {stores.map(o => <MenuItem key={o.id} value={o.id.toString()}>{o.name}</MenuItem>)}
+                        </Select>
+                    </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6} md={4}>
+                    <FormControl variant="outlined" fullWidth sx={commonFormControlSx}>
+                        <InputLabel id="supplier-label">Supplier</InputLabel>
+                        <Select
+                            labelId="supplier-label"
+                            id="supplier_id"
+                            name="supplier_id"
+                            value={formData.supplier_id || ''}
+                            label="Supplier"
+                            onChange={onFormChange}
+                        >
+                            <MenuItem value=""><em>-- Select Supplier --</em></MenuItem>
+                            {suppliers && suppliers.map(supplier => (
+                                <MenuItem key={supplier.id} value={supplier.id.toString()}>{supplier.name}</MenuItem>
+                            ))}
                         </Select>
                     </FormControl>
                 </Grid>

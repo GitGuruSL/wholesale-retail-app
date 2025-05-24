@@ -115,66 +115,38 @@ exports.getPurchaseOrders = async (req, res) => {
  */
 exports.getPurchaseOrderById = async (req, res) => {
     const { id } = req.params;
-    if (!req.user) return res.status(401).json({ success: false, message: 'User not authenticated.' });
-
     try {
-        const purchaseOrder = await knex('purchase_orders')
-            .leftJoin('suppliers', 'purchase_orders.supplier_id', 'suppliers.id')
-            .leftJoin('stores', 'purchase_orders.store_id', 'stores.id')
-            .select(
-                'purchase_orders.*',
-                'suppliers.name as supplier_name',
-                'stores.name as store_name'
-            )
-            .where('purchase_orders.id', id)
+        const po = await knex('purchase_orders')
+            .where({ id: parseInt(id, 10) })
             .first();
 
-        if (!purchaseOrder) {
-            return res.status(404).json({ success: false, message: 'Purchase order not found' });
-        }
-
-        if (req.user.role_name !== GLOBAL_ADMIN_ROLE_NAME && purchaseOrder.store_id !== req.user.store_id) {
-            return res.status(403).json({ success: false, message: 'Access denied to this purchase order.' });
+        if (!po) {
+            return res.status(404).json({ message: 'Purchase order not found' });
         }
 
         const items = await knex('purchase_order_items as poi')
-            .leftJoin('item_variants as iv', 'poi.item_variant_id', 'iv.id') // Correct: join on item_variant_id
+            .leftJoin('item_variations as iv', 'poi.item_variant_id', 'iv.id')
             .leftJoin('items as i', 'iv.item_id', 'i.id')
             .select(
-                'poi.*',
-                // Construct variant name if you have separate attribute tables, or use a direct column if available
-                // For now, let's assume iv.variant_name or similar exists or you'll adapt this
-                // This part needs to align with how you get variation_display_name in itemController
-                knex.raw(`COALESCE(iv.variant_name, i.item_name || ' - Default') as resolved_item_name`), // Placeholder for actual name construction
-                'iv.sku as item_variant_sku',
-                'i.item_name as base_item_name',
-                'iv.item_id as base_item_id'
-                // poi.item_variant_id is already selected by 'poi.*'
+                'poi.*', // Includes quantity, unit_price, subtotal, tax_rate, discount_amount
+                'iv.variant_name',
+                'iv.sku as item_variant_sku', // SKU of the variation
+                'i.item_name as base_item_name', // Name of the base item
+                'i.id as base_item_id', // ID of the base item, if needed
+                'iv.id as item_variant_id_check' // To confirm poi.item_variant_id matches iv.id
             )
-            .where('poi.purchase_order_id', id);
+            .where('poi.purchase_order_id', po.id);
 
-        // If you need to reconstruct the full variation display name like in the dropdown:
-        const detailedItems = await Promise.all(items.map(async (item) => {
-            if (item.item_variant_id) { // Check if it's a variation
-                 const attributes = await knex('item_variation_attribute_values as ivav')
-                    .join('attribute_values as av', 'ivav.attribute_value_id', 'av.id')
-                    .join('attributes as a', 'av.attribute_id', 'a.id')
-                    .where('ivav.item_variation_id', item.item_variant_id)
-                    .select('a.name as attribute_name', 'av.value as attribute_value')
-                    .orderBy('a.name');
-                const displayNameParts = attributes.map(attr => `${attr.attribute_value}`);
-                item.resolved_item_name = `${item.base_item_name} - ${displayNameParts.join(' / ')}` || item.base_item_name;
-            } else {
-                item.resolved_item_name = item.base_item_name || 'N/A';
+        res.json({ // Send as success: true, data: ... to be consistent
+            success: true, // Add success flag
+            data: { // Wrap in data object
+                ...po,
+                items
             }
-            return item;
-        }));
-
-
-        res.status(200).json({ success: true, data: { ...purchaseOrder, items: detailedItems } }); // Use detailedItems
+        });
     } catch (error) {
         console.error(`Error fetching purchase order ${id}:`, error);
-        res.status(500).json({ success: false, message: 'Server error' });
+        res.status(500).json({ success: false, message: 'Error fetching purchase order', error: error.message });
     }
 };
 
@@ -286,7 +258,7 @@ exports.createPurchaseOrder = async (req, res) => {
 
         // Fetch created items with variant details
         const createdItems = await knex('purchase_order_items as poi')
-            .leftJoin('item_variants as iv', 'poi.item_variant_id', 'iv.id')
+            .leftJoin('item_variations as iv', 'poi.item_variant_id', 'iv.id') // <--- CORRECTED LINE
             .leftJoin('items as i', 'iv.item_id', 'i.id') // Join to base items table
             .select(
                 'poi.*', // All columns from purchase_order_items
@@ -404,36 +376,31 @@ exports.updatePurchaseOrder = async (req, res) => {
             .where('purchase_orders.id', id).first();
 
         const updatedPoItemsData = await knex('purchase_order_items as poi')
-            .leftJoin('item_variants as iv', 'poi.item_variant_id', 'iv.id') // Correct join
+            .leftJoin('item_variations as iv', 'poi.item_variant_id', 'iv.id') // CORRECTED: item_variations
             .leftJoin('items as i', 'iv.item_id', 'i.id')
             .select(
                 'poi.*',
                 // Construct variant name (similar to getPurchaseOrderById)
-                knex.raw(`COALESCE(iv.variant_name, i.item_name || ' - Default') as resolved_item_name`), // Placeholder
+                knex.raw(`COALESCE(iv.variant_name, i.item_name) as variant_name_resolved`), // Simpler variant name
                 'iv.sku as item_variant_sku',
                 'i.item_name as base_item_name',
-                'iv.item_id as base_item_id'
+                'iv.item_id as base_item_id' // Keep base_item_id
             )
             .where('poi.purchase_order_id', id);
         
-        // Enrich with full display name if needed (similar to getPurchaseOrderById)
-        const detailedUpdatedItems = await Promise.all(updatedPoItemsData.map(async (item) => {
-            if (item.item_variant_id) {
-                 const attributes = await knex('item_variation_attribute_values as ivav')
-                    .join('attribute_values as av', 'ivav.attribute_value_id', 'av.id')
-                    .join('attributes as a', 'av.attribute_id', 'a.id')
-                    .where('ivav.item_variation_id', item.item_variant_id)
-                    .select('a.name as attribute_name', 'av.value as attribute_value')
-                    .orderBy('a.name');
-                const displayNameParts = attributes.map(attr => `${attr.attribute_value}`);
-                item.resolved_item_name = `${item.base_item_name} - ${displayNameParts.join(' / ')}` || item.base_item_name;
-            } else {
-                 item.resolved_item_name = item.base_item_name || 'N/A';
+        // Enrich with full display name if needed
+        const detailedUpdatedItems = updatedPoItemsData.map(item => {
+            let displayName = item.base_item_name || 'N/A';
+            if (item.variant_name_resolved && item.variant_name_resolved.toLowerCase() !== 'default' && item.variant_name_resolved !== item.base_item_name) {
+                displayName = `${item.base_item_name} - ${item.variant_name_resolved}`;
             }
-            return item;
-        }));
+            return {
+                ...item,
+                resolved_item_name: displayName // Use this for consistency if frontend expects it
+            };
+        });
 
-        res.status(200).json({ success: true, data: { ...finalUpdatedPO, items: detailedUpdatedItems } }); // Use detailedUpdatedItems
+        res.status(200).json({ success: true, data: { ...finalUpdatedPO, items: detailedUpdatedItems } });
     } catch (error) {
         if (trx) await trx.rollback();
         console.error(`Error updating purchase order ${id}:`, error);

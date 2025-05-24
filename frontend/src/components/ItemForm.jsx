@@ -485,16 +485,17 @@ function ItemForm() {
                         // Assuming ItemInformationFields is adapted to use lowercase formData keys
                         // or pass itemInfoFormData if you created a mapped object
                         <ItemInformationFields
-                            formData={formData} // Use direct formData if ItemInformationFields is flexible
+                            formData={formData}
                             onFormChange={handleFormChange}
-                            onItemTypeChange={handleItemTypeChange} // Pass this
+                            onItemTypeChange={handleItemTypeChange}
                             stores={stores}
                             categories={categories}
-                            filteredSubCategories={filteredSubCategories} // Pass filtered
+                            filteredSubCategories={filteredSubCategories}
                             specialCategories={specialCategories}
                             brands={brands}
                             units={units}
                             manufacturers={manufacturers}
+                            suppliers={suppliers} // <-- Add this line
                             commonFormControlSx={commonFormControlSx}
                         />
                     )}

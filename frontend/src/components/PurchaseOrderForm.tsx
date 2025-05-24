@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom'; // Ensure useParams is imported
 import {
     Paper, Box, Typography, TextField, Button, Grid, Autocomplete,
     CircularProgress, IconButton, Table, TableBody, TableCell, TableContainer,
@@ -15,7 +16,6 @@ import {
     fetchPurchaseProductLines, // New
     fetchVariationsForProductLine // New
 } from '../services/api'; // Adjust path as needed
-import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext'; // If contexts is sibling to src
 
 interface ProductLine {
@@ -48,23 +48,39 @@ interface PurchaseOrderItem {
     // Add other fields like tax, discount if applicable per item
 }
 
+// Define the overall form data structure
+interface PurchaseOrderFormData {
+    id?: number; // Optional: for existing POs
+    supplier_id: string;
+    store_id: string;
+    order_date: Date | null;
+    expected_delivery_date: Date | null;
+    status: string;
+    notes: string;
+    items: PurchaseOrderItem[];
+    total_amount?: number; // Optional: or initialize if always needed
+}
 
-function PurchaseOrderForm() {
-    const { user, userCan } = useAuth();
+const PurchaseOrderForm = () => {
     const navigate = useNavigate();
-    const { id: purchaseOrderId } = useParams<{ id?: string }>();
-    const isEditing = Boolean(purchaseOrderId);
+    const params = useParams(); // Get all params
+    const purchaseOrderId = params.purchaseOrderId; // Specifically access purchaseOrderId
+    const { userCan } = useAuth(); // <--- ADD THIS LINE
 
-    const [formData, setFormData] = useState({
+    // Define the initial empty state
+    const initialFormData: PurchaseOrderFormData = {
         supplier_id: '',
         store_id: '',
         order_date: new Date(),
-        expected_delivery_date: null as Date | null,
-        status: 'Pending', // Default status
+        expected_delivery_date: null,
+        status: 'Pending',
         notes: '',
-        items: [] as PurchaseOrderItem[],
-        // ... other fields from your existing formData
-    });
+        items: [],
+        total_amount: 0,
+        // id will be set when editing
+    };
+
+    const [formData, setFormData] = useState<PurchaseOrderFormData>(initialFormData);
 
     const [suppliers, setSuppliers] = useState<any[]>([]);
     const [stores, setStores] = useState<any[]>([]);
@@ -85,90 +101,143 @@ function PurchaseOrderForm() {
     const [newItemQuantity, setNewItemQuantity] = useState<number>(1);
     const [newItemPrice, setNewItemPrice] = useState<number>(0); // Can be auto-filled
 
-    const requiredPermission = isEditing ? 'purchase_order:update' : 'purchase_order:create';
+    const requiredPermission = purchaseOrderId ? 'purchase_order:update' : 'purchase_order:create';
 
-    // ... (keep your existing useEffect for fetching suppliers, stores, and PO data if editing) ...
+    // Log formData whenever it changes to see its state
+    useEffect(() => {
+        console.log('[PurchaseOrderForm] formData changed (this log shows the new state):', JSON.stringify(formData, null, 2));
+    }, [formData]);
 
     useEffect(() => {
-        const loadSuppliers = async () => {
+        const loadSuppliersAsync = async () => {
             try {
+                console.log('[PurchaseOrderForm] Fetching suppliers...');
                 const data = await fetchSuppliers();
                 setSuppliers(data || []);
+                console.log('[PurchaseOrderForm] Suppliers loaded:', data);
             } catch (err) {
                 setError('Failed to load suppliers.');
-                console.error(err);
+                console.error('[PurchaseOrderForm] Error loading suppliers:', err);
             }
         };
-        const loadStores = async () => {
+        const loadStoresAsync = async () => {
             try {
-                const data = await fetchStores(); // Assuming you have fetchStores
+                console.log('[PurchaseOrderForm] Fetching stores...');
+                const data = await fetchStores();
                 setStores(data || []);
+                console.log('[PurchaseOrderForm] Stores loaded:', data);
             } catch (err) {
                 setError('Failed to load stores.');
-                console.error(err);
+                console.error('[PurchaseOrderForm] Error loading stores:', err);
             }
         };
 
-        loadSuppliers();
-        loadStores();
+        const loadPurchaseOrderDataAsync = async () => {
+            console.log(`[PurchaseOrderForm] loadPurchaseOrderDataAsync called. isEditing: ${Boolean(purchaseOrderId)}, purchaseOrderId: ${purchaseOrderId}`);
 
-        if (isEditing && purchaseOrderId) {
-            setInitialLoading(true);
-            fetchPurchaseOrderById(purchaseOrderId)
-                .then(data => {
-                    setFormData({
-                        ...data,
-                        supplier_id: data.supplier_id?.toString() || '',
-                        store_id: data.store_id?.toString() || '',
-                        order_date: new Date(data.order_date),
-                        expected_delivery_date: data.expected_delivery_date ? new Date(data.expected_delivery_date) : null,
-                        items: data.items.map((item: any) => {
-                            const price = parseFloat(item.unit_price);
-                            const qty = parseInt(item.quantity, 10);
-                            return {
-                                ...item,
-                                item_name: item.item_variant?.resolved_item_name || item.item_variant?.item?.item_name || 'N/A', // Adjust based on your PO data structure
-                                unit_price: !isNaN(price) ? price : 0, // Default to 0 if parsing fails
-                                quantity: !isNaN(qty) ? qty : 1, // Default to 1 if parsing fails
-                            };
-                        }) || [],
-                    });
-                })
-                .catch(err => {
-                    setError('Failed to load purchase order details.');
-                    console.error(err);
-                })
-                .finally(() => setInitialLoading(false));
-        }
-    }, [isEditing, purchaseOrderId]);
+            if (purchaseOrderId) {
+                setInitialLoading(true);
+                setError(null);
+                console.log(`[PurchaseOrderForm] Attempting to edit PO ID: ${purchaseOrderId}`);
+                try {
+                    const fetchedPurchaseOrderData = await fetchPurchaseOrderById(purchaseOrderId);
+                    // CRITICAL LOG 2: What does the API return? (This now directly holds the PO data)
+                    console.log('[PurchaseOrderForm] Raw API response from fetchPurchaseOrderById (should be the PO data object):', fetchedPurchaseOrderData);
 
+                    // Check if fetchedPurchaseOrderData is a valid object and has an 'id' property
+                    if (fetchedPurchaseOrderData && typeof fetchedPurchaseOrderData.id !== 'undefined') {
+                        const purchaseOrderData = fetchedPurchaseOrderData; // Use the fetched data directly
+                        // CRITICAL LOG 3: Is the data extracted correctly?
+                        console.log('[PurchaseOrderForm] Successfully fetched PO Data for Edit:', purchaseOrderData);
+
+                        const newFormData = {
+                            id: purchaseOrderData.id,
+                            supplier_id: purchaseOrderData.supplier_id?.toString() || '',
+                            store_id: purchaseOrderData.store_id?.toString() || '',
+                            order_date: purchaseOrderData.order_date ? new Date(purchaseOrderData.order_date) : new Date(),
+                            expected_delivery_date: purchaseOrderData.expected_delivery_date ? new Date(purchaseOrderData.expected_delivery_date) : null,
+                            status: purchaseOrderData.status || 'Pending',
+                            notes: purchaseOrderData.notes || '',
+                            total_amount: purchaseOrderData.total_amount || 0,
+                            items: (purchaseOrderData.items || []).map((item: any) => {
+                                const price = parseFloat(item.unit_price);
+                                const qty = parseInt(item.quantity, 10);
+                                let displayName = item.base_item_name || 'Unknown Item';
+                                if (item.variant_name && item.variant_name.toLowerCase() !== 'default' && item.variant_name !== item.base_item_name) {
+                                    displayName = `${item.base_item_name} - ${item.variant_name}`;
+                                }
+                                return {
+                                    id: item.id, // Keep item ID if present for updates
+                                    item_variant_id: item.item_variant_id,
+                                    item_name: displayName,
+                                    quantity: !isNaN(qty) ? qty : 1,
+                                    unit_price: !isNaN(price) ? price : 0,
+                                    subtotal: parseFloat(item.subtotal) || 0,
+                                };
+                            }),
+                        };
+                        console.log('[PurchaseOrderForm] Prepared new form data for setFormData:', JSON.stringify(newFormData, null, 2));
+                        setFormData(newFormData);
+                    } else {
+                        console.error('[PurchaseOrderForm] Failed to parse PO data or API call unsuccessful. Response from fetchPurchaseOrderById:', fetchedPurchaseOrderData);
+                        setError('Failed to load purchase order details: Invalid data received.');
+                        setFormData(initialFormData); // Reset
+                    }
+                } catch (err: any) {
+                    console.error('[PurchaseOrderForm] Error in fetchPurchaseOrderById or processing:', err);
+                    setError(`Failed to load purchase order details: ${err.message || 'Unknown error'}`);
+                    setFormData(initialFormData); // Reset
+                } finally {
+                    setInitialLoading(false);
+                }
+            } else {
+                console.log('[PurchaseOrderForm] Not in editing mode or no purchaseOrderId, resetting form to initial state.');
+                setFormData(initialFormData); // Reset
+                setInitialLoading(false);
+            }
+        };
+
+        loadSuppliersAsync();
+        loadStoresAsync();
+        loadPurchaseOrderDataAsync();
+
+    }, [purchaseOrderId]); // Dependencies are correct
+
+    // This log will show the actual state *after* it has been updated.
+    useEffect(() => {
+        // CRITICAL LOG 5: What is the final formData state after all operations in the above useEffect?
+        console.log('[PurchaseOrderForm] formData changed (this log shows the new state):', JSON.stringify(formData, null, 2));
+    }, [formData]);
 
     // --- useEffect to fetch Product Lines ---
     useEffect(() => {
-        const currentSupplierId = formData.supplier_id;
-        console.log('useEffect for product lines triggered. formData.supplier_id:', currentSupplierId);
+        console.log('useEffect for product lines triggered. formData.supplier_id:', formData.supplier_id);
+        if (formData.supplier_id) {
+            const currentSupplierId = formData.supplier_id;
+            setProductLinesLoading(true);
+            // It's good practice to clear previous results when dependencies change
+            setProductLines([]);
+            setSelectedProductLine(null);
+            setVariations([]);
+            setSelectedVariation(null);
 
-        setProductLinesLoading(true);
-        // It's good practice to clear previous results when dependencies change
-        setProductLines([]);
-        setSelectedProductLine(null);
-        setVariations([]);
-        setSelectedVariation(null);
+            // If currentSupplierId is an empty string (no supplier selected), pass undefined.
+            // Otherwise, pass the actual ID.
+            const supplierIdParam = currentSupplierId ? currentSupplierId : undefined;
 
-        // If currentSupplierId is an empty string (no supplier selected), pass undefined.
-        // Otherwise, pass the actual ID.
-        const supplierIdParam = currentSupplierId ? currentSupplierId : undefined;
-
-        fetchPurchaseProductLines({ supplier_id: supplierIdParam })
-            .then(data => {
-                setProductLines(data || []);
-            })
-            .catch(err => {
-                console.error("Error fetching product lines:", err);
-                setError("Failed to load product lines."); // Use a more generic error message here
-                setProductLines([]);
-            })
-            .finally(() => setProductLinesLoading(false));
+            fetchPurchaseProductLines({ supplier_id: supplierIdParam })
+                .then(data => {
+                    setProductLines(data || []);
+                })
+                .catch(err => {
+                    console.error("Error fetching product lines:", err);
+                    setError("Failed to load product lines."); // Use a more generic error message here
+                    setProductLines([]);
+                })
+                .finally(() => setProductLinesLoading(false));
+        } else {
+            setProductLines([]); // Clear product lines if no supplier
+        }
     }, [formData.supplier_id]);
 
     // --- useEffect to fetch Variations when a Product Line is selected ---
@@ -327,7 +396,7 @@ function PurchaseOrderForm() {
             setError("Please correct the form errors.");
             return;
         }
-        if (userCan && !userCan(requiredPermission)) {
+        if (!userCan(requiredPermission)) { // Now userCan should be defined
             setError("You do not have permission to perform this action.");
             return;
         }
@@ -337,27 +406,39 @@ function PurchaseOrderForm() {
             ...formData,
             supplier_id: parseInt(formData.supplier_id, 10),
             store_id: parseInt(formData.store_id, 10),
-            items: formData.items.map(item => ({
+            items: formData.items.map(item => ({ // formData.items should now always be an array
                 item_variant_id: item.item_variant_id,
                 quantity: item.quantity,
                 unit_price: item.unit_price,
-                // include other per-item fields if necessary
             })),
             total_amount: calculateTotalAmount(),
         };
+        // If creating, formData.id will be undefined, which is fine for the backend
+        if (!purchaseOrderId) {
+            delete submissionData.id; // Ensure id is not sent for new POs
+        }
+
+
+        console.log('Submitting PO:', submissionData);
 
         try {
-            if (isEditing && purchaseOrderId) {
+            let poIdToNavigateTo = purchaseOrderId; // For editing
+            if (purchaseOrderId) {
                 await updatePurchaseOrder(purchaseOrderId, submissionData);
                 // show success message
             } else {
-                await createPurchaseOrder(submissionData);
+                const response = await createPurchaseOrder(submissionData);
+                console.log('API Create Response:', response); // Log the response
                 // show success message
+                if (response && response.data && response.data.id) {
+                    poIdToNavigateTo = response.data.id; // Get ID from response
+                }
             }
-            navigate('/purchase-orders'); // Or to the PO details page
+            console.log("Navigating to /dashboard/purchase-orders"); // Log before navigate
+            navigate('/dashboard/purchase-orders');
         } catch (err: any) {
             console.error("Submission error:", err);
-            setError(err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} purchase order.`);
+            setError(err.response?.data?.message || `Failed to ${purchaseOrderId ? 'update' : 'create'} purchase order.`);
             if (err.response?.data?.errors) {
                 setFormErrors(err.response.data.errors);
             }
@@ -366,7 +447,7 @@ function PurchaseOrderForm() {
         }
     };
 
-    if (initialLoading && isEditing) {
+    if (initialLoading && purchaseOrderId) {
         return <CircularProgress />;
     }
     // ... (rest of your component, including Paper, Box, form, Grid for supplier, store, dates etc.) ...
@@ -376,7 +457,7 @@ function PurchaseOrderForm() {
         <LocalizationProvider dateAdapter={AdapterDateFns}>
             <Paper sx={{ p: { xs: 2, md: 3 }, m: { xs: 1, md: 2 }, maxWidth: 1000, mx: 'auto' }}>
                 <Typography variant="h5" gutterBottom component="div" sx={{ textAlign: 'center', mb: 3 }}>
-                    {isEditing ? 'Edit Purchase Order' : 'Create Purchase Order'}
+                    {purchaseOrderId ? 'Edit Purchase Order' : 'Create Purchase Order'}
                 </Typography>
 
                 {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -614,16 +695,16 @@ function PurchaseOrderForm() {
                     </Grid>
 
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mt: 3, p:2, borderTop: '1px solid lightgray' }}>
-                        <Button onClick={() => navigate('/purchase-orders')} sx={{ mr: 1 }} disabled={isSubmitting}>
+                        <Button onClick={() => navigate('/dashboard/purchase-orders')} sx={{ mr: 1 }} disabled={isSubmitting}>
                             Cancel
                         </Button>
                         <Button
                             type="submit"
                             variant="contained"
                             color="primary"
-                            disabled={isSubmitting || initialLoading || (userCan && !userCan(requiredPermission)) || !formData.store_id}
+                            disabled={isSubmitting || initialLoading || !userCan(requiredPermission) || !formData.store_id} // Now userCan should be defined
                         >
-                            {isSubmitting ? <CircularProgress size={24} /> : (isEditing ? 'Update Purchase Order' : 'Create Purchase Order')}
+                            {isSubmitting ? <CircularProgress size={24} /> : (purchaseOrderId ? 'Update Purchase Order' : 'Create Purchase Order')}
                         </Button>
                     </Box>
                 </Box>

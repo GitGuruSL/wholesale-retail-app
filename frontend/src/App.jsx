@@ -1,22 +1,20 @@
 import React from 'react';
-// Remove BrowserRouter as Router from this import line
-import { Routes, Route, Navigate, Outlet, Link, useLocation } from 'react-router-dom';
-import { useAuth } from "./context/AuthContext"; // AuthProvider removed as it's in main.jsx
-// StoreProvider removed as it's in main.jsx
+import { Routes, Route, Navigate, Outlet, Link, useLocation } from 'react-router-dom'; // Router removed from here
+import { useAuth } from "./context/AuthContext";
 import { ROLES } from './utils/roles';
 
 import ProtectedRoute from './components/ProtectedRoute';
-import MainLayout from './components/MainLayout'; // Ensure this path is correct
+import MainLayout from './components/MainLayout';
 
 import LoginPage from "./pages/LoginPage";
 import AccessDeniedPage from './pages/AccessDeniedPage';
 
 import CustomersList from './components/CustomersList';
 import CustomerForm from "./components/CustomerForm";
-import ItemList from "./components/ItemList.jsx"; // Added .jsx extension
+import ItemList from "./components/ItemList.jsx";
 import ItemForm from "./components/ItemForm.jsx";
-import ItemAttributeListPage from './components/ItemAttributeList.tsx'; // New
-import ItemAttributeFormPage from './components/ItemAttributeForm'; // New
+import ItemAttributeListPage from './components/ItemAttributeList.tsx';
+import ItemAttributeFormPage from './components/ItemAttributeForm';
 import CategoryList from './components/CategoryList';
 import CategoryForm from './components/CategoryForm';
 import SubCategoryList from './components/SubCategoryList';
@@ -55,8 +53,8 @@ import AccessControl from './components/AccessControl';
 import StoreSettings from './components/StoreSettings';
 import InventoryList from './components/InventoryList';
 
-import PurchaseOrderList from './components/PurchaseOrderList.tsx';
-import PurchaseOrderForm from './components/PurchaseOrderForm.tsx';
+import PurchaseOrderList from './components/PurchaseOrderList';
+import PurchaseOrderForm from './components/PurchaseOrderForm';
 
 const HomePage = () => {
     const location = useLocation();
@@ -224,10 +222,9 @@ const AppRoutes = () => {
 };
 
 function App() {
-    // No Router wrapper here anymore
-    // AuthProvider and StoreProvider are also removed as they are in main.jsx
     return (
         <div>
+            {/* Router was removed from here */}
             <h1>My Wholesale/Retail App</h1>
             <AppRoutes />
         </div>
