@@ -1,62 +1,86 @@
 import React from 'react';
-import { Outlet, Navigate } from 'react-router-dom';
-import HorizontalMenu from './HorizontalMenu';
-import SecondaryHorizontalMenu from './SecondaryHorizontalMenu'; // Import the new menu
-import { useAuth } from '../context/AuthContext';
-import { SecondaryMenuProvider, useSecondaryMenu } from '../context/SecondaryMenuContext'; // Import context
-import Box from '@mui/material/Box';
-// import CircularProgress from '@mui/material/CircularProgress'; // Uncomment if needed
+import { AppBar, Toolbar, Typography, Button, IconButton, Tooltip, Divider } from '@mui/material';
+import { Add as AddIcon, FilterList as FilterListIcon, InfoOutlined as InfoIcon } from '@mui/icons-material';
+import { useSecondaryMenu } from '../context/SecondaryMenuContext';
 
-const MainLayoutContent = () => {
-    const { menuProps } = useSecondaryMenu(); // Consume the context
+const SecondaryHorizontalMenu: React.FC = () => {
+    const { menuProps } = useSecondaryMenu();
 
-    // Approximate heights, adjust if your AppBar/Menu heights are different
-    const primaryMenuHeight = '64px'; // Common MUI AppBar height for HorizontalMenu
-    const secondaryMenuHeight = '52px'; // Approximate height for SecondaryHorizontalMenu (includes its padding)
+    if (!menuProps || !menuProps.pageTitle) {
+        return null;
+    }
+
+    const {
+        pageTitle,
+        isFilterSidebarVisible,
+        toggleFilterSidebar,
+        isDetailsSidebarVisible,
+        toggleDetailsSidebar,
+        canCreateNew,
+        createNewLink,
+        createNewText = "Create New",
+        contextualActions = [],
+    } = menuProps;
 
     return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-            <HorizontalMenu />
-            <SecondaryHorizontalMenu {...menuProps} /> {/* Pass props from context */}
-            <Box
-                component="main"
-                sx={{
-                    flexGrow: 1,
-                    // Adjust padding to account for both menus
-                    // The 'p:3' will apply to all sides, then 'pt' overrides top padding.
-                    p: 3, 
-                    pt: `calc(${primaryMenuHeight} + ${secondaryMenuHeight} + 24px)`, // 24px is theme.spacing(3)
-                    // Alternatively, if p:3 is not desired on top:
-                    // paddingLeft: 3, paddingRight: 3, paddingBottom: 3,
-                    // marginTop: `calc(${primaryMenuHeight} + ${secondaryMenuHeight})`,
-                    
-                    // Ensure content area can scroll if it overflows
-                    overflowY: 'auto', 
-                }}
-            >
-                <Outlet /> {/* Renders the matched child route's component */}
-            </Box>
-        </Box>
+        <AppBar
+            position="fixed"
+            color="default"
+            elevation={1}
+            sx={{
+                top: '64px', // Adjust if your main menu is a different height
+                zIndex: (theme) => theme.zIndex.appBar,
+            }}
+        >
+            <Toolbar variant="dense">
+                <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+                    {pageTitle}
+                </Typography>
+
+                {contextualActions.map((action, index) => (
+                    <Button
+                        key={index}
+                        color={action.color || 'inherit'}
+                        startIcon={action.icon}
+                        onClick={action.onClick}
+                        disabled={action.disabled}
+                        sx={{ mr: 1 }}
+                    >
+                        {action.label}
+                    </Button>
+                ))}
+
+                {canCreateNew && createNewLink && (
+                    <Button
+                        href={createNewLink}
+                        variant="contained"
+                        color="primary"
+                        startIcon={<AddIcon />}
+                        sx={{ mr: 1 }}
+                    >
+                        {createNewText}
+                    </Button>
+                )}
+
+                {toggleFilterSidebar && (
+                    <Tooltip title={isFilterSidebarVisible ? "Hide Filters" : "Show Filters"}>
+                        <IconButton color={isFilterSidebarVisible ? "primary" : "inherit"} onClick={toggleFilterSidebar}>
+                            <FilterListIcon />
+                        </IconButton>
+                    </Tooltip>
+                )}
+
+                {toggleDetailsSidebar && (
+                    <Tooltip title={isDetailsSidebarVisible ? "Hide Details" : "Show Details"}>
+                        <IconButton color={isDetailsSidebarVisible ? "primary" : "inherit"} onClick={toggleDetailsSidebar}>
+                            <InfoIcon />
+                        </IconButton>
+                    </Tooltip>
+                )}
+            </Toolbar>
+            <Divider />
+        </AppBar>
     );
 };
 
-const MainLayout = () => {
-    const { isAuthenticated, isLoading: authIsLoading } = useAuth();
-
-    if (authIsLoading) {
-        // Consider a more robust loading spinner/indicator here
-        return <Box sx={{display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh'}}>{/*<CircularProgress />*/}<div>Loading authentication...</div></Box>;
-    }
-
-    if (!isAuthenticated) {
-        return <Navigate to="/login" replace />;
-    }
-
-    return (
-        <SecondaryMenuProvider> {/* Wrap with the provider */}
-            <MainLayoutContent />
-        </SecondaryMenuProvider>
-    );
-};
-
-export default MainLayout;
+export default SecondaryHorizontalMenu;

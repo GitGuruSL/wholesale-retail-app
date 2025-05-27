@@ -9,6 +9,7 @@ import { Edit as EditIcon, DeleteOutline as DeleteIcon, Add as AddIcon, Visibili
 import apiInstance from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { format, parseISO } from 'date-fns';
+import { useSecondaryMenu } from '../context/SecondaryMenuContext';
 
 interface PurchaseOrderListItem {
     id: string | number;
@@ -43,6 +44,8 @@ const PurchaseOrderList: React.FC = () => {
     const [page, setPage] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(10);
     const [totalRows, setTotalRows] = useState(0);
+
+    const { setMenuProps } = useSecondaryMenu();
 
     // Effect 1: Fetch stores for global_admin or set store for other users
     useEffect(() => {
@@ -197,6 +200,18 @@ const PurchaseOrderList: React.FC = () => {
             default: return 'default';
         }
     };
+
+    useEffect(() => {
+        setMenuProps({
+            pageTitle: 'Purchase Orders',
+            canCreateNew: true,
+            createNewLink: '/dashboard/purchase-orders/new',
+            createNewText: 'New Purchase Order',
+            // Add other props as needed
+        });
+        // Optionally clear on unmount
+        return () => setMenuProps({});
+    }, [setMenuProps]);
 
     if (authLoading || initialStoreLoading) {
         return <Paper sx={{ p: 3, textAlign: 'center' }}><CircularProgress /></Paper>;

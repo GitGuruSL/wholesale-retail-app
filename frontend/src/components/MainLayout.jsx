@@ -1,46 +1,48 @@
-import React from 'react'; // Removed useState as 'open' and 'handleDrawerToggle' are no longer needed here
+import React from 'react';
 import { Outlet, Navigate } from 'react-router-dom';
-// import Sidebar from './sidebar'; // No longer using vertical sidebar
-import HorizontalMenu from './HorizontalMenu'; // Ensure this is correctly imported
+import HorizontalMenu from './HorizontalMenu';
+import SecondaryHorizontalMenu from './SecondaryHorizontalMenu';
+import { SecondaryMenuProvider } from '../context/SecondaryMenuContext';
 import { useAuth } from '../context/AuthContext';
-import Box from '@mui/material/Box'; // Using Box for layout
-// import CircularProgress from '@mui/material/CircularProgress';
+import Box from '@mui/material/Box';
 
-// const drawerWidth = 240; // No longer needed for horizontal menu
+const MAIN_MENU_HEIGHT = 64;
+const SECONDARY_MENU_HEIGHT = 56;
 
 const MainLayout = () => {
     const { isAuthenticated, isLoading: authIsLoading } = useAuth();
-    // const [open, setOpen] = useState(true); // Not needed for HorizontalMenu in this context
-    // const handleDrawerToggle = () => { // Not needed
-    //     setOpen(!open);
-    // };
 
     if (authIsLoading) {
-        return <div>Loading authentication...</div>;
+        return (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+                Loading authentication...
+            </Box>
+        );
     }
 
     if (!isAuthenticated) {
         return <Navigate to="/login" replace />;
     }
 
-    // Approximate height of the AppBar, adjust if your AppBar height is different
-    const appBarHeight = '64px'; // Common MUI AppBar height
-
     return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-            <HorizontalMenu /> {/* Props like drawerWidth, open, handleDrawerToggle are removed */}
-            <Box
-                component="main"
-                sx={{
-                    flexGrow: 1,
-                    padding: 3, // MUI theme spacing unit
-                    pt: `calc(${appBarHeight} + 20px)`, // Add AppBar height to top padding
-                    // Or use marginTop: appBarHeight and padding: '20px' if you prefer
-                }}
-            >
-                <Outlet /> {/* Renders the matched child route's component */}
+        <SecondaryMenuProvider>
+            <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+                <HorizontalMenu />
+                <SecondaryHorizontalMenu />
+                <Box
+                    component="main"
+                    sx={{
+                        flexGrow: 1,
+                        p: 3,
+                        pt: `${MAIN_MENU_HEIGHT + SECONDARY_MENU_HEIGHT + 16}px`,
+                        background: '#f5f6fa',
+                        minHeight: '100vh',
+                    }}
+                >
+                    <Outlet />
+                </Box>
             </Box>
-        </Box>
+        </SecondaryMenuProvider>
     );
 };
 

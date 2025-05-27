@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import apiInstance from '../services/api'; // Ensure this path is correct
+import apiInstance from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -31,6 +31,13 @@ export const AuthProvider = ({ children }) => {
     const [isLoading, setIsLoading] = useState(true); // True until initial auth status is determined
     const [error, setError] = useState(null); // For auth-related errors
     const navigate = useNavigate();
+
+    // Initial auth check
+    useEffect(() => {
+        // If you have a token, you might want to validate it with an API call here
+        // For now, just set isLoading to false after checking localStorage
+        setIsLoading(false);
+    }, []);
 
     // Login function
     const loginUser = useCallback(async (credentials) => {
@@ -71,20 +78,6 @@ export const AuthProvider = ({ children }) => {
             navigate('/login', { replace: true });
         }
     }, [navigate]);
-
-    // Effect for initial authentication check (e.g., on app load)
-    useEffect(() => {
-        // This effect runs to determine initial auth state.
-        // A more robust check could involve validating the token with the backend here.
-        if (token && !user) {
-            // This scenario (token exists, but user object is not in React state)
-            // could indicate an inconsistent state (e.g., localStorage tampered, parsing error).
-            console.warn("AuthContext: Token found, but user data is not loaded. This might be an inconsistent state.");
-            // For stricter validation, you might call logoutUser() here.
-            // logoutUser();
-        }
-        setIsLoading(false); // Finished initial check
-    }, [token, user, logoutUser]); // logoutUser is included if it's potentially called.
 
     // Effect to handle global 'auth-error-401' event (e.g., from API interceptor)
     useEffect(() => {
