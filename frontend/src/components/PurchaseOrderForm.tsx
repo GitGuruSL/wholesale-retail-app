@@ -87,6 +87,7 @@ const PurchaseOrderForm = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [initialLoading, setInitialLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [successMessage, setSuccessMessage] = useState<string | null>(null); // <-- Add this state
     const [formErrors, setFormErrors] = useState<any>({});
 
 
@@ -160,16 +161,20 @@ const PurchaseOrderForm = () => {
                             notes: purchaseOrderData.notes || '',
                             total_amount: purchaseOrderData.total_amount || 0,
                             items: (purchaseOrderData.items || []).map((item: any) => {
+                                // This log is key!
+                                console.log('[PurchaseOrderForm] Processing PO item from API for display name:', { base_item_name: item.base_item_name, variant_name: item.variant_name, item_display_name_from_backend: item.item_display_name, all_item_fields: item });
+
                                 const price = parseFloat(item.unit_price);
                                 const qty = parseInt(item.quantity, 10);
-                                let displayName = item.base_item_name || 'Unknown Item';
-                                if (item.variant_name && item.variant_name.toLowerCase() !== 'default' && item.variant_name !== item.base_item_name) {
-                                    displayName = `${item.base_item_name} - ${item.variant_name}`;
-                                }
+                                
+                                // Prioritize item_display_name from backend.
+                                // If not available, fall back to base_item_name or a default.
+                                const displayName = item.item_display_name || item.base_item_name || 'Unknown Item';
+                                
                                 return {
-                                    id: item.id, // Keep item ID if present for updates
+                                    id: item.id, 
                                     item_variant_id: item.item_variant_id,
-                                    item_name: displayName,
+                                    item_name: displayName, // Use the resolved display name
                                     quantity: !isNaN(qty) ? qty : 1,
                                     unit_price: !isNaN(price) ? price : 0,
                                     subtotal: parseFloat(item.subtotal) || 0,
@@ -392,11 +397,12 @@ const PurchaseOrderForm = () => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
+        setSuccessMessage(null); // Clear previous success message at the start of submission
         if (!validateForm()) {
             setError("Please correct the form errors.");
             return;
         }
-        if (!userCan(requiredPermission)) { // Now userCan should be defined
+        if (!userCan(requiredPermission)) {
             setError("You do not have permission to perform this action.");
             return;
         }
@@ -425,17 +431,21 @@ const PurchaseOrderForm = () => {
             let poIdToNavigateTo = purchaseOrderId; // For editing
             if (purchaseOrderId) {
                 await updatePurchaseOrder(purchaseOrderId, submissionData);
-                // show success message
+                setSuccessMessage('Purchase order updated successfully!'); // <-- Set success message
             } else {
                 const response = await createPurchaseOrder(submissionData);
-                console.log('API Create Response:', response); // Log the response
-                // show success message
+                console.log('API Create Response:', response);
+                setSuccessMessage('Purchase order created successfully!'); // <-- Set success message
                 if (response && response.data && response.data.id) {
-                    poIdToNavigateTo = response.data.id; // Get ID from response
+                    poIdToNavigateTo = response.data.id;
                 }
             }
-            console.log("Navigating to /dashboard/purchase-orders"); // Log before navigate
-            navigate('/dashboard/purchase-orders');
+            console.log("Navigating to /dashboard/purchase-orders"); 
+            // The message will be visible briefly before navigation.
+            // For a longer display, consider a delay or a global notification system.
+            setTimeout(() => { // Optional: Add a small delay so the user can see the message
+                navigate('/dashboard/purchase-orders');
+            }, 1500); // Navigate after 1.5 seconds
         } catch (err: any) {
             console.error("Submission error:", err);
             setError(err.response?.data?.message || `Failed to ${purchaseOrderId ? 'update' : 'create'} purchase order.`);
@@ -461,6 +471,7 @@ const PurchaseOrderForm = () => {
                 </Typography>
 
                 {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+                {successMessage && <Alert severity="success" sx={{ mb: 2 }}>{successMessage}</Alert>} {/* <-- Display success message */}
 
                 <Box component="form" onSubmit={handleSubmit} noValidate>
                     <Grid container spacing={3}>

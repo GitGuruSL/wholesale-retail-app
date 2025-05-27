@@ -116,30 +116,44 @@ exports.getPurchaseOrders = async (req, res) => {
 exports.getPurchaseOrderById = async (req, res) => {
     const { id } = req.params;
     try {
+        const purchaseOrderId = parseInt(id, 10);
+
+        if (isNaN(purchaseOrderId)) {
+            return res.status(400).json({ success: false, message: 'Invalid Purchase Order ID format.' });
+        }
+
         const po = await knex('purchase_orders')
-            .where({ id: parseInt(id, 10) })
+            .where({ id: purchaseOrderId })
             .first();
 
         if (!po) {
-            return res.status(404).json({ message: 'Purchase order not found' });
+            return res.status(404).json({ success: false, message: 'Purchase order not found' });
         }
 
         const items = await knex('purchase_order_items as poi')
             .leftJoin('item_variations as iv', 'poi.item_variant_id', 'iv.id')
             .leftJoin('items as i', 'iv.item_id', 'i.id')
             .select(
-                'poi.*', // Includes quantity, unit_price, subtotal, tax_rate, discount_amount
-                'iv.variant_name',
-                'iv.sku as item_variant_sku', // SKU of the variation
-                'i.item_name as base_item_name', // Name of the base item
-                'i.id as base_item_id', // ID of the base item, if needed
-                'iv.id as item_variant_id_check' // To confirm poi.item_variant_id matches iv.id
+                'poi.*', // Selects all columns from purchase_order_items
+                'iv.variant_name', // Still useful to have the raw variant name
+                'iv.sku as item_variant_sku',
+                'i.item_name as base_item_name', // Still useful to have the raw base name
+                'i.id as base_item_id',
+                'iv.id as item_variation_id', // This is iv.id, the ID of the item_variation
+                // New pre-combined display name field:
+                knex.raw(
+                  `CASE \
+                    WHEN iv.variant_name IS NOT NULL AND iv.variant_name <> '' AND LOWER(iv.variant_name) <> 'default' AND iv.variant_name <> i.item_name \
+                    THEN CONCAT(i.item_name, ' - ', iv.variant_name) \
+                    ELSE i.item_name \
+                  END as item_display_name`
+                )
             )
             .where('poi.purchase_order_id', po.id);
 
-        res.json({ // Send as success: true, data: ... to be consistent
-            success: true, // Add success flag
-            data: { // Wrap in data object
+        res.status(200).json({
+            success: true,
+            data: {
                 ...po,
                 items
             }

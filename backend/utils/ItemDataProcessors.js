@@ -242,7 +242,7 @@ const processAttributesAndVariations = async (trx, itemId, attributesConfig, var
         const variationToInsert = {
             item_id: itemId,
             sku: variation.sku || null,
-            // Use validated and parsed prices, or null if not valid numbers
+            variant_name: variation.variation_display_name || null, // This line
             retail_price: isRetailPriceValid ? retailPrice : null,
             cost_price: isCostPriceValid ? costPrice : null,
             wholesale_price: isWholesalePriceValid ? wholesalePrice : null,

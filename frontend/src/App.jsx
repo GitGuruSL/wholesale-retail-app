@@ -4,7 +4,8 @@ import { useAuth } from "./context/AuthContext";
 import { ROLES } from './utils/roles';
 
 import ProtectedRoute from './components/ProtectedRoute';
-import MainLayout from './components/MainLayout';
+import MainLayout from './components/MainLayout'; // For regular pages
+import DashboardLayout from './components/DashboardLayout'; // <-- Create this
 
 import LoginPage from "./pages/LoginPage";
 import AccessDeniedPage from './pages/AccessDeniedPage';
@@ -102,7 +103,7 @@ const AppRoutes = () => {
             <Route path="/access-denied" element={<AccessDeniedPage />} />
             <Route element={<ProtectedRoute roles={allAuthenticatedUsers}><MainLayout /></ProtectedRoute>}>
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                <Route path="dashboard" element={<Outlet />}>
+                <Route path="/dashboard" element={<DashboardLayout />}>
                     <Route index element={<HomePage />} />
 
                     {/* Stores Management */}
