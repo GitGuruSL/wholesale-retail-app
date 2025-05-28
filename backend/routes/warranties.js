@@ -18,12 +18,29 @@ function createWarrantiesRouter(knex) {
         return countResult && countResult.count > 0;
     };
 
-    // GET /api/warranties - Fetch all warranties
+    // GET /api/warranties - Fetch all warranties (with filtering)
     router.get('/', async (req, res) => {
         try {
-            const warranties = await knex('warranties')
-                .select('id', 'name', 'duration_months', 'description') // Are these column names still correct?
-                .orderBy('name');
+            const query = knex('warranties')
+                .select('id', 'name', 'duration_months', 'description');
+
+            // Filtering logic
+            if (req.query['name[contains]']) {
+                query.where('name', 'like', `%${req.query['name[contains]']}%`);
+            }
+            if (req.query['name[eq]']) {
+                query.where('name', req.query['name[eq]']);
+            }
+            if (req.query['duration_months[eq]']) {
+                query.where('duration_months', req.query['duration_months[eq]']);
+            }
+            if (req.query['description[contains]']) {
+                query.where('description', 'like', `%${req.query['description[contains]']}%`);
+            }
+            // Add more fields as needed
+
+            query.orderBy('name');
+            const warranties = await query;
             res.json(warranties);
         } catch (err) {
             console.error("Error fetching warranties:", err);
