@@ -21,6 +21,8 @@ import {
   CircularProgress,
   Alert // Added Alert and CircularProgress
 } from '@mui/material';
+import { useSecondaryMenu } from '../context/SecondaryMenuContext'; // Adjust path // REMOVED ContextualActionItem, ViewSelectorProps
+import { Add as AddIcon, DeleteOutline as DeleteIcon, MoreVert as MoreVertIcon, Search as SearchIcon, Refresh as RefreshIcon, FileCopyOutlined as FileCopyIcon, Print as PrintIcon, Send as SendIcon, ArrowDropDown as ArrowDropDownIcon } from '@mui/icons-material'; // Import icons you need
 
 function PermissionList() {
   const [permissions, setPermissions] = useState([]);
@@ -29,11 +31,12 @@ function PermissionList() {
   const [isLoading, setIsLoading] = useState(true); // Renamed loading to isLoading for consistency
   const [pageError, setPageError] = useState(null); // Renamed error to pageError
   const [searchTerm, setSearchTerm] = useState('');
-  // apiInstance is imported directly
   const { isAuthenticated, isLoading: authLoading, userCan } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [feedback, setFeedback] = useState({ message: null, type: null }); // Use feedback object
+  const { setMenuProps } = useSecondaryMenu();
+  const [currentPermissionView, setCurrentPermissionView] = useState('all'); // Renamed from currentPoView
 
   const fetchPermissionsAndCategories = useCallback(async () => {
     if (!isAuthenticated) {
@@ -81,6 +84,52 @@ function PermissionList() {
       return () => clearTimeout(timer);
     }
   }, [location.state, navigate, location.pathname]);
+
+  useEffect(() => {
+    // Define view selector and actions specific to Permissions
+    const permissionsViewSelector = {
+        options: [
+            { label: 'All Permissions', value: 'all' },
+            { label: 'By Category', value: 'category' },
+            // Add other relevant views for permissions
+        ],
+        currentValue: currentPermissionView,
+        onChange: (value) => setCurrentPermissionView(value),
+    };
+
+    const permissionActions = [
+        { id: 'perm-refresh', type: 'iconButton', icon: <RefreshIcon fontSize="small" />, tooltip: 'Refresh Permissions', onClick: () => fetchPermissionsAndCategories() },
+        // Add other actions like 'New Permission' if userCan('permission:create')
+        // Example:
+        // ...(userCan && userCan('permission:create') ? [{ id: 'perm-new', type: 'button', label: 'New', icon: <AddIcon fontSize="small" />, onClick: () => navigate('/dashboard/permissions/new'), variant: 'contained', color: 'primary' }] : []),
+        { id: 'perm-new', type: 'button', label: 'New Permission', icon: <AddIcon fontSize="small" />, onClick: () => navigate('/dashboard/permissions/new'), variant: 'contained', color: 'primary' },
+        // Add more relevant actions for permissions management
+    ];
+
+    console.log('PermissionList: Setting menu props:', {
+        pageTitle: 'Permissions',
+        viewSelector: permissionsViewSelector,
+        actions: permissionActions,
+    });
+
+    setMenuProps({
+        pageTitle: 'Permissions',
+        viewSelector: permissionsViewSelector,
+        actions: permissionActions,
+        showFilter: true, // Or false, depending on your needs for permissions
+        toggleFilterSidebar: () => console.log('Toggle filter for permissions'), // Implement actual logic
+        isFilterSidebarVisible: false, // Connect to actual state
+        showInfo: true, // Or false
+        // Add any other props the SecondaryHorizontalMenu expects
+    });
+
+    // Cleanup function to clear menu props when PermissionList unmounts
+    return () => {
+        console.log('PermissionList: Clearing menu props on unmount.');
+        setMenuProps({}); // Reset to default/empty state
+    };
+    // Add all dependencies that are used inside this effect
+  }, [setMenuProps, navigate, currentPermissionView, fetchPermissionsAndCategories, userCan]); // Added fetchPermissionsAndCategories and userCan if used in actions
 
   const handleDelete = async (permissionId, permissionName) => {
     if (!isAuthenticated) {

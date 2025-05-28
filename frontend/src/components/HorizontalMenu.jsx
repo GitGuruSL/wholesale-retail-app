@@ -478,14 +478,14 @@ const HorizontalMenu = () => {
     return (
         <AppBar
             position="fixed"
-            color="default" // Changed to match typical primary navigation
-            elevation={1}   // Added elevation
+            color="default"
+            elevation={0}   // Changed from 1 to 0
             sx={{
-                top: TOP_BAR_HEIGHT_FOR_HORIZONTAL_MENU, // Positioned below the DashboardTopBar
-                zIndex: (theme) => theme.zIndex.drawer + 2, // Ensure correct stacking
-                // backgroundColor: 'background.paper', // Kept for consistency if you prefer this over "default" color
+                top: TOP_BAR_HEIGHT_FOR_HORIZONTAL_MENU,
+                zIndex: (theme) => theme.zIndex.drawer + 2,
+                borderBottom: 'none', // Added to remove any explicit border
+                // backgroundColor: 'background.paper',
                 // color: 'text.primary',
-                // boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.1)', // Elevation prop handles this for "default"
             }}
         >
             <Toolbar sx={{ justifyContent: 'space-between', minHeight: '64px' }}>

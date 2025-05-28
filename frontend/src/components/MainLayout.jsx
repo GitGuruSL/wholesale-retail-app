@@ -4,28 +4,26 @@ import Box from '@mui/material/Box';
 import AppBar from '@mui/material/AppBar';
 import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
-import Button from '@mui/material/Button';
-import Divider from '@mui/material/Divider';
-import IconButton from '@mui/material/IconButton'; // <-- Import IconButton
-import LogoutIcon from '@mui/icons-material/Logout'; // <-- Import LogoutIcon
-import HorizontalMenu from './HorizontalMenu';
-import { useAuth } from '../context/AuthContext'; // <-- Import useAuth
+import IconButton from '@mui/material/IconButton';
+import LogoutIcon from '@mui/icons-material/Logout';
+import HorizontalMenu from './HorizontalMenu'; // Your primary navigation
+import SecondaryHorizontalMenu from './SecondaryHorizontalMenu'; // The new contextual menu
+import { useAuth } from '../context/AuthContext';
 
-// Define heights for your bars - adjust as needed
-const TOP_BAR_HEIGHT = 48;
-const PRIMARY_NAV_HEIGHT = 64; // This should match the height of HorizontalMenu's Toolbar (minHeight: '64px')
-const SECONDARY_NAV_HEIGHT = 48;
+// Define heights for your bars
+const TOP_BAR_HEIGHT = 48; // As per your existing DashboardTopBar
+const PRIMARY_NAV_HEIGHT = 64; // Height of HorizontalMenu (adjust if different)
+const CONTEXTUAL_MENU_HEIGHT = 48; // Expected height of SecondaryHorizontalMenu (dense Toolbar)
 
 const DashboardTopBar = () => {
-    const { logoutUser } = useAuth(); // <-- Get logoutUser function
+    const { logoutUser } = useAuth();
 
     return (
         <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 3, height: TOP_BAR_HEIGHT, backgroundColor: '#3b3a39' }}>
             <Toolbar variant="dense">
                 <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-                    My Business App
+                    Main Menu {/* Changed from "My Business App" to match image */}
                 </Typography>
-                {/* Add icons for environment, search, help, user menu here */}
                 <IconButton
                     color="inherit"
                     onClick={() => {
@@ -44,51 +42,26 @@ const DashboardTopBar = () => {
     );
 };
 
-// DashboardPrimaryNav is no longer needed as HorizontalMenu replaces it.
-// const DashboardPrimaryNav = () => ( ... );
-
-const DashboardSecondaryNav = () => (
-    <AppBar
-        position="fixed"
-        color="inherit"
-        elevation={0}
-        sx={{
-            top: TOP_BAR_HEIGHT + PRIMARY_NAV_HEIGHT, // Adjusted top position
-            zIndex: (theme) => theme.zIndex.drawer + 1,
-            height: SECONDARY_NAV_HEIGHT,
-            backgroundColor: (theme) => theme.palette.background.paper
-        }}
-    >
-        <Toolbar variant="dense">
-            <Button size="small" sx={{ mr: 1 }}>Customers</Button>
-            <Button size="small" sx={{ mr: 1 }}>Vendors</Button>
-            <Button size="small" sx={{ mr: 1 }}>Items</Button>
-            <Button size="small" sx={{ mr: 1 }}>Bank Accounts</Button>
-            <Button size="small" sx={{ mr: 1 }}>Chart of Accounts</Button>
-        </Toolbar>
-        <Divider />
-    </AppBar>
-);
-
+// DashboardSecondaryNav is removed as its functionality is replaced by SecondaryHorizontalMenu
 
 const DashboardLayout = () => {
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
             <DashboardTopBar />
-            <HorizontalMenu /> {/* HorizontalMenu is now the primary navigation bar */}
-            <DashboardSecondaryNav />
+            <HorizontalMenu /> {/* This is the primary navigation bar */}
+            <SecondaryHorizontalMenu /> {/* This is the new contextual secondary menu */}
             <Box
                 component="main"
                 sx={{
                     flexGrow: 1,
-                    p: 3,
-                    // Adjusted paddingTop to account for all three bars
-                    pt: `${TOP_BAR_HEIGHT + PRIMARY_NAV_HEIGHT + SECONDARY_NAV_HEIGHT + 24}px`,
-                    background: '#f5f6fa',
-                    minHeight: `calc(100vh - ${TOP_BAR_HEIGHT + PRIMARY_NAV_HEIGHT + SECONDARY_NAV_HEIGHT}px)`
+                    p: 3, // Default padding
+                    // Adjusted paddingTop to account for all three bars plus spacing
+                    pt: `calc(${TOP_BAR_HEIGHT}px + ${PRIMARY_NAV_HEIGHT}px + ${CONTEXTUAL_MENU_HEIGHT}px + ${24}px)`, // 24px for spacing
+                    background: '#f5f6fa', // Or your preferred background
+                    minHeight: `calc(100vh - ${TOP_BAR_HEIGHT}px - ${PRIMARY_NAV_HEIGHT}px - ${CONTEXTUAL_MENU_HEIGHT}px)`
                 }}
             >
-                <Outlet /> {/* This is where your dashboard pages (HomePage, ItemList, etc.) will render */}
+                <Outlet />
             </Box>
         </Box>
     );

@@ -1,195 +1,530 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import apiInstance from '../services/api'; // Ensure apiInstance is correctly imported
-import {
-    Paper, Typography, Button, Table, TableHead, TableRow, TableCell,
-    TableBody, TableContainer, Box, Alert, CircularProgress
+import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { 
+    Paper, Typography, Box, Alert, CircularProgress, Button, IconButton, Divider 
 } from '@mui/material';
-import { FaEdit, FaTrashAlt, FaPlus } from 'react-icons/fa';
+import { DataGrid, GridActionsCellItem } from '@mui/x-data-grid';
+import { Add as AddIcon, DeleteOutline as DeleteIcon } from '@mui/icons-material';
+import CloseIcon from '@mui/icons-material/Close'; // Uncommented this line
 
-function WarrantyList() {
-    const [warranties, setWarranties] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [pageError, setPageError] = useState(null);
-    const [feedback, setFeedback] = useState({ message: null, type: null });
-    const navigate = useNavigate();
-    const location = useLocation();
-    const { isAuthenticated, isLoading: authLoading, userCan } = useAuth();
+import apiInstance from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { useSecondaryMenu } from '../context/SecondaryMenuContext';
+import { useFilterDrawer } from '../context/FilterDrawerContext';
+import { useDetailsDrawer } from '../context/DetailsDrawerContext';
+
+import GenericFilterForm from './GenericFilterForm';
+import WarrantyDetailsView from './WarrantyDetailsView';
+
+const WARRANTY_FILTERABLE_FIELDS = [
+    { field: 'name', id: 'name_filter', label: 'Name', type: 'text' },
+    { field: 'productName', id: 'productName_filter', label: 'Product Name', type: 'text' },
+    { field: 'status', id: 'status_filter', label: 'Status', type: 'select', options: ['Active', 'Expired', 'Pending'] },
+    { field: 'duration_months', id: 'duration_months_filter', label: 'Duration (Months)', type: 'number' },
+    { field: 'description', id: 'description_filter', label: 'Description', type: 'text' },
+];
+
+// ... WarrantyListMainContent component definition remains the same ...
+// (Assuming WarrantyListMainContent is defined as in your provided code, it's self-contained and doesn't need changes for this fix)
+const WarrantyListMainContent = ({
+    authLoading, 
+    isLoading: parentIsLoading,
+    pageError: parentPageError,
+    warranties: parentWarranties,
+    feedback = { message: '', type: '' },
+    isAuthenticated, 
+    userCan,         
+    onViewDetails,
+    onRowClick,
+    onEditRow,
+    onDeleteRow,
+    activeFiltersFromParent
+}) => {
+    const [warranties, setWarranties] = useState(Array.isArray(parentWarranties) ? parentWarranties : []);
+    const [isLoading, setIsLoading] = useState(parentIsLoading || false);
+    const [pageError, setLocalPageError] = useState(parentPageError || null);
 
     useEffect(() => {
-        if (location.state?.message) {
-            setFeedback({ message: location.state.message, type: location.state.type || 'success' });
-            navigate(location.pathname, { replace: true, state: {} });
-            const timer = setTimeout(() => setFeedback({ message: null, type: null }), 5000);
-            return () => clearTimeout(timer);
-        }
-    }, [location, navigate]);
-
-    const fetchWarranties = useCallback(async () => {
-        if (!isAuthenticated) {
-            setPageError("User not authenticated. Cannot fetch warranties.");
-            setIsLoading(false);
-            return;
-        }
-        setIsLoading(true);
-        setPageError(null);
-        try {
-            const response = await apiInstance.get('/warranties');
-            setWarranties(response.data || []);
-        } catch (err) {
-            console.error("[WarrantyList] Error fetching warranties:", err);
-            setPageError(err.response?.data?.message || 'Failed to fetch warranties.');
-            setWarranties([]);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [isAuthenticated]);
+        setWarranties(Array.isArray(parentWarranties) ? parentWarranties : []);
+    }, [parentWarranties]);
 
     useEffect(() => {
-        if (!authLoading) {
-            if (isAuthenticated) {
-                fetchWarranties();
-            } else {
-                setPageError("Please log in to view warranties.");
-                setIsLoading(false);
-                setWarranties([]);
+        setIsLoading(parentIsLoading);
+    }, [parentIsLoading]);
+
+    useEffect(() => {
+        setLocalPageError(parentPageError);
+    }, [parentPageError]);
+
+    const columns = [
+        { field: 'id', headerName: 'ID', width: 90 },
+        {
+            field: 'actions',
+            type: 'actions',
+            headerName: '',
+            width: 50,
+            cellClassName: 'actions',
+            getActions: (params) => {
+                const menuActions = [];
+                const placeholderIcon = <Box component="span" sx={{ width: 20, height: 20 }} />;
+
+                if (isAuthenticated && userCan && userCan('warranty:read') && onViewDetails) {
+                    menuActions.push(
+                        <GridActionsCellItem
+                            key={`view-${params.id}`}
+                            icon={placeholderIcon}
+                            label="View Details"
+                            onClick={() => onViewDetails(params.row)}
+                            showInMenu
+                        />
+                    );
+                }
+                if (isAuthenticated && userCan && userCan('warranty:update') && onEditRow) {
+                     menuActions.push(
+                        <GridActionsCellItem
+                            key={`edit-${params.id}`}
+                            icon={placeholderIcon}
+                            label="Edit"
+                            onClick={() => onEditRow(params.row)}
+                            showInMenu
+                        />
+                    );
+                }
+                if (isAuthenticated && userCan && userCan('warranty:delete') && onDeleteRow) {
+                    menuActions.push(
+                        <GridActionsCellItem
+                            key={`delete-${params.id}`}
+                            icon={placeholderIcon}
+                            label="Delete"
+                            onClick={() => onDeleteRow(params.row)}
+                            showInMenu
+                        />
+                    );
+                }
+                return menuActions;
             }
-        }
-    }, [authLoading, isAuthenticated, fetchWarranties]);
+        },
+        { field: 'name', headerName: 'Name', width: 200, flex: 1 },
+        { field: 'productName', headerName: 'Product Name', width: 200, flex: 1 },
+        { field: 'status', headerName: 'Status', width: 120 },
+        { field: 'duration_months', headerName: 'Duration (Months)', type: 'number', width: 150 },
+        {
+            field: 'description',
+            headerName: 'Description',
+            width: 250,
+            flex: 2,
+            renderCell: (params) => (
+                <Typography noWrap title={params.value || ''}>
+                    {params.value || '-'}
+                </Typography>
+            )
+        },
+    ];
 
-    const handleDelete = async (warrantyId, warrantyName) => {
-        if (!isAuthenticated) {
-            setFeedback({ message: "Authentication error. Please log in again.", type: 'error' });
-            return;
+    const handleGridRowClick = (params) => {
+        if (onRowClick) {
+            onRowClick(params.row);
         }
-        if (userCan && !userCan('warranty:delete')) {
-            setFeedback({ message: "You do not have permission to delete warranties.", type: 'error' });
-            setTimeout(() => setFeedback({ message: null, type: null }), 5000);
-            return;
-        }
-        if (!window.confirm(`Are you sure you want to delete warranty: "${warrantyName}" (ID: ${warrantyId})?\nThis might fail if it's linked to Items.`)) {
-            return;
-        }
-        setPageError(null);
-        try {
-            await apiInstance.delete(`/warranties/${warrantyId}`);
-            setFeedback({ message: `Warranty "${warrantyName}" deleted successfully.`, type: 'success' });
-            setWarranties(prev => prev.filter(w => w.id !== warrantyId));
-        } catch (err) {
-            console.error(`[WarrantyList] Error deleting warranty ${warrantyId}:`, err);
-            const errorMsg = err.response?.data?.message || 'Failed to delete warranty. It might be in use.';
-            setFeedback({ message: errorMsg, type: 'error' });
-        }
-        const timer = setTimeout(() => setFeedback({ message: null, type: null }), 5000);
     };
 
-    if (authLoading) {
-        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
-    }
-    if (isLoading && !pageError && warranties.length === 0) {
-        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
-    }
-
-    if (pageError && warranties.length === 0) {
-        return (
-            <Paper sx={{ p: 3, m: 2, maxWidth: 900, mx: 'auto' }}>
-                <Typography variant="h5" align="center" gutterBottom>Manage Warranties</Typography>
-                <Alert severity="error" sx={{ mb: 2 }}>{pageError}</Alert>
-                {isAuthenticated && userCan && userCan('warranty:create') &&
-                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-                        <Button variant="contained" color="primary" component={RouterLink} to="/dashboard/warranties/new" startIcon={<FaPlus />}>
-                            Add New Warranty
-                        </Button>
-                    </Box>
-                }
-            </Paper>
-        );
-    }
+    const handleGridRowDoubleClick = (params) => {
+        if (isAuthenticated && userCan && userCan('warranty:update') && onEditRow) {
+            onEditRow(params.row);
+        }
+    };
 
     return (
-        <Paper sx={{ p: 3, m: 2, maxWidth: 900, mx: 'auto' }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h5">Manage Warranties</Typography>
-                {isAuthenticated && userCan && userCan('warranty:create') && (
-                    <Button variant="contained" color="primary" component={RouterLink} to="/dashboard/warranties/new" startIcon={<FaPlus />}>
-                        Add New Warranty
-                    </Button>
-                )}
-            </Box>
-
+        <Paper sx={{ p: { xs: 1, sm: 2, md: 3 }, m: 0, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {feedback.message && (
-                <Alert severity={feedback.type === 'error' ? 'error' : 'success'} sx={{ mb: 2 }}>
+                <Alert severity={feedback.type === 'error' ? 'error' : 'success'} sx={{ mb: 2, flexShrink: 0 }}>
                     {feedback.message}
                 </Alert>
             )}
-            {pageError && warranties.length > 0 && (
-                 <Alert severity="warning" sx={{ mb: 2, width: '100%' }}>
-                    {pageError}
+            {pageError && warranties.length > 0 && ( // Changed from parentWarranties to warranties
+                <Alert severity="warning" sx={{ mb: 2, width: '100%', flexShrink: 0 }}>
+                    {`Warning: ${pageError}`}
                 </Alert>
             )}
-
-            {isLoading && warranties.length > 0 && <Box sx={{display: 'flex', justifyContent: 'center', my: 2}}><CircularProgress size={24} /><Typography sx={{ml:1}}>Updating list...</Typography></Box>}
-
-            {!isLoading && warranties.length === 0 && !pageError && (
-                <Alert severity="info" sx={{ textAlign: 'center', mb: 2 }}>
-                    No warranties found. {isAuthenticated && userCan && userCan('warranty:create') && "Click 'Add New Warranty' to create one."}
+            {isLoading && warranties.length === 0 && !pageError && ( // Changed from parentWarranties to warranties
+                 <Box sx={{ display: 'flex', justifyContent: 'center', p: 3, flexGrow: 1, alignItems: 'center' }}><CircularProgress /></Box>
+            )}
+            {!isLoading && warranties.length === 0 && !pageError && ( // Changed from parentWarranties to warranties
+                <Alert severity="info" sx={{ textAlign: 'center', mb: 2, flexShrink: 0 }}>
+                    No warranties found. {activeFiltersFromParent && activeFiltersFromParent.length > 0 && "Try adjusting your filters."}
                 </Alert>
             )}
-
-            {warranties.length > 0 && (
-                <TableContainer component={Paper} elevation={2}>
-                    <Table sx={{ minWidth: 650 }} aria-label="warranties table">
-                        <TableHead sx={{ '& th': { fontWeight: 'bold' } }}>
-                            <TableRow>
-                                <TableCell>ID</TableCell>
-                                <TableCell>Name</TableCell>
-                                <TableCell>Duration (Months)</TableCell>
-                                <TableCell>Description</TableCell>
-                                <TableCell align="right">Actions</TableCell>
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {warranties.map(warranty => (
-                                <TableRow hover key={warranty.id} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
-                                    <TableCell component="th" scope="row">{warranty.id}</TableCell>
-                                    <TableCell>{warranty.name}</TableCell>
-                                    <TableCell>{warranty.duration_months ?? '-'}</TableCell>
-                                    <TableCell sx={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={warranty.description || ''}>
-                                        {warranty.description || '-'}
-                                    </TableCell>
-                                    <TableCell align="right">
-                                        {isAuthenticated && userCan && userCan('warranty:update') && (
-                                            <Button
-                                                variant="outlined"
-                                                size="small"
-                                                onClick={() => navigate(`/dashboard/warranties/edit/${warranty.id}`)}
-                                                sx={{ mr: 1 }}
-                                                startIcon={<FaEdit />}
-                                            >
-                                                Edit
-                                            </Button>
-                                        )}
-                                        {isAuthenticated && userCan && userCan('warranty:delete') && (
-                                            <Button
-                                                variant="outlined"
-                                                color="error"
-                                                size="small"
-                                                onClick={() => handleDelete(warranty.id, warranty.name)}
-                                                startIcon={<FaTrashAlt />}
-                                            >
-                                                Delete
-                                            </Button>
-                                        )}
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </TableContainer>
+            {pageError && warranties.length === 0 && ( // Changed from parentWarranties to warranties
+                <Alert severity="error" sx={{ mb: 2 }}>{`Error: ${pageError}`}</Alert>
+            )}
+            {warranties.length > 0 && ( // Changed from parentWarranties to warranties
+                <Box sx={{ flexGrow: 1, width: '100%', overflow: 'hidden' }}>
+                     <DataGrid
+                        rows={warranties} // Use local warranties state
+                        columns={columns}
+                        loading={isLoading} // Use local isLoading state
+                        pageSizeOptions={[5, 10, 25, 50]}
+                        initialState={{
+                            pagination: { paginationModel: { pageSize: 10 } },
+                        }}
+                        autoHeight={false} 
+                        onRowClick={handleGridRowClick}
+                        onRowDoubleClick={handleGridRowDoubleClick}
+                        sx={{
+                            border: 0,
+                            '& .MuiDataGrid-columnHeaders': {
+                                backgroundColor: (theme) => theme.palette.action.hover,
+                                fontWeight: 'bold',
+                            },
+                            '& .MuiDataGrid-virtualScroller': {
+                                flexGrow: 1,
+                            },
+                            height: '100%' 
+                        }}
+                    />
+                </Box>
             )}
         </Paper>
     );
-}
+};
 
-export default WarrantyList;
+
+const WarrantyListView = () => {
+    const navigate = useNavigate();
+    const location = useLocation();
+    const { user, isAuthenticated, isLoading: authLoading, userCan } = useAuth();
+    const { setMenuProps } = useSecondaryMenu();
+    const filterDrawer = useFilterDrawer();
+    const detailsDrawer = useDetailsDrawer();
+
+    const [warranties, setWarrantiesData] = useState([]);
+    const [isLoadingData, setIsLoadingData] = useState(true);
+    const [dataError, setDataError] = useState(null);
+    const [activeFilters, setActiveFilters] = useState([]);
+    const [feedback, setFeedback] = useState({ message: '', type: '' });
+    const [selectedWarranty, setSelectedWarranty] = useState(null);
+
+    const fetchWarranties = useCallback(async (filtersToApply = []) => {
+        setIsLoadingData(true);
+        setDataError(null);
+        try {
+            const queryParams = new URLSearchParams();
+            filtersToApply.forEach(filter => {
+                if (filter.value !== undefined && filter.value !== '' && filter.field) {
+                    const fieldKey = filter.field;
+                    queryParams.append(`${fieldKey}[${filter.operator || 'eq'}]`, filter.value);
+                }
+            });
+            const endpoint = `/warranties${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+            const response = await apiInstance.get(endpoint);
+            setWarrantiesData(Array.isArray(response.data) ? response.data : []);
+        } catch (error) {
+            setDataError(error.response?.data?.message || 'Failed to fetch warranties.');
+            setWarrantiesData([]);
+        } finally {
+            setIsLoadingData(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (isAuthenticated) {
+            fetchWarranties(activeFilters);
+        } else if (!authLoading) {
+            setWarrantiesData([]);
+            setIsLoadingData(false);
+        }
+    }, [fetchWarranties, activeFilters, isAuthenticated, authLoading]);
+    
+    useEffect(() => {
+        if (location.state?.message && location.state?.type) {
+            setFeedback({ message: location.state.message, type: location.state.type });
+            navigate(location.pathname, { replace: true, state: {} });
+        }
+    }, [location.state, navigate, location.pathname]);
+
+    const handleApplyFiltersFromPanel = useCallback((appliedFiltersFromForm) => {
+        const filtersForApi = appliedFiltersFromForm.map(criterion => {
+            const fieldDefinition = WARRANTY_FILTERABLE_FIELDS.find(f => f.id === criterion.fieldId);
+            return {
+                ...criterion,
+                field: fieldDefinition ? fieldDefinition.field : criterion.fieldId,
+            };
+        });
+        setActiveFilters(filtersForApi);
+        // The global FilterDrawer.jsx handles its own closure if needed, or user closes it.
+    }, [/* WARRANTY_FILTERABLE_FIELDS */]);
+
+    const handleRowOrViewDetailsClick = useCallback((warranty) => {
+        setSelectedWarranty(warranty);
+        if (warranty) {
+            // This will open the global DetailsDrawer and set its content
+            detailsDrawer.openDrawer(
+                `Details: ${warranty.name || 'Warranty'}`,
+                <WarrantyDetailsView warranty={warranty} />
+            );
+        } else {
+            setSelectedWarranty(null);
+            detailsDrawer.openDrawer( // Open with a default message if no warranty
+                 "Information",
+                 <Box sx={{ p: 2 }}><Typography>Select an item to view details.</Typography></Box>
+            );
+        }
+    }, [detailsDrawer, setSelectedWarranty]); // detailsDrawer context is stable
+
+    const handleEditRow = useCallback((warranty) => {
+        if (warranty && warranty.id) {
+            navigate(`/dashboard/warranties/edit/${warranty.id}`);
+        }
+    }, [navigate]);
+
+    const handleDeleteRow = useCallback(async (warrantyToDeleteInput) => {
+        const warrantyToDelete = warrantyToDeleteInput || selectedWarranty;
+        if (!warrantyToDelete) {
+            setFeedback({ message: "No warranty selected for deletion.", type: 'warning' });
+            return;
+        }
+        if (!window.confirm(`Are you sure you want to delete warranty "${warrantyToDelete.name}"?`)) return;
+        if (!(isAuthenticated && userCan && userCan('warranty:delete'))) {
+            setFeedback({ message: "You don't have permission to delete warranties.", type: 'error'});
+            return;
+        }
+        try {
+            await apiInstance.delete(`/warranties/${warrantyToDelete.id}`);
+            setFeedback({ message: `Warranty "${warrantyToDelete.name}" deleted successfully.`, type: 'success'});
+            if (selectedWarranty && selectedWarranty.id === warrantyToDelete.id) {
+                setSelectedWarranty(null);
+                if (detailsDrawer.isOpen) detailsDrawer.closeDrawer(); // Close global details drawer
+            }
+            fetchWarranties(activeFilters);
+        } catch (error) {
+            setFeedback({ message: error.response?.data?.message || "Failed to delete warranty.", type: 'error'});
+        }
+    }, [isAuthenticated, userCan, selectedWarranty, detailsDrawer, fetchWarranties, activeFilters]);
+
+    useEffect(() => {
+        const isAnItemSelected = !!selectedWarranty;
+
+        const handleDeleteSelected = () => {
+            if (selectedWarranty) handleDeleteRow(selectedWarranty);
+            else setFeedback({ message: "No warranty selected for deletion.", type: 'warning' });
+        };
+        
+        const toggleFilterDrawerState = () => {
+            if (filterDrawer.isOpen) {
+                filterDrawer.closeDrawer();
+            } else {
+                const initialCriteriaForForm = activeFilters.map(criterion => {
+                    const fieldDefinition = WARRANTY_FILTERABLE_FIELDS.find(f => f.field === criterion.field);
+                    return {
+                        ...criterion,
+                        fieldId: fieldDefinition ? fieldDefinition.id : criterion.field,
+                    };
+                });
+                filterDrawer.openDrawer(
+                    "Filter Warranties",
+                    <GenericFilterForm
+                        initialCriteria={initialCriteriaForForm}
+                        onApply={handleApplyFiltersFromPanel}
+                        filterableFields={WARRANTY_FILTERABLE_FIELDS}
+                        entityName="Warranties"
+                        isDrawerOpen={true} // <-- Add this line
+                    />
+                );
+            }
+        };
+
+        const toggleDetailsDrawerState = () => {
+            if (detailsDrawer.isOpen) {
+                detailsDrawer.closeDrawer();
+            } else {
+                if (selectedWarranty) {
+                    detailsDrawer.openDrawer(
+                        `Details: ${selectedWarranty.name || 'Warranty'}`,
+                        <WarrantyDetailsView warranty={selectedWarranty} />
+                    );
+                } else {
+                    detailsDrawer.openDrawer(
+                        "Information",
+                        <Box sx={{ p: 2 }}><Typography>Select an item from the list to view its details.</Typography></Box>
+                    );
+                }
+            }
+        };
+
+        setMenuProps({
+            pageTitle: "Manage Warranties",
+            showFilter: true,
+            isFilterSidebarVisible: filterDrawer.isOpen,
+            toggleFilterSidebar: toggleFilterDrawerState,
+            
+            showNewAction: true,
+            newActionLabel: '+New',
+            newActionIcon: <AddIcon fontSize="small" />,
+            onNewActionClick: () => navigate('/dashboard/warranties/add'),
+            isNewActionEnabled: isAuthenticated && userCan && userCan('warranty:create'),
+
+            showDeleteAction: true,
+            deleteActionLabel: 'Delete',
+            deleteActionIcon: <DeleteIcon fontSize="small" />,
+            onDeleteActionClick: handleDeleteSelected,
+            isDeleteActionEnabled: isAnItemSelected && isAuthenticated && userCan && userCan('warranty:delete'),
+
+            showSearchAction: true,
+            searchPlaceholder: 'Search warranties...',
+            onSearchSubmit: (searchText) => {
+                const nameFieldDef = WARRANTY_FILTERABLE_FIELDS.find(f => f.label === 'Name'); // Assuming 'Name' label maps to 'name' field
+                const searchFilter = { 
+                    field: nameFieldDef ? nameFieldDef.field : 'name', 
+                    operator: 'contains', 
+                    value: searchText, 
+                    id: `search-${nameFieldDef ? nameFieldDef.id : 'name_filter'}` // Unique ID for the filter item
+                };
+                setActiveFilters(prev => {
+                    const otherFilters = prev.filter(f => !(f.field === searchFilter.field && f.operator === 'contains'));
+                    return searchText ? [...otherFilters, searchFilter] : otherFilters;
+                });
+            },
+            initialSearchText: activeFilters.find(f => f.field === (WARRANTY_FILTERABLE_FIELDS.find(fld => fld.label === 'Name')?.field || 'name') && f.operator === 'contains')?.value || '',
+
+            showInfo: true,
+            isInfoActionEnabled: true,
+            onInfoClick: toggleDetailsDrawerState,
+            
+            breadcrumbs: [{ label: "Dashboard", path: "/dashboard" }, { label: "Warranties" }],
+            actions: [] 
+        });
+    }, [
+        setMenuProps, 
+        filterDrawer.isOpen, filterDrawer.openDrawer, filterDrawer.closeDrawer,
+        detailsDrawer.isOpen, detailsDrawer.openDrawer, detailsDrawer.closeDrawer,
+        navigate, isAuthenticated, userCan, selectedWarranty, activeFilters, 
+        handleApplyFiltersFromPanel, handleDeleteRow
+    ]);
+    
+    if (authLoading && !isAuthenticated) {
+        return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
+    }
+    if (!authLoading && !isAuthenticated) {
+        navigate('/login');
+        return null; 
+    }
+    
+    const INLINE_FILTER_PANEL_WIDTH = 280;
+    const INLINE_DETAILS_PANEL_WIDTH = 320;
+
+    // The main Box for WarrantyListView. It no longer renders inline panels.
+    // It provides a container for WarrantyListMainContent.
+    // The global FilterDrawer and DetailsDrawer will be positioned by the main app layout.
+    return (
+        <Box sx={{ 
+            flexGrow: 1, 
+            display: 'flex',
+            flexDirection: 'column',
+            height: '100%', 
+            overflow: 'hidden',
+        }}>
+            <Box sx={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+                {/* Inline Filter Panel */}
+                {filterDrawer.isOpen && (
+                    <Paper
+                        elevation={3}
+                        sx={{
+                            width: INLINE_FILTER_PANEL_WIDTH,
+                            flexShrink: 0,
+                            height: '100%',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            overflow: 'hidden',
+                            borderRight: (theme) => `1px solid ${theme.palette.divider}`,
+                            zIndex: 1,
+                        }}
+                    >
+                        <Box sx={{
+                            p: 1,
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
+                            flexShrink: 0,
+                        }}>
+                            <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 'medium', ml: 1 }}>
+                                {filterDrawer.title || 'Filters'}
+                            </Typography>
+                            <IconButton onClick={filterDrawer.closeDrawer} size="small">
+                                <CloseIcon fontSize="small" />
+                            </IconButton>
+                        </Box>
+                        <Box sx={{ p: 2, flexGrow: 1, overflowY: 'auto' }}>
+                            {React.isValidElement(filterDrawer.content)
+                                ? React.cloneElement(filterDrawer.content, { isDrawerOpen: filterDrawer.isOpen })
+                                : filterDrawer.content}
+                        </Box>
+                    </Paper>
+                )}
+
+                {/* Main Content Area */}
+                <Box sx={{
+                    flexGrow: 1,
+                    width: 0,
+                    transition: 'margin 0.3s',
+                    height: '100%',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    flexDirection: 'column'
+                }}>
+                    <WarrantyListMainContent
+                        authLoading={authLoading}
+                        isLoading={isLoadingData}
+                        pageError={dataError}
+                        warranties={warranties}
+                        feedback={feedback}
+                        isAuthenticated={isAuthenticated}
+                        userCan={userCan}
+                        onViewDetails={handleRowOrViewDetailsClick}
+                        onRowClick={handleRowOrViewDetailsClick}
+                        onEditRow={handleEditRow}
+                        onDeleteRow={handleDeleteRow}
+                        activeFiltersFromParent={activeFilters}
+                    />
+                </Box>
+
+                {/* Inline Details/Info Panel */}
+                {detailsDrawer.isOpen && (
+                    <Paper
+                        elevation={3}
+                        sx={{
+                            width: INLINE_DETAILS_PANEL_WIDTH,
+                            flexShrink: 0,
+                            height: '100%',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            overflow: 'hidden',
+                            borderLeft: (theme) => `1px solid ${theme.palette.divider}`,
+                            zIndex: 1,
+                        }}
+                    >
+                        <Box sx={{
+                            p: 1,
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
+                            flexShrink: 0,
+                        }}>
+                            <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 'medium', ml: 1 }}>
+                                {detailsDrawer.title || 'Information'}
+                            </Typography>
+                            <IconButton onClick={detailsDrawer.closeDrawer} size="small">
+                                <CloseIcon fontSize="small" />
+                            </IconButton>
+                        </Box>
+                        <Box sx={{ p: 2, flexGrow: 1, overflowY: 'auto' }}>
+                            {detailsDrawer.content}
+                        </Box>
+                    </Paper>
+                )}
+            </Box>
+        </Box>
+    );
+};
+
+export default WarrantyListView;

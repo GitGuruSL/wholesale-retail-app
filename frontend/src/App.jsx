@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Routes, Route, Navigate, Outlet, Link, useLocation } from 'react-router-dom'; // Router removed from here
 import { useAuth } from "./context/AuthContext";
 import { ROLES } from './utils/roles';
+import { useSecondaryMenu } from './context/SecondaryMenuContext'; // Ensure this import is correct
 
 import ProtectedRoute from './components/ProtectedRoute';
 import MainLayout from './components/MainLayout'; // For regular pages
@@ -56,14 +57,55 @@ import InventoryList from './components/InventoryList';
 
 import PurchaseOrderList from './components/PurchaseOrderList';
 import PurchaseOrderForm from './components/PurchaseOrderForm';
+import { DetailsDrawerProvider } from './context/DetailsDrawerContext';
+import DetailsDrawer from './components/common/drawers/DetailsDrawer';
+import { FilterDrawerProvider } from './context/FilterDrawerContext'; // Import new provider
+import FilterDrawer from './components/common/drawers/FilterDrawer';   // Import modified FilterDrawer
+
 
 const HomePage = () => {
     const location = useLocation();
+    const { setMenuProps } = useSecondaryMenu(); // Get the setter function
+
+    useEffect(() => {
+        // Set the menu props for the dashboard's home page
+        setMenuProps({
+            pageTitle: 'Dashboard', // Or an empty string: ''
+            // breadcrumbs: [{ label: "Dashboard" }], // SecondaryHorizontalMenu doesn't use breadcrumbs directly
+            actions: [], // No custom actions/buttons
+            
+            // Hide all standard right-hand icons in SecondaryHorizontalMenu
+            showFilter: false,
+            showShare: false,
+            showViewToggle: false,
+            showInfo: false,
+            showFullscreen: false,
+            showBookmark: false,
+
+            // If you still have a primary HorizontalMenu with user/notification icons,
+            // this flag would control those.
+            // hideStandardRightIcons: true, 
+            
+            // Ensure other props that SecondaryHorizontalMenu might expect are reset or not set
+            viewSelector: undefined,
+            toggleFilterSidebar: undefined,
+            toggleDetailsSidebar: undefined,
+        });
+
+        // Cleanup function to reset menu when HomePage unmounts
+        return () => {
+            // Reset menu props. This will revert showFilter, showShare etc.,
+            // to their defaults defined in SecondaryMenuContext's initialState.
+            setMenuProps({});
+        };
+    }, [setMenuProps]); // Dependency array
+
     return (
         <div>
             <h2>Dashboard</h2>
             {location.state?.message && <p style={{ color: 'blue' }}>{location.state.message}</p>}
             <p>Welcome to the dashboard!</p>
+            {/* You can add more dashboard-specific content here */}
         </div>
     );
 };
@@ -224,11 +266,12 @@ const AppRoutes = () => {
 
 function App() {
     return (
-        <div>
-            {/* Router was removed from here */}
-            <h1>My Wholesale/Retail App</h1>
-            <AppRoutes />
-        </div>
+        <DetailsDrawerProvider>
+            <FilterDrawerProvider>
+                <h1>My Wholesale/Retail App</h1>
+                <AppRoutes />
+            </FilterDrawerProvider>
+        </DetailsDrawerProvider>
     );
 }
 

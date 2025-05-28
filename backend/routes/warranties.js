@@ -22,9 +22,9 @@ function createWarrantiesRouter(knex) {
     router.get('/', async (req, res) => {
         try {
             const warranties = await knex('warranties')
-                                     .select('id', 'name', 'duration_months', 'description') // Select relevant fields
-                                     .orderBy('name');
-            res.status(200).json(warranties);
+                .select('id', 'name', 'duration_months', 'description') // Are these column names still correct?
+                .orderBy('name');
+            res.json(warranties);
         } catch (err) {
             console.error("Error fetching warranties:", err);
             res.status(500).json({ message: 'Database error fetching warranties.', error: err.message });

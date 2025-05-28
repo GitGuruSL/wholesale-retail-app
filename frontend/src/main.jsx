@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom'; // Import BrowserRouter
 import App from './App';
 import { AuthProvider } from './context/AuthContext'; // Assuming AuthProvider is here
 import { StoreProvider } from './context/StoreContext'; // Assuming StoreProvider is here
+import { SecondaryMenuProvider } from './context/SecondaryMenuContext'; // <-- Import this
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -11,7 +12,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <BrowserRouter> {/* <--- THIS IS THE SINGLE, TOP-LEVEL ROUTER */}
       <AuthProvider>
         <StoreProvider> {/* Ensure StoreProvider wraps App if needed */}
-          <App />
+          <SecondaryMenuProvider> {/* <-- Wrap App with SecondaryMenuProvider */}
+            <App />
+          </SecondaryMenuProvider>
         </StoreProvider>
       </AuthProvider>
     </BrowserRouter>
