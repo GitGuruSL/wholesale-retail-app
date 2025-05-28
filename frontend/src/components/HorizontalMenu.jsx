@@ -117,6 +117,7 @@ import WebIcon from '@mui/icons-material/Web'; // Forms, Tables (as part of UI)
 import WorkHistoryIcon from '@mui/icons-material/WorkHistory';
 import SupplierIcon from '@mui/icons-material/LocalShipping'; // Corrected 'inport' to 'import' and assumed an icon
 
+const TOP_BAR_HEIGHT_FOR_HORIZONTAL_MENU = 48; // Assuming the top bar (DashboardTopBar) is 48px high
 
 const HorizontalMenu = () => {
     const location = useLocation();
@@ -477,12 +478,14 @@ const HorizontalMenu = () => {
     return (
         <AppBar
             position="fixed"
+            color="default" // Changed to match typical primary navigation
+            elevation={1}   // Added elevation
             sx={{
-                top: 0,
-                zIndex: (theme) => theme.zIndex.drawer + 1,
-                backgroundColor: 'background.paper',
-                color: 'text.primary',
-                boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.1)',
+                top: TOP_BAR_HEIGHT_FOR_HORIZONTAL_MENU, // Positioned below the DashboardTopBar
+                zIndex: (theme) => theme.zIndex.drawer + 2, // Ensure correct stacking
+                // backgroundColor: 'background.paper', // Kept for consistency if you prefer this over "default" color
+                // color: 'text.primary',
+                // boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.1)', // Elevation prop handles this for "default"
             }}
         >
             <Toolbar sx={{ justifyContent: 'space-between', minHeight: '64px' }}>
@@ -655,22 +658,7 @@ const HorizontalMenu = () => {
                     })}
                 </Box>
 
-                <Box sx={{ display: 'flex', alignItems: 'center', ml: 2, flexShrink: 0 }}>
-                    <IconButton
-                        color="inherit"
-                        onClick={() => {
-                            console.log('Logout button clicked. Attempting to call logout function...');
-                            if (typeof logoutUser === 'function') {
-                                logoutUser();
-                            } else {
-                                console.error('The logout function provided by AuthContext is not available or is not a function. Please check your AuthContext implementation.');
-                            }
-                        }}
-                        title="Logout"
-                    >
-                        <LogoutIcon />
-                    </IconButton>
-                </Box>
+                {/* REMOVED LOGOUT ICON BUTTON FROM HERE */}
             </Toolbar>
         </AppBar>
     );
