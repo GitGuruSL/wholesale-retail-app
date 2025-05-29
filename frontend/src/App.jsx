@@ -33,7 +33,7 @@ import UnitList from './components/UnitList';
 import UnitForm from './components/UnitForm';
 import ManufacturerList from './components/ManufacturerList';
 import ManufacturerForm from './components/ManufacturerForm';
-import WarrantyList from './components/WarrantyList';
+import WarrantyList from './components/WarrantyList.tsx';
 import WarrantyForm from './components/WarrantyForm';
 import BarcodeSymbologyList from './components/BarcodeSymbologyList';
 import BarcodeSymbologyForm from './components/BarcodeSymbologyForm';
@@ -57,10 +57,7 @@ import InventoryList from './components/InventoryList';
 
 import PurchaseOrderList from './components/PurchaseOrderList';
 import PurchaseOrderForm from './components/PurchaseOrderForm';
-import { DetailsDrawerProvider } from './context/DetailsDrawerContext';
-import DetailsDrawer from './components/common/drawers/DetailsDrawer';
-import { FilterDrawerProvider } from './context/FilterDrawerContext'; // Import new provider
-import FilterDrawer from './components/common/drawers/FilterDrawer';   // Import modified FilterDrawer
+import PurchaseList from './components/PurchaseList.tsx';
 
 
 const HomePage = () => {
@@ -168,6 +165,9 @@ const AppRoutes = () => {
                     <Route path="suppliers/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['supplier:create']}><SupplierForm /></ProtectedRoute>} />
                     <Route path="suppliers/edit/:supplierId" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['supplier:update']}><SupplierForm /></ProtectedRoute>} />
 
+                    {/* Purchases Section */}                    
+                    <Route path="/dashboard/purchases"element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['purchase:read']}><PurchaseList /></ProtectedRoute>} />
+
                     {/* Purchase Order Management */}
                     <Route path="purchase-orders" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['purchase_order:read']}><PurchaseOrderList /></ProtectedRoute>} />
                     <Route path="purchase-orders/new" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['purchase_order:create']}><PurchaseOrderForm /></ProtectedRoute>} />
@@ -266,12 +266,10 @@ const AppRoutes = () => {
 
 function App() {
     return (
-        <DetailsDrawerProvider>
-            <FilterDrawerProvider>
-                <h1>My Wholesale/Retail App</h1>
-                <AppRoutes />
-            </FilterDrawerProvider>
-        </DetailsDrawerProvider>
+        <> {/* You can use a fragment or a simple div if needed */}
+            <h1>My Wholesale/Retail App</h1>
+            <AppRoutes />
+        </>
     );
 }
 

@@ -48,16 +48,17 @@ const DashboardLayout = () => {
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
             <DashboardTopBar />
-            <HorizontalMenu /> {/* This is the primary navigation bar */}
-            <SecondaryHorizontalMenu /> {/* This is the new contextual secondary menu */}
+            <HorizontalMenu />
+            <SecondaryHorizontalMenu />
             <Box
                 component="main"
                 sx={{
                     flexGrow: 1,
-                    p: 3, // Default padding
-                    // Adjusted paddingTop to account for all three bars plus spacing
-                    pt: `calc(${TOP_BAR_HEIGHT}px + ${PRIMARY_NAV_HEIGHT}px + ${CONTEXTUAL_MENU_HEIGHT}px + ${24}px)`, // 24px for spacing
-                    background: '#f5f6fa', // Or your preferred background
+                    p: 0,
+                    pt: `${TOP_BAR_HEIGHT + PRIMARY_NAV_HEIGHT + CONTEXTUAL_MENU_HEIGHT}px`,
+                    mt: 0,
+                    mb: 0,
+                    background: '#f5f6fa',
                     minHeight: `calc(100vh - ${TOP_BAR_HEIGHT}px - ${PRIMARY_NAV_HEIGHT}px - ${CONTEXTUAL_MENU_HEIGHT}px)`
                 }}
             >
@@ -68,3 +69,11 @@ const DashboardLayout = () => {
 };
 
 export default DashboardLayout;
+
+// In SecondaryHorizontalMenu.jsx (or .tsx)
+<Toolbar
+    variant="dense"
+    sx={{ minHeight: `${CONTEXTUAL_MENU_HEIGHT}px !important`, p: 0, m: 0 }}
+>
+    {/* ...menu content... */}
+</Toolbar>
