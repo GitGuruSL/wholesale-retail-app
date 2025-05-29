@@ -1,131 +1,129 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
 import {
-    AppBar, Toolbar, Button, Menu, MenuItem, Typography, Box, IconButton
+    AppBar, Toolbar, Button, Menu, MenuItem, Typography, Box, IconButton, Avatar
 } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
-import SecurityIcon from '@mui/icons-material/Security';
 
-// --- Icon Imports (Consolidated & Alphabetized where practical) ---
-import AbcIcon from '@mui/icons-material/Abc'; // Prefix
-import AccountBalanceIcon from '@mui/icons-material/AccountBalance'; // Balance Sheet, Bank Account Settings
-import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet'; // Money Transfer
-import AccountCircleIcon from '@mui/icons-material/AccountCircle'; // Profile, Profile Settings
-import AccessTimeIcon from '@mui/icons-material/AccessTime'; // Shifts
-import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline'; // Create Item
-import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings'; // Roles & Permissions, Admin Leaves/Attendance
-import AppSettingsAltIcon from '@mui/icons-material/AppSettingsAlt'; // App Settings
-import AppsIcon from '@mui/icons-material/Apps'; // Main Menu
-import ArticleIcon from '@mui/icons-material/Article'; // Account Statement, Documentation
-import AssessmentIcon from '@mui/icons-material/Assessment'; // Reports
-import AssignmentIndIcon from '@mui/icons-material/AssignmentInd'; // Designation
-import AssignmentReturnIcon from '@mui/icons-material/AssignmentReturn'; // Sales Return, Purchase Return
-import AttachMoneyIcon from '@mui/icons-material/AttachMoney'; // Pricing, Currencies
-import BadgeIcon from '@mui/icons-material/Badge'; // Employees, HRM
-import DocumentScannerIcon from '@mui/icons-material/DocumentScanner'; // Item Barcodes (replaces BarcodeIcon)
-import BookIcon from '@mui/icons-material/Book'; // Blog
-import BusinessIcon from '@mui/icons-material/Business'; // Brands, Company Profile, Company Settings
-import CardGiftcardIcon from '@mui/icons-material/CardGiftcard'; // Gift Cards
-import CategoryIcon from '@mui/icons-material/Category'; // Item Category, Sub Category, Expense Category, Income Category, Blog Categories
-import ChangeHistoryIcon from '@mui/icons-material/ChangeHistory'; // Changelog
-import ChecklistIcon from '@mui/icons-material/Checklist'; // Preference
-import ChevronRightIcon from '@mui/icons-material/ChevronRight'; // For nested menu indicator
-import CommentIcon from '@mui/icons-material/Comment'; // Blog Comments
-import ConstructionIcon from '@mui/icons-material/Construction'; // Under Maintenance
-import CoPresentIcon from '@mui/icons-material/CoPresent'; // Attendance
-import CorporateFareIcon from '@mui/icons-material/CorporateFare'; // Departments
-import DashboardIcon from '@mui/icons-material/Dashboard'; // Dashboard
-import DeleteSweepIcon from '@mui/icons-material/DeleteSweep'; // Delete Account Request
-import DescriptionIcon from '@mui/icons-material/Description'; // Pages (CMS), Blog (main), Error Pages, Blank Page, Invoice Template, Email Templates, SMS Templates
-import EmailIcon from '@mui/icons-material/Email'; // Email Settings
-import EnhancedEncryptionIcon from '@mui/icons-material/EnhancedEncryption'; // 2 Step Verification
-import EngineeringIcon from '@mui/icons-material/Engineering'; // Designation (original)
-import ErrorIcon from '@mui/icons-material/Error'; // Error Pages (general)
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'; // 404/500 Error
-import EventAvailableIcon from '@mui/icons-material/EventAvailable'; // Employee Attendance
-import EventBusyIcon from '@mui/icons-material/EventBusy'; // Leaves, Employee Leaves
-import EventNoteIcon from '@mui/icons-material/EventNote'; // Annual Report
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore'; // Dropdown arrow
-import FingerprintIcon from '@mui/icons-material/Fingerprint'; // Security Settings
-import GTranslateIcon from '@mui/icons-material/GTranslate'; // Localization, Languages
-import GroupIcon from '@mui/icons-material/Group'; // Supplier Report, Customer Report
-import HelpOutlineIcon from '@mui/icons-material/HelpOutline'; // FAQ, Forgot Password
-import HistoryIcon from '@mui/icons-material/History'; // Expired Items
-import HolidayVillageIcon from '@mui/icons-material/HolidayVillage'; // Holidays
-import HomeWorkIcon from '@mui/icons-material/HomeWork'; // Warehouses
-import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty'; // Trial Balance
-import InputIcon from '@mui/icons-material/Input'; // Custom Field
-import InventoryIcon from '@mui/icons-material/Inventory'; // Inventory, Items
-import LanguageIcon from '@mui/icons-material/Language'; // Website Settings
-import ListAltIcon from '@mui/icons-material/ListAlt'; // Leave Types
-import LocalMallIcon from '@mui/icons-material/LocalMall'; // Purchase Order
-import LocalOfferIcon from '@mui/icons-material/LocalOffer'; // Coupons, Discount Types, Blog Tags, Discounts
-import LocalShippingIcon from '@mui/icons-material/LocalShipping'; // Suppliers
-import LocationCityIcon from '@mui/icons-material/LocationCity'; // Location (CMS), Cities (CMS)
-import LockOpenIcon from '@mui/icons-material/LockOpen'; // Login
-import LockResetIcon from '@mui/icons-material/LockReset'; // Reset Password
+// --- Icon Imports (from your provided code) ---
+import AbcIcon from '@mui/icons-material/Abc';
+import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
+import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
+import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import AppSettingsAltIcon from '@mui/icons-material/AppSettingsAlt';
+import AppsIcon from '@mui/icons-material/Apps';
+import ArticleIcon from '@mui/icons-material/Article';
+import AssessmentIcon from '@mui/icons-material/Assessment';
+import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
+import AssignmentReturnIcon from '@mui/icons-material/AssignmentReturn';
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import BadgeIcon from '@mui/icons-material/Badge';
+import DocumentScannerIcon from '@mui/icons-material/DocumentScanner';
+import BookIcon from '@mui/icons-material/Book';
+import BusinessIcon from '@mui/icons-material/Business';
+import CardGiftcardIcon from '@mui/icons-material/CardGiftcard';
+import CategoryIcon from '@mui/icons-material/Category';
+import ChangeHistoryIcon from '@mui/icons-material/ChangeHistory';
+import ChecklistIcon from '@mui/icons-material/Checklist';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import CommentIcon from '@mui/icons-material/Comment';
+import ConstructionIcon from '@mui/icons-material/Construction';
+import CoPresentIcon from '@mui/icons-material/CoPresent';
+import CorporateFareIcon from '@mui/icons-material/CorporateFare';
+import DashboardIcon from '@mui/icons-material/Dashboard';
+import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
+import DescriptionIcon from '@mui/icons-material/Description';
+import EmailIcon from '@mui/icons-material/Email';
+import EnhancedEncryptionIcon from '@mui/icons-material/EnhancedEncryption';
+// import EngineeringIcon from '@mui/icons-material/Engineering'; // Already have AssignmentIndIcon for Designation
+import ErrorIcon from '@mui/icons-material/Error';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import EventAvailableIcon from '@mui/icons-material/EventAvailable';
+import EventBusyIcon from '@mui/icons-material/EventBusy';
+import EventNoteIcon from '@mui/icons-material/EventNote';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import FingerprintIcon from '@mui/icons-material/Fingerprint';
+import GTranslateIcon from '@mui/icons-material/GTranslate';
+import GroupIcon from '@mui/icons-material/Group';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
+import HistoryIcon from '@mui/icons-material/History';
+import HolidayVillageIcon from '@mui/icons-material/HolidayVillage';
+import HomeWorkIcon from '@mui/icons-material/HomeWork';
+import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
+import InputIcon from '@mui/icons-material/Input';
+import InventoryIcon from '@mui/icons-material/Inventory';
+import LanguageIcon from '@mui/icons-material/Language';
+import ListAltIcon from '@mui/icons-material/ListAlt';
+import LocalMallIcon from '@mui/icons-material/LocalMall';
+import LocalOfferIcon from '@mui/icons-material/LocalOffer';
+import LocalShippingIcon from '@mui/icons-material/LocalShipping';
+import LocationCityIcon from '@mui/icons-material/LocationCity';
+import LockOpenIcon from '@mui/icons-material/LockOpen';
+import LockResetIcon from '@mui/icons-material/LockReset';
 import LogoutIcon from '@mui/icons-material/Logout';
-import MapIcon from '@mui/icons-material/Map'; // Maps (UI), States (CMS)
-import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead'; // Email Verification
-import MonetizationOnIcon from '@mui/icons-material/MonetizationOn'; // Invoice Report, Tax Report, Income, Tax Types, Taxes, Tax Rates
-import MoreHorizIcon from '@mui/icons-material/MoreHoriz'; // More, Other Settings
-import NotificationsIcon from '@mui/icons-material/Notifications'; // Notification Settings
-import OnlinePredictionIcon from '@mui/icons-material/OnlinePrediction'; // Online Orders
-import PaidIcon from '@mui/icons-material/Paid'; // Profit & Loss, Financial Settings, Employee Salary, Payslips
-import PasswordIcon from '@mui/icons-material/Password'; // OTP Settings
-import PaymentIcon from '@mui/icons-material/Payment'; // Payment Gateway
-import PaymentsIcon from '@mui/icons-material/Payments'; // Payroll, Bank Accounts (general)
-import PeopleIcon from '@mui/icons-material/People'; // UI Interface, Customers, Users
-import PersonAddIcon from '@mui/icons-material/PersonAdd'; // Register
-import PointOfSaleIcon from '@mui/icons-material/PointOfSale'; // Sales & Purchase, POS, POS Settings
-import PowerIcon from '@mui/icons-material/Power'; // Connected Apps
-import PrecisionManufacturingIcon from '@mui/icons-material/PrecisionManufacturing'; // Manufacturers
-import PriceCheckIcon from '@mui/icons-material/PriceCheck'; // Discount Plan
-import PrintIcon from '@mui/icons-material/Print'; // Print Barcode, Printer Settings
-import PublicIcon from '@mui/icons-material/Public'; // Countries (CMS)
-import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner'; // Print QR Code, Barcode Symbologies
-import QuizIcon from '@mui/icons-material/Quiz'; // FAQ
-import ReceiptIcon from '@mui/icons-material/Receipt'; // Sales List, Invoices (general)
-import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'; // Invoices (detailed), Payslips
-import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver'; // Testimonials
-import RequestQuoteIcon from '@mui/icons-material/RequestQuote'; // Quotation
-import ScreenLockPortraitIcon from '@mui/icons-material/ScreenLockPortrait'; // Lock Screen
-import SendTimeExtensionIcon from '@mui/icons-material/SendTimeExtension'; // Coming Soon
-import SettingsIcon from '@mui/icons-material/Settings'; // Settings (main), Invoice Settings
-import SettingsApplicationsIcon from '@mui/icons-material/SettingsApplications'; // Site Configuration
-import SettingsSystemDaydreamIcon from '@mui/icons-material/SettingsSystemDaydream'; // System Settings (main)
-import ShoppingBasketIcon from '@mui/icons-material/ShoppingBasket'; // Stock Management
-import ShoppingCartIcon from '@mui/icons-material/ShoppingCart'; // Purchases
-import ShowChartIcon from '@mui/icons-material/ShowChart'; // Sales Report, Purchase Report, Inventory Report
-import SmsIcon from '@mui/icons-material/Sms'; // SMS Settings
-import StarIcon from '@mui/icons-material/Star'; // Testimonials (original), Special Categories
-import StoreIcon from '@mui/icons-material/Store'; // Store Settings, Stores
-import StorefrontIcon from '@mui/icons-material/Storefront'; // POS Orders
-import StorageIcon from '@mui/icons-material/Storage'; // Storage Settings
-import StraightenIcon from '@mui/icons-material/Straighten'; // Units
-import StyleIcon from '@mui/icons-material/Style'; // Variant Attributes
-import SummarizeIcon from '@mui/icons-material/Summarize'; // Item Report, Expense Report
-import SupervisedUserCircleIcon from '@mui/icons-material/SupervisedUserCircle'; // Billers
-import TransferWithinAStationIcon from '@mui/icons-material/TransferWithinAStation'; // Stock Transfer
-import TrendingDownIcon from '@mui/icons-material/TrendingDown'; // Low Stocks, Expenses
-import TrendingUpIcon from '@mui/icons-material/TrendingUp'; // Cash Flow
-import TuneIcon from '@mui/icons-material/Tune'; // General Settings, Stock Adjustment
-import VerifiedUserIcon from '@mui/icons-material/VerifiedUser'; // Warranties, Authentication Pages
-import VpnKeyIcon from '@mui/icons-material/VpnKey'; // Social Authentication
-import WebAssetIcon from '@mui/icons-material/WebAsset'; // CMS Pages
-import WebIcon from '@mui/icons-material/Web'; // Forms, Tables (as part of UI)
+import MapIcon from '@mui/icons-material/Map';
+import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
+import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
+import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
+import NotificationsIcon from '@mui/icons-material/Notifications';
+import OnlinePredictionIcon from '@mui/icons-material/OnlinePrediction';
+import PaidIcon from '@mui/icons-material/Paid';
+import PasswordIcon from '@mui/icons-material/Password';
+import PaymentIcon from '@mui/icons-material/Payment';
+// import PaymentsIcon from '@mui/icons-material/Payments'; // Already have PaidIcon for Payroll
+import PeopleIcon from '@mui/icons-material/People';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
+import PowerIcon from '@mui/icons-material/Power';
+// import PrecisionManufacturingIcon from '@mui/icons-material/PrecisionManufacturing'; // Not used in menu
+import PriceCheckIcon from '@mui/icons-material/PriceCheck';
+import PrintIcon from '@mui/icons-material/Print';
+import PublicIcon from '@mui/icons-material/Public';
+import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
+import QuizIcon from '@mui/icons-material/Quiz';
+import ReceiptIcon from '@mui/icons-material/Receipt';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver';
+import RequestQuoteIcon from '@mui/icons-material/RequestQuote';
+import ScreenLockPortraitIcon from '@mui/icons-material/ScreenLockPortrait';
+import SendTimeExtensionIcon from '@mui/icons-material/SendTimeExtension';
+import SettingsIcon from '@mui/icons-material/Settings';
+import SettingsApplicationsIcon from '@mui/icons-material/SettingsApplications';
+import SettingsSystemDaydreamIcon from '@mui/icons-material/SettingsSystemDaydream';
+import ShoppingBasketIcon from '@mui/icons-material/ShoppingBasket';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import ShowChartIcon from '@mui/icons-material/ShowChart';
+import SmsIcon from '@mui/icons-material/Sms';
+import StarIcon from '@mui/icons-material/Star';
+import StoreIcon from '@mui/icons-material/Store';
+import StorefrontIcon from '@mui/icons-material/Storefront';
+import StorageIcon from '@mui/icons-material/Storage';
+import StraightenIcon from '@mui/icons-material/Straighten';
+import StyleIcon from '@mui/icons-material/Style';
+import SummarizeIcon from '@mui/icons-material/Summarize';
+import SupervisedUserCircleIcon from '@mui/icons-material/SupervisedUserCircle';
+import TransferWithinAStationIcon from '@mui/icons-material/TransferWithinAStation';
+import TrendingDownIcon from '@mui/icons-material/TrendingDown';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import TuneIcon from '@mui/icons-material/Tune';
+import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
+import VpnKeyIcon from '@mui/icons-material/VpnKey';
+import WebAssetIcon from '@mui/icons-material/WebAsset';
+// import WebIcon from '@mui/icons-material/Web'; // Not explicitly used for a menu item
 import WorkHistoryIcon from '@mui/icons-material/WorkHistory';
-import SupplierIcon from '@mui/icons-material/LocalShipping'; // Corrected 'inport' to 'import' and assumed an icon
+// import SecurityIcon from '@mui/icons-material/Security'; // Not used in menu, FingerprintIcon is used for Security Settings
+// SupplierIcon was an alias for LocalShippingIcon, which is already imported.
 
-const TOP_BAR_HEIGHT_FOR_HORIZONTAL_MENU = 48; // Assuming the top bar (DashboardTopBar) is 48px high
+const TOP_BAR_HEIGHT_FOR_HORIZONTAL_MENU = 48;
 
 const HorizontalMenu = () => {
     const location = useLocation();
     const { user, userCan, logoutUser } = useAuth();
 
-    // State for main section menus
     const [anchorEl, setAnchorEl] = useState({});
-    // State for nested submenus (one level deep)
     const [nestedAnchorEl, setNestedAnchorEl] = useState({});
 
     const horizontalMenuSections = useMemo(() => [
@@ -136,23 +134,23 @@ const HorizontalMenu = () => {
             ]
         },
         {
-            id: "inventory", label: "Inventory", icon: <InventoryIcon />, requiredPermission: 'item:read', // Item:read -> item:read
+            id: "inventory", label: "Inventory", icon: <InventoryIcon />, requiredPermission: 'item:read',
             items: [
-                { text: 'Items', icon: <InventoryIcon />, path: '/dashboard/items', requiredPermission: 'item:read' }, // Items -> Items, /Items -> /items, Item:read -> item:read
-                { text: 'Create Item', icon: <AddCircleOutlineIcon />, path: '/dashboard/items/new', requiredPermission: 'item:create' }, // Create Item -> Create Item, /Items/new -> /items/new, Item:create -> item:create
-                { text: 'Expired Items', icon: <HistoryIcon />, path: '/dashboard/inventory/expired', requiredPermission: 'inventory:read_expired' }, // Expired Items -> Expired Items
+                { text: 'Items', icon: <InventoryIcon />, path: '/dashboard/items', requiredPermission: 'item:read' },
+                { text: 'Create Item', icon: <AddCircleOutlineIcon />, path: '/dashboard/items/new', requiredPermission: 'item:create' },
+                { text: 'Expired Items', icon: <HistoryIcon />, path: '/dashboard/inventory/expired', requiredPermission: 'inventory:read_expired' },
                 { text: 'Low Stocks', icon: <TrendingDownIcon />, path: '/dashboard/inventory/low-stocks', requiredPermission: 'inventory:read_lowstock' },
                 { text: 'Category', icon: <CategoryIcon />, path: '/dashboard/categories', requiredPermission: 'category:read' },
                 { text: 'Sub Category', icon: <CategoryIcon />, path: '/dashboard/sub-categories', requiredPermission: 'subcategory:read' },
                 { text: 'Brands', icon: <BusinessIcon />, path: '/dashboard/brands', requiredPermission: 'brand:read' },
                 { text: 'Units', icon: <StraightenIcon />, path: '/dashboard/units', requiredPermission: 'unit:read' },
-                { text: 'Variant Attributes', icon: <StyleIcon />, path: '/dashboard/attributes', requiredPermission: 'item_attribute:read' }, // Item_attribute:read -> item_attribute:read
+                { text: 'Variant Attributes', icon: <StyleIcon />, path: '/dashboard/attributes', requiredPermission: 'item_attribute:read' },
                 { text: 'Warranties', icon: <VerifiedUserIcon />, path: '/dashboard/warranties', requiredPermission: 'warranty:read' },
                 { text: 'Print Barcode', icon: <PrintIcon />, path: '/dashboard/inventory/print-barcode', requiredPermission: 'inventory:print_barcode' },
                 { text: 'Print QR Code', icon: <QrCodeScannerIcon />, path: '/dashboard/inventory/print-qrcode', requiredPermission: 'inventory:print_qrcode' },
-                { text: 'Item Barcodes', icon: <DocumentScannerIcon />, path: '/dashboard/inventory/item-barcodes', requiredPermission: 'item_barcode:manage' }, // Item Barcodes -> Item Barcodes, /Item-barcodes -> /item-barcodes, Item_barcode:manage -> item_barcode:manage
-                { text: 'Barcode Symbologies', icon: <TuneIcon />, path: '/dashboard/barcode-symbologies', requiredPermission: 'barcode_symbology:read' }, // MODIFIED PATH
-                { text: 'Discount Types', icon: <LocalOfferIcon />, path: '/dashboard/discount-types', requiredPermission: 'discount_type:manage' }, // MODIFIED PATH
+                { text: 'Item Barcodes', icon: <DocumentScannerIcon />, path: '/dashboard/inventory/item-barcodes', requiredPermission: 'item_barcode:manage' },
+                { text: 'Barcode Symbologies', icon: <TuneIcon />, path: '/dashboard/barcode-symbologies', requiredPermission: 'barcode_symbology:read' },
+                { text: 'Discount Types', icon: <LocalOfferIcon />, path: '/dashboard/discount-types', requiredPermission: 'discount_type:manage' },
                 { text: 'Special Categories', icon: <StarIcon />, path: '/dashboard/special-categories', requiredPermission: 'specialcategory:read' },
             ]
         },
@@ -318,7 +316,7 @@ const HorizontalMenu = () => {
                 { text: 'Invoice Report', icon: <MonetizationOnIcon />, path: '/dashboard/reports/invoice', requiredPermission: 'report:read_invoice' },
                 { text: 'Supplier Report', icon: <GroupIcon />, path: '/dashboard/reports/supplier', requiredPermission: 'report:read_supplier' },
                 { text: 'Customer Report', icon: <GroupIcon />, path: '/dashboard/reports/customer', requiredPermission: 'report:read_customer' },
-                { text: 'Item Report', icon: <SummarizeIcon />, path: '/dashboard/reports/item', requiredPermission: 'report:read_item' }, // Item Report -> Item Report, /Item -> /item, report:read_Item -> report:read_item
+                { text: 'Item Report', icon: <SummarizeIcon />, path: '/dashboard/reports/item', requiredPermission: 'report:read_item' },
                 { text: 'Expense Report', icon: <SummarizeIcon />, path: '/dashboard/reports/expense', requiredPermission: 'report:read_expense' },
                 { text: 'Income Report', icon: <MonetizationOnIcon />, path: '/dashboard/reports/income', requiredPermission: 'report:read_income' },
                 { text: 'Tax Report', icon: <MonetizationOnIcon />, path: '/dashboard/reports/tax', requiredPermission: 'report:read_tax' },
@@ -406,17 +404,17 @@ const HorizontalMenu = () => {
             id: "more", label: "More", icon: <MoreHorizIcon />, requiredPermission: null,
             items: [
                 {
-                    text: 'People', icon: <PeopleIcon />, requiredPermission: 'customer:read', // Grouping
+                    text: 'People', icon: <PeopleIcon />, requiredPermission: 'customer:read',
                     items: [
-                        { text: 'Customers', icon: <PeopleIcon />, path: '/dashboard/customers', requiredPermission: 'customer:read' }, // MODIFIED PATH
-                        { text: 'Billers', icon: <SupervisedUserCircleIcon />, path: '/dashboard/peoples/billers', requiredPermission: 'biller:read' }, // Check if '/dashboard/billers' exists in App.jsx or adjust
-                        { text: 'Suppliers', icon: <LocalShippingIcon />, path: '/dashboard/suppliers', requiredPermission: 'supplier:read' }, // MODIFIED PATH
-                        { text: 'Stores', icon: <StoreIcon />, path: '/dashboard/stores', requiredPermission: 'store:read' }, // MODIFIED PATH (matches App.jsx)
-                        { text: 'Warehouses', icon: <HomeWorkIcon />, path: '/dashboard/peoples/warehouses', requiredPermission: 'warehouse:read' }, // Check if '/dashboard/warehouses' exists or adjust
+                        { text: 'Customers', icon: <PeopleIcon />, path: '/dashboard/customers', requiredPermission: 'customer:read' },
+                        { text: 'Billers', icon: <SupervisedUserCircleIcon />, path: '/dashboard/peoples/billers', requiredPermission: 'biller:read' },
+                        { text: 'Suppliers', icon: <LocalShippingIcon />, path: '/dashboard/suppliers', requiredPermission: 'supplier:read' },
+                        { text: 'Stores', icon: <StoreIcon />, path: '/dashboard/stores', requiredPermission: 'store:read' },
+                        { text: 'Warehouses', icon: <HomeWorkIcon />, path: '/dashboard/peoples/warehouses', requiredPermission: 'warehouse:read' },
                     ]
                 },
                 {
-                    text: 'User Management', icon: <AdminPanelSettingsIcon />, requiredPermission: 'user:read_all', // Grouping
+                    text: 'User Management', icon: <AdminPanelSettingsIcon />, requiredPermission: 'user:read_all',
                     items: [
                         { text: 'Users', icon: <PeopleIcon />, path: '/dashboard/users', requiredPermission: 'user:read_all' },
                         { text: 'Roles', icon: <AdminPanelSettingsIcon />, path: '/dashboard/roles', requiredPermission: 'role:manage' },
@@ -427,7 +425,7 @@ const HorizontalMenu = () => {
                     ]
                 },
                 {
-                    text: 'Help', icon: <HelpOutlineIcon />, requiredPermission: null, // Grouping
+                    text: 'Help', icon: <HelpOutlineIcon />, requiredPermission: null,
                     items: [
                         { text: 'Documentation', icon: <ArticleIcon />, path: '/dashboard/help/documentation', requiredPermission: null },
                         { text: 'Changelog', icon: <ChangeHistoryIcon />, path: '/dashboard/help/changelog', requiredPermission: null },
@@ -435,20 +433,11 @@ const HorizontalMenu = () => {
                 }
             ]
         }
-    ], [user, userCan, logoutUser]); // Added user, userCan, logoutUser as dependencies
+    ], [user, userCan]); // Removed logoutUser from dependencies as it's not used in menu structure
 
     const hasPermission = useCallback((requiredPermission) => {
-        // console.log('[HorizontalMenu hasPermission] Checking item with requiredPermission:', requiredPermission);
-        if (!requiredPermission) {
-            // console.log('[HorizontalMenu hasPermission] Result: true (no specific permission required)');
-            return true;
-        }
-        if (userCan) {
-            const can = userCan(requiredPermission);
-            // console.log('[HorizontalMenu hasPermission] userCan returned:', can, 'for', requiredPermission);
-            return can;
-        }
-        // console.warn('[HorizontalMenu hasPermission] userCan function not available from useAuth(). Defaulting to false.');
+        if (!requiredPermission) return true;
+        if (userCan) return userCan(requiredPermission);
         return false;
     }, [userCan]);
 
@@ -460,208 +449,253 @@ const HorizontalMenu = () => {
         setAnchorEl(prev => ({ ...prev, [sectionId]: null }));
     };
 
-    // Handlers for nested menus
-    const handleNestedMenuOpen = (event, parentItemId) => {
-        event.stopPropagation(); 
-        setNestedAnchorEl(prev => ({ ...prev, [parentItemId]: event.currentTarget }));
+    const handleNestedMenuOpen = (event, parentId) => {
+        event.stopPropagation();
+        setNestedAnchorEl(prev => ({ ...prev, [parentId]: event.currentTarget }));
     };
 
-    const handleNestedMenuClose = (parentItemId) => {
-        setNestedAnchorEl(prev => ({ ...prev, [parentItemId]: null }));
+    const handleNestedMenuClose = (parentId) => {
+        setNestedAnchorEl(prev => ({ ...prev, [parentId]: null }));
     };
 
-    const handleSubMenuItemClick = (parentItemId, sectionId) => {
-        handleNestedMenuClose(parentItemId); 
-        handleMenuClose(sectionId); 
+    // Combined click handler for all menu items
+    const handleAnyMenuItemClick = (sectionId, parentId = null) => {
+        if (parentId) {
+            handleNestedMenuClose(parentId);
+        }
+        handleMenuClose(sectionId);
     };
 
-    return (
-        <AppBar
-            position="fixed"
-            color="default"
-            elevation={0}   // Changed from 1 to 0
-            sx={{
-                top: TOP_BAR_HEIGHT_FOR_HORIZONTAL_MENU,
-                zIndex: (theme) => theme.zIndex.drawer + 2,
-                borderBottom: 'none', // Added to remove any explicit border
-                // backgroundColor: 'background.paper',
-                // color: 'text.primary',
-            }}
-        >
-            <Toolbar sx={{ justifyContent: 'space-between', minHeight: '64px' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'nowrap', overflowX: 'auto', py: 1 }}>
-                    {horizontalMenuSections.map((section) => {
-                        if (!hasPermission(section.requiredPermission)) {
-                            if (section.id === 'inventory') {
-                                console.log(`[HorizontalMenu Debug] Inventory section itself filtered out. Main permission '${section.requiredPermission}' evaluated to false.`);
-                            }
-                            return null;
-                        }
+    // Recursive menu rendering function
+    const renderMenuItems = (items, sectionId, parentMenuKey = null) => {
+        return items
+            .filter(item => hasPermission(item.requiredPermission))
+            .map(item => {
+                const currentItemKey = (parentMenuKey ? `${parentMenuKey}-` : '') + item.text.replace(/\s+/g, '-');
+                const hasSubItems = Array.isArray(item.items) && item.items.length > 0;
 
-                        const filteredSubItems = section.items.filter(subItem => {
-                            const canAccessSubItem = hasPermission(subItem.requiredPermission);
-                            if (section.id === 'inventory') {
-                                console.log(`[HorizontalMenu Debug] Filtering inventory item: "${subItem.text}", perm: "${subItem.requiredPermission}", access: ${canAccessSubItem}`);
-                            }
-                            if (section.id === 'more') {
-                                console.log(`[HorizontalMenu Debug] Filtering "More" section item: "${subItem.text}", perm: "${subItem.requiredPermission}", access: ${canAccessSubItem}`);
-                            }
-                            return canAccessSubItem;
-                        });
-                        
-                        if (section.id === 'inventory') {
-                            console.log(`[HorizontalMenu Debug] Inventory section: main permission '${section.requiredPermission}' access: ${hasPermission(section.requiredPermission)}`);
-                            console.log(`[HorizontalMenu Debug] Inventory filteredSubItems count: ${filteredSubItems.length}`, JSON.parse(JSON.stringify(filteredSubItems.map(item => ({text: item.text, perm: item.requiredPermission})))));
-                        }
+                if (hasSubItems) {
+                    const visibleSubItems = item.items.filter(sub => hasPermission(sub.requiredPermission));
+                    if (visibleSubItems.length === 0) return null;
 
-                        if (section.id === 'more') {
-                            console.log(`[HorizontalMenu Debug] "More" section: main permission '${section.requiredPermission}' access: ${hasPermission(section.requiredPermission)}`);
-                            console.log(`[HorizontalMenu Debug] "More" section - original items count: ${section.items.length}`);
-                            console.log(`[HorizontalMenu Debug] "More" section - filteredSubItems count: ${filteredSubItems.length}`);
-                            console.log(`[HorizontalMenu Debug] "More" section - filteredSubItems content:`, JSON.parse(JSON.stringify(filteredSubItems.map(item => ({text: item.text, perm: item.requiredPermission, hasSubItems: !!item.items})))));
-
-                            const peopleItemOriginal = section.items.find(it => it.text === 'People');
-                            if (peopleItemOriginal) {
-                                console.log(`[HorizontalMenu Debug] "More" section - "People" group original permission: '${peopleItemOriginal.requiredPermission}', access via hasPermission: ${hasPermission(peopleItemOriginal.requiredPermission)}`);
-                            }
-                            const userManagementItemOriginal = section.items.find(it => it.text === 'User Management');
-                            if (userManagementItemOriginal) {
-                                console.log(`[HorizontalMenu Debug] "More" section - "User Management" group original permission: '${userManagementItemOriginal.requiredPermission}', access via hasPermission: ${hasPermission(userManagementItemOriginal.requiredPermission)}`);
-                            }
-                        }
-                        
-                        if (section.id === "mainMenu" && filteredSubItems.length > 0 && filteredSubItems[0].path) {
-                             const mainDashboardItem = filteredSubItems[0];
-                             return (
-                                 <Button
-                                     key={mainDashboardItem.text}
-                                     color="inherit"
-                                     component={RouterLink}
-                                     to={mainDashboardItem.path}
-                                     startIcon={section.icon}
-                                     sx={{ textTransform: 'none', mx: 0.5, whiteSpace: 'nowrap', flexShrink: 0 }}
-                                 >
-                                     {section.label}
-                                 </Button>
-                             );
-                        }
-                        
-                        if (filteredSubItems.length > 0) {
-                            if (section.id === 'inventory') {
-                                console.log(`[HorizontalMenu Debug] Inventory section will be rendered because filteredSubItems.length is ${filteredSubItems.length}.`);
-                            }
-                            return (
-                                <Box key={section.id} sx={{ mx: 0.5, flexShrink: 0 }}>
-                                    <Button
-                                        id={`${section.id}-button`}
-                                        color="inherit"
-                                        onClick={(e) => handleMenuOpen(e, section.id)}
-                                        aria-controls={anchorEl[section.id] ? `${section.id}-menu` : undefined}
-                                        aria-haspopup="true"
-                                        aria-expanded={Boolean(anchorEl[section.id])}
-                                        startIcon={section.icon}
-                                        endIcon={<ExpandMoreIcon />}
-                                        sx={{ textTransform: 'none', whiteSpace: 'nowrap' }}
-                                    >
-                                        {section.label}
-                                    </Button>
-                                    <Menu
-                                        id={`${section.id}-menu`}
-                                        anchorEl={anchorEl[section.id]}
-                                        open={Boolean(anchorEl[section.id])}
-                                        onClose={() => handleMenuClose(section.id)}
-                                        MenuListProps={{ 'aria-labelledby': `${section.id}-button` }}
-                                        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-                                        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-                                        PaperProps={{
-                                            style: {
-                                              maxHeight: 'calc(100vh - 100px)', 
-                                              overflowY: 'auto',
-                                            },
-                                          }}
-                                    >
-                                        {filteredSubItems.map((item) => {
-                                            const parentItemId = item.text; 
-
-                                            if (item.items && item.items.length > 0) {
-                                                const filteredNestedItems = item.items.filter(sub => hasPermission(sub.requiredPermission));
-                                                
-                                                if (filteredNestedItems.length === 0) {
-                                                    return null; 
-                                                }
-
-                                                return (
-                                                    <div key={parentItemId}>
-                                                        <MenuItem
-                                                            onClick={(e) => handleNestedMenuOpen(e, parentItemId)}
-                                                            aria-haspopup="true"
-                                                            aria-expanded={Boolean(nestedAnchorEl[parentItemId])}
-                                                        >
-                                                            {item.icon && <Box component="span" sx={{ mr: 1.5, display: 'flex', alignItems: 'center' }}>{item.icon}</Box>}
-                                                            {item.text}
-                                                            <ChevronRightIcon sx={{ ml: 'auto' }} />
-                                                        </MenuItem>
-                                                        <Menu
-                                                            id={`${parentItemId}-submenu`}
-                                                            anchorEl={nestedAnchorEl[parentItemId]}
-                                                            open={Boolean(nestedAnchorEl[parentItemId])}
-                                                            onClose={() => handleNestedMenuClose(parentItemId)}
-                                                            MenuListProps={{ 'aria-labelledby': `${parentItemId}-button` }} 
-                                                            anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-                                                            transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-                                                            PaperProps={{
-                                                                style: {
-                                                                  maxHeight: 'calc(100vh - 100px)',
-                                                                  overflowY: 'auto',
-                                                                },
-                                                              }}
-                                                        >
-                                                            {filteredNestedItems.map(subItem => (
-                                                                <MenuItem
-                                                                    key={subItem.text + (subItem.path || '')}
-                                                                    component={RouterLink}
-                                                                    to={subItem.path}
-                                                                    onClick={() => handleSubMenuItemClick(parentItemId, section.id)}
-                                                                    selected={location.pathname === subItem.path || (subItem.path && location.pathname.startsWith(subItem.path + '/'))}
-                                                                >
-                                                                    {subItem.icon && <Box component="span" sx={{ mr: 1.5, display: 'flex', alignItems: 'center' }}>{subItem.icon}</Box>}
-                                                                    {subItem.text}
-                                                                </MenuItem>
-                                                            ))}
-                                                        </Menu>
-                                                    </div>
-                                                );
-                                            } else {
-                                                return (
-                                                    <MenuItem
-                                                        key={item.text + (item.path || '')}
-                                                        component={RouterLink}
-                                                        to={item.path}
-                                                        onClick={() => handleMenuClose(section.id)}
-                                                        selected={location.pathname === item.path || (item.path && location.pathname.startsWith(item.path + '/'))}
-                                                    >
-                                                        {item.icon && <Box component="span" sx={{ mr: 1.5, display: 'flex', alignItems: 'center' }}>{item.icon}</Box>}
-                                                        {item.text}
-                                                    </MenuItem>
-                                                );
-                                            }
-                                        })}
-                                    </Menu>
+                    return (
+                        <div key={currentItemKey}>
+                            <MenuItem
+                                onClick={(e) => handleNestedMenuOpen(e, currentItemKey)}
+                                aria-haspopup="true"
+                                aria-expanded={Boolean(nestedAnchorEl[currentItemKey])}
+                                sx={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    paddingY: 1.25,
+                                    paddingX: 2,
+                                    borderRadius: 1, // Softer corners for menu items
+                                    marginX: 0.5,
+                                    marginY: 0.25,
+                                    '&:hover': {
+                                        backgroundColor: 'action.hover',
+                                    },
+                                }}
+                            >
+                                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                    {item.icon && <Box component="span" sx={{ mr: 1.5, display: 'flex', alignItems: 'center', color: 'text.secondary' }}>{item.icon}</Box>}
+                                    <Typography variant="body2">{item.text}</Typography>
                                 </Box>
-                            );
-                        } else {
-                            if (section.id === 'inventory') {
-                                console.log(`[HorizontalMenu Debug] Inventory section will NOT be rendered because filteredSubItems.length is 0.`);
-                            }
-                        }
-                        return null;
-                    })}
-                </Box>
+                                <ChevronRightIcon sx={{ color: 'text.disabled' }} />
+                            </MenuItem>
+                            <Menu
+                                anchorEl={nestedAnchorEl[currentItemKey]}
+                                open={Boolean(nestedAnchorEl[currentItemKey])}
+                                onClose={() => handleNestedMenuClose(currentItemKey)}
+                                anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+                                transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+                                PaperProps={{
+                                    sx: {
+                                        mt: 0.5,
+                                        ml: 0.5,
+                                        borderRadius: 2, 
+                                        boxShadow: (theme) => theme.shadows[4], // Softer shadow for nested menus
+                                        minWidth: 220,
+                                        maxHeight: 'calc(100vh - 120px)',
+                                        overflowY: 'auto',
+                                    }
+                            }}
+                        >
+                            {renderMenuItems(visibleSubItems, sectionId, currentItemKey)}
+                        </Menu>
+                    </div>
+                );
+            } else {
+                return (
+                    <MenuItem
+                        key={currentItemKey}
+                        component={RouterLink}
+                        to={item.path}
+                        onClick={() => handleAnyMenuItemClick(sectionId, parentMenuKey)}
+                        selected={location.pathname === item.path || (item.path && location.pathname.startsWith(item.path + '/'))}
+                        sx={{
+                            paddingY: 1.25,
+                            paddingX: 2,
+                            borderRadius: 1,
+                            marginX: 0.5,
+                            marginY: 0.25,
+                            '&:hover': {
+                                backgroundColor: 'action.hover',
+                            },
+                            '&.Mui-selected': {
+                                backgroundColor: 'primary.main',
+                                color: 'primary.contrastText',
+                                fontWeight: 'medium',
+                                '& .MuiSvgIcon-root': { // Ensure icon color contrasts when selected
+                                    color: 'primary.contrastText',
+                                },
+                                '&:hover': {
+                                    backgroundColor: 'primary.dark',
+                                },
+                            },
+                        }}
+                    >
+                        {item.icon && <Box component="span" sx={{ mr: 1.5, display: 'flex', alignItems: 'center', color: 'text.secondary' }}>{item.icon}</Box>}
+                        <Typography variant="body2">{item.text}</Typography>
+                    </MenuItem>
+                );
+            }
+        });
+};
 
-                {/* REMOVED LOGOUT ICON BUTTON FROM HERE */}
-            </Toolbar>
-        </AppBar>
-    );
+return (
+    <AppBar
+        position="fixed"
+        elevation={0} // Flat app bar
+        sx={{
+            top: TOP_BAR_HEIGHT_FOR_HORIZONTAL_MENU,
+            zIndex: (theme) => theme.zIndex.drawer + 2,
+            backgroundColor: 'background.paper', // Use theme's paper color for a clean look
+            color: 'text.primary',
+            borderBottom: (theme) => `1px solid ${theme.palette.divider}`, // Subtle separator
+        }}
+    >
+        <Toolbar sx={{ justifyContent: 'space-between', minHeight: '60px', px: { xs: 1, sm: 2 } }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'nowrap', overflowX: 'auto', py: 0.5 }}>
+                {horizontalMenuSections.map((section) => {
+                    if (!hasPermission(section.requiredPermission)) return null;
+
+                    const visibleItems = section.items.filter(item => hasPermission(item.requiredPermission));
+                    if (visibleItems.length === 0) return null; // Completed if statement
+
+                    if (section.id === "mainMenu" && visibleItems.length > 0 && visibleItems[0].path) {
+                        return (
+                            <Button
+                                key={section.id}
+                                component={RouterLink}
+                                to={visibleItems[0].path}
+                                onClick={() => handleAnyMenuItemClick(section.id)}
+                                sx={{
+                                    minWidth: 120,
+                                    borderRadius: 1,
+                                    marginX: 0.5,
+                                    marginY: 0.25,
+                                    paddingY: 1.25,
+                                    paddingX: 2,
+                                    color: 'text.primary',
+                                    backgroundColor: 'transparent',
+                                    '&:hover': {
+                                        backgroundColor: 'action.hover',
+                                    },
+                                    '&.Mui-selected': {
+                                        backgroundColor: 'primary.main',
+                                        color: 'primary.contrastText',
+                                        fontWeight: 'medium',
+                                        '& .MuiSvgIcon-root': {
+                                            color: 'primary.contrastText',
+                                        },
+                                    },
+                                }}
+                            >
+                                {section.icon && <Box component="span" sx={{ mr: 1.5, display: 'flex', alignItems: 'center', color: 'text.secondary' }}>{section.icon}</Box>}
+                                <Typography variant="body2">{section.label}</Typography>
+                            </Button>
+                        );
+                    }
+
+                    return (
+                        <div key={section.id}>
+                            <IconButton
+                                onClick={(e) => handleMenuOpen(e, section.id)}
+                                size="large"
+                                sx={{
+                                    borderRadius: 1,
+                                    marginX: 0.5,
+                                    marginY: 0.25,
+                                    padding: 1.5,
+                                    color: 'text.primary',
+                                    backgroundColor: 'transparent',
+                                    '&:hover': {
+                                        backgroundColor: 'action.hover',
+                                    },
+                                }}
+                            >
+                                {section.icon}
+                            </IconButton>
+                            <Menu
+                                anchorEl={anchorEl[section.id]}
+                                open={Boolean(anchorEl[section.id])}
+                                onClose={() => handleMenuClose(section.id)}
+                                anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+                                transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+                                PaperProps={{
+                                    sx: {
+                                        borderRadius: 2,
+                                        boxShadow: (theme) => theme.shadows[4],
+                                        minWidth: 220,
+                                        maxHeight: 'calc(100vh - 120px)',
+                                        overflowY: 'auto',
+                                    }
+                                }}
+                            >
+                                {renderMenuItems(visibleItems, section.id)}
+                            </Menu>
+                        </div>
+                    );
+                })}
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <IconButton
+                    component={RouterLink}
+                    to="/dashboard/profile"
+                    sx={{
+                        borderRadius: 1,
+                        marginX: 0.5,
+                        padding: 1.5,
+                        color: 'text.primary',
+                        backgroundColor: 'transparent',
+                        '&:hover': {
+                            backgroundColor: 'action.hover',
+                        },
+                    }}
+                >
+                    <Avatar sx={{ width: 32, height: 32 }} src={user?.profilePicture} alt={user?.name} />
+                </IconButton>
+                <Typography variant="body2" sx={{ color: 'text.primary', mr: 2 }}>{user?.name}</Typography>
+                <IconButton
+                    onClick={logoutUser}
+                    sx={{
+                        borderRadius: 1,
+                        marginX: 0.5,
+                        padding: 1.5,
+                        color: 'text.primary',
+                        backgroundColor: 'transparent',
+                        '&:hover': {
+                            backgroundColor: 'action.hover',
+                        },
+                    }}
+                >
+                    <LogoutIcon />
+                </IconButton>
+            </Box>
+        </Toolbar>
+    </AppBar>
+);
 };
 
 export default HorizontalMenu;

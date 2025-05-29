@@ -9,8 +9,8 @@ import IconButton from '@mui/material/IconButton';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 
-import EntityFilterLayout from './common/EntityFilterLayout';
-import EntityFilterPanel, { FilterFieldDefinition, ActiveFilter } from './common/EntityFilterPanel';
+import SidePanelsLayout from './common/SidePanelsLayout';
+import DynamicFilterPanel, { FilterFieldDefinition, ActiveFilter } from './common/DynamicFilterPanel';
 
 import apiInstance from '../services/api';
 import { useNavigate } from 'react-router-dom';
@@ -386,12 +386,12 @@ const WarrantyList = () => {
     );
 
     return (
-        <EntityFilterLayout
+        <SidePanelsLayout
             filterPanelOpen={isFilterPanelOpen}
             onFilterPanelClose={() => setIsFilterPanelOpen(false)}
             filterPanelTitle="Filter Warranties"
             filterPanelContent={
-                <EntityFilterPanel
+                <DynamicFilterPanel
                     activeFilters={activeFilters}
                     onActiveFiltersChange={setActiveFilters}
                     availableFilterFields={WARRANTY_AVAILABLE_FILTER_FIELDS}
@@ -435,7 +435,7 @@ const WarrantyList = () => {
                     </span>
                 </MenuItem>
             </Menu>
-        </EntityFilterLayout>
+        </SidePanelsLayout>
     );
 };
 
