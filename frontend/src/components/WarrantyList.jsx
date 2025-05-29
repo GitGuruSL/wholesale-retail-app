@@ -38,11 +38,16 @@ const WarrantyListMainContent = ({
     onRowClick,
     onEditRow,
     onDeleteRow,
-    activeFiltersFromParent
+    activeFiltersFromParent,
+    onSelectRow, // <-- Add this prop
 }) => {
     const [warranties, setWarranties] = useState(Array.isArray(parentWarranties) ? parentWarranties : []);
     const [isLoading, setIsLoading] = useState(parentIsLoading || false);
     const [pageError, setLocalPageError] = useState(parentPageError || null);
+
+    // Add selection model state
+    const [multiSelectMode, setMultiSelectMode] = useState(false);
+    const [selectionModel, setSelectionModel] = useState([]);
 
     useEffect(() => {
         setWarranties(Array.isArray(parentWarranties) ? parentWarranties : []);
@@ -55,6 +60,14 @@ const WarrantyListMainContent = ({
     useEffect(() => {
         setLocalPageError(parentPageError);
     }, [parentPageError]);
+
+    // Call parent when selection changes
+    useEffect(() => {
+        if (onSelectRow) {
+            const selectedRow = warranties.find(w => w.id === selectionModel[0]);
+            onSelectRow(selectedRow || null);
+        }
+    }, [selectionModel, warranties, onSelectRow]);
 
     const columns = [
         { field: 'id', headerName: 'ID', width: 90 },
@@ -101,6 +114,18 @@ const WarrantyListMainContent = ({
                         />
                     );
                 }
+                // Add "Select More" only if not already in multi-select mode
+                if (!multiSelectMode) {
+                    menuActions.push(
+                        <GridActionsCellItem
+                            key={`select-more-${params.id}`}
+                            icon={<AddIcon fontSize="small" />}
+                            label="Select More"
+                            onClick={() => setMultiSelectMode(true)}
+                            showInMenu
+                        />
+                    );
+                }
                 return menuActions;
             }
         },
@@ -123,7 +148,7 @@ const WarrantyListMainContent = ({
 
     const handleGridRowClick = (params) => {
         if (onRowClick) {
-            onRowClick(params.row);
+            onRowClick(params.row); // Only select, do not open drawer
         }
     };
 
@@ -132,6 +157,33 @@ const WarrantyListMainContent = ({
             onEditRow(params.row);
         }
     };
+
+    const handleRowClick = (params) => {
+        if (!multiSelectMode) {
+            setSelectedWarranty(params.row);
+            setSelectionModel([params.row.id]);
+        }
+        // If in multi-select mode, let checkboxes handle selection
+    };
+
+    const handleSelectMore = () => setMultiSelectMode(true);
+    const handleCancelMultiSelect = () => {
+        setMultiSelectMode(false);
+        setSelectionModel([]);
+    };
+
+    useEffect(() => {
+        if (!multiSelectMode) return;
+
+        const handleEsc = (e) => {
+            if (e.key === 'Escape') {
+                setMultiSelectMode(false);
+                setSelectionModel([]);
+            }
+        };
+        window.addEventListener('keydown', handleEsc);
+        return () => window.removeEventListener('keydown', handleEsc);
+    }, [multiSelectMode]);
 
     return (
         <Paper sx={{ p: { xs: 1, sm: 2, md: 3 }, m: 0, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -169,6 +221,10 @@ const WarrantyListMainContent = ({
                         autoHeight={false} 
                         onRowClick={handleGridRowClick}
                         onRowDoubleClick={handleGridRowDoubleClick}
+                        // Add these lines:
+                        checkboxSelection={multiSelectMode}
+                        selectionModel={selectionModel}
+                        onSelectionModelChange={setSelectionModel}
                         sx={{
                             border: 0,
                             '& .MuiDataGrid-columnHeaders': {
@@ -241,6 +297,16 @@ const WarrantyListView = () => {
         }
     }, [location.state, navigate, location.pathname]);
 
+    // Add this effect to auto-clear feedback
+    useEffect(() => {
+        if (feedback.message) {
+            const timer = setTimeout(() => {
+                setFeedback({ message: '', type: '' });
+            }, 4000);
+            return () => clearTimeout(timer);
+        }
+    }, [feedback.message]);
+
     const handleApplyFiltersFromPanel = useCallback((appliedFiltersFromForm) => {
         const filtersForApi = appliedFiltersFromForm.map(criterion => {
             const fieldDefinition = WARRANTY_FILTERABLE_FIELDS.find(f => f.id === criterion.fieldId);
@@ -280,6 +346,7 @@ const WarrantyListView = () => {
         const warrantyToDelete = warrantyToDeleteInput || selectedWarranty;
         if (!warrantyToDelete) {
             setFeedback({ message: "No warranty selected for deletion.", type: 'warning' });
+            setTimeout(() => setFeedback({ message: '', type: '' }), 4000); // 4 seconds
             return;
         }
         if (!window.confirm(`Are you sure you want to delete warranty "${warrantyToDelete.name}"?`)) return;
@@ -289,7 +356,8 @@ const WarrantyListView = () => {
         }
         try {
             await apiInstance.delete(`/warranties/${warrantyToDelete.id}`);
-            setFeedback({ message: `Warranty "${warrantyToDelete.name}" deleted successfully.`, type: 'success'});
+            setFeedback({ message: 'Warranty deleted successfully.', type: 'success' });
+            setTimeout(() => setFeedback({ message: '', type: '' }), 4000); // 4 seconds
             if (selectedWarranty && selectedWarranty.id === warrantyToDelete.id) {
                 setSelectedWarranty(null);
                 if (detailsDrawer.isOpen) detailsDrawer.closeDrawer(); // Close global details drawer
@@ -297,6 +365,7 @@ const WarrantyListView = () => {
             fetchWarranties(activeFilters);
         } catch (error) {
             setFeedback({ message: error.response?.data?.message || "Failed to delete warranty.", type: 'error'});
+            setTimeout(() => setFeedback({ message: '', type: '' }), 4000); // 4 seconds
         }
     }, [isAuthenticated, userCan, selectedWarranty, detailsDrawer, fetchWarranties, activeFilters]);
 
@@ -306,6 +375,7 @@ const WarrantyListView = () => {
         const handleDeleteSelected = () => {
             if (selectedWarranty) handleDeleteRow(selectedWarranty);
             else setFeedback({ message: "No warranty selected for deletion.", type: 'warning' });
+            setTimeout(() => setFeedback({ message: '', type: '' }), 4000); // 4 seconds
         };
         
         const toggleFilterDrawerState = () => {
@@ -359,7 +429,7 @@ const WarrantyListView = () => {
             showNewAction: true,
             newActionLabel: '+New',
             newActionIcon: <AddIcon fontSize="small" />,
-            onNewActionClick: () => navigate('/dashboard/warranties/add'),
+            onNewActionClick: () => navigate('/dashboard/warranties/new'),
             isNewActionEnabled: isAuthenticated && userCan && userCan('warranty:create'),
 
             showDeleteAction: true,
@@ -399,6 +469,16 @@ const WarrantyListView = () => {
         navigate, isAuthenticated, userCan, selectedWarranty, activeFilters, 
         handleApplyFiltersFromPanel, handleDeleteRow
     ]);
+    
+    useEffect(() => {
+        // If the details drawer is open and selectedWarranty changes, update the drawer content
+        if (detailsDrawer.isOpen && selectedWarranty) {
+            detailsDrawer.openDrawer(
+                `Details: ${selectedWarranty.name || 'Warranty'}`,
+                <WarrantyDetailsView warranty={selectedWarranty} />
+            );
+        }
+    }, [selectedWarranty, detailsDrawer]);
     
     if (authLoading && !isAuthenticated) {
         return <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>;
@@ -480,10 +560,11 @@ const WarrantyListView = () => {
                         isAuthenticated={isAuthenticated}
                         userCan={userCan}
                         onViewDetails={handleRowOrViewDetailsClick}
-                        onRowClick={handleRowOrViewDetailsClick}
+                        onRowClick={setSelectedWarranty} // <-- Only select row, do not open drawer
                         onEditRow={handleEditRow}
                         onDeleteRow={handleDeleteRow}
                         activeFiltersFromParent={activeFilters}
+                        onSelectRow={setSelectedWarranty}
                     />
                 </Box>
 

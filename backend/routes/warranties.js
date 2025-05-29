@@ -12,7 +12,7 @@ function createWarrantiesRouter(knex) {
     // --- Helper: Check for dependencies ---
     // Checks if a warranty is used by any Items
     const isWarrantyInUse = async (warrantyId) => {
-        const countResult = await knex('Items')
+        const countResult = await knex('items')
                                 .where({ warranty_id: warrantyId })
                                 .count('id as count').first();
         return countResult && countResult.count > 0;
@@ -149,23 +149,16 @@ function createWarrantiesRouter(knex) {
     // DELETE /api/warranties/:id - Delete a warranty
     router.delete('/:id', async (req, res) => {
         const { id } = req.params;
-        const warrantyId = parseInt(id);
-        if (isNaN(warrantyId)) return res.status(400).json({ message: 'Invalid warranty ID.' });
-
         try {
-            // Check for dependencies (Items using this warranty)
-            const warrantyUsed = await isWarrantyInUse(warrantyId);
-            if (warrantyUsed) return res.status(409).json({ message: 'Conflict: Cannot delete warranty because it is used by Items.' });
-
-            const count = await knex('warranties').where({ id: warrantyId }).del();
-            if (count === 0) return res.status(404).json({ message: `Warranty with ID ${id} not found.` });
-            res.status(204).send(); // Success
+            // Check if warranty is in use
+            if (await isWarrantyInUse(id)) {
+                return res.status(400).json({ message: 'Cannot delete warranty: it is used by one or more items.' });
+            }
+            // Proceed to delete
+            await knex('warranties').where({ id }).del();
+            res.json({ message: 'Warranty deleted successfully.' });
         } catch (err) {
-             if (err.code === '23503') { // Fallback FK check
-                 console.warn(`Attempted to delete warranty ${id} with existing references (FK violation).`);
-                 return res.status(409).json({ message: 'Conflict: Cannot delete warranty due to existing references.', error: err.detail });
-             }
-            console.error(`Error deleting warranty ${id}:`, err);
+            console.error("Error deleting warranty:", err);
             res.status(500).json({ message: 'Database error deleting warranty.', error: err.message });
         }
     });
