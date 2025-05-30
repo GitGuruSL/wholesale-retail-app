@@ -1,101 +1,95 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import apiInstance from '../services/api'; // Ensure apiInstance is correctly imported if not from useAuth
+import apiInstance from '../services/api';
 import {
     Paper, Typography, TextField, Button, Box, Alert, CircularProgress, Grid
 } from '@mui/material';
+import { useForm, Controller } from 'react-hook-form';
+import { yupResolver } from '@hookform/resolvers/yup';
+import * as yup from 'yup';
+
+// Define the validation schema using Yup
+const warrantySchema = yup.object().shape({
+    name: yup.string().trim().required('Warranty name is required.'),
+    duration_months: yup.number()
+        .transform(value => (isNaN(value) || value === null || value === '' ? undefined : Number(value)))
+        .nullable()
+        .min(0, 'Duration must be a non-negative number.')
+        .typeError('Duration must be a number.'), // Handles non-numeric input better
+    description: yup.string().trim().nullable(),
+});
 
 function WarrantyForm() {
     const { warrantyId } = useParams();
     const navigate = useNavigate();
-    // Assuming apiInstance is now directly imported or correctly provided by useAuth
     const { isAuthenticated, isLoading: authLoading, userCan } = useAuth();
     const isEditing = Boolean(warrantyId);
 
-    const initialFormData = {
-        name: '',
-        duration_months: '',
-        description: ''
-    };
-    const [formData, setFormData] = useState(initialFormData);
-    const [initialLoading, setInitialLoading] = useState(isEditing); // For fetching existing data
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [pageError, setPageError] = useState(null); // For general page/loading errors
-    const [formErrors, setFormErrors] = useState({}); // For field-specific errors
+    const {
+        control,
+        handleSubmit,
+        reset,
+        formState: { errors, isSubmitting, isLoading: formLoading }, // isLoading from RHF for async defaultValues
+        setError: setFormError // For API errors
+    } = useForm({
+        resolver: yupResolver(warrantySchema),
+        defaultValues: { // Default values for React Hook Form
+            name: '',
+            duration_months: '', // Keep as string for TextField, Yup will transform
+            description: ''
+        }
+    });
+
+    const [pageError, setPageError] = React.useState(null); // For general page/loading errors not tied to fields
 
     const requiredPermission = isEditing ? 'warranty:update' : 'warranty:create';
 
     const fetchWarrantyData = useCallback(async () => {
-        if (!isEditing || !isAuthenticated || !warrantyId) return;
-
-        setInitialLoading(true);
-        setPageError(null);
-        setFormErrors({});
+        if (!isEditing || !isAuthenticated || !warrantyId) return null;
         try {
             const response = await apiInstance.get(`/warranties/${warrantyId}`);
             const data = response.data;
-            setFormData({
+            return {
                 name: data.name || '',
                 duration_months: data.duration_months?.toString() ?? '',
                 description: data.description || ''
-            });
+            };
         } catch (err) {
             console.error("[WarrantyForm] Error fetching warranty details:", err);
             setPageError(err.response?.data?.message || 'Failed to load warranty data.');
-        } finally {
-            setInitialLoading(false);
+            return null;
         }
     }, [warrantyId, isEditing, isAuthenticated]);
 
     useEffect(() => {
-        if (!authLoading) {
-            if (!isAuthenticated) {
-                setPageError("Please log in to manage warranties.");
-                setInitialLoading(false);
-                return;
-            }
-            if (userCan && !userCan(requiredPermission)) {
-                setPageError(`You do not have permission to ${isEditing ? 'edit' : 'create'} warranties.`);
-                setInitialLoading(false);
-                return;
-            }
-            if (isEditing) {
-                fetchWarrantyData();
-            } else {
-                setFormData(initialFormData);
-                setPageError(null);
-                setFormErrors({});
-                setInitialLoading(false);
-            }
-        }
-    }, [isEditing, authLoading, isAuthenticated, userCan, requiredPermission, fetchWarrantyData]);
+        const initializeForm = async () => {
+            if (!authLoading) {
+                if (!isAuthenticated) {
+                    setPageError("Please log in to manage warranties.");
+                    return;
+                }
+                if (userCan && !userCan(requiredPermission)) {
+                    setPageError(`You do not have permission to ${isEditing ? 'edit' : 'create'} warranties.`);
+                    return;
+                }
 
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
-        if (formErrors[name]) {
-            setFormErrors(prev => ({ ...prev, [name]: null }));
-        }
-    };
-
-    const validateForm = () => {
-        const errors = {};
-        if (!formData.name.trim()) {
-            errors.name = "Warranty name cannot be empty.";
-        }
-        if (formData.duration_months.trim() !== '') {
-            const duration = parseInt(formData.duration_months, 10);
-            if (isNaN(duration) || duration < 0) {
-                errors.duration_months = "Duration must be a non-negative number or empty.";
+                if (isEditing) {
+                    const data = await fetchWarrantyData();
+                    if (data) {
+                        reset(data); // Reset form with fetched data
+                    }
+                } else {
+                    reset({ name: '', duration_months: '', description: '' }); // Reset to initial for new form
+                    setPageError(null);
+                }
             }
-        }
-        setFormErrors(errors);
-        return Object.keys(errors).length === 0;
-    };
+        };
+        initializeForm();
+    }, [isEditing, authLoading, isAuthenticated, userCan, requiredPermission, fetchWarrantyData, reset]);
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
+
+    const onSubmit = async (data) => {
         if (!isAuthenticated) {
             setPageError("Authentication error. Please log in again.");
             return;
@@ -104,15 +98,12 @@ function WarrantyForm() {
             setPageError(`You do not have permission to ${isEditing ? 'update' : 'create'} this warranty.`);
             return;
         }
-        if (!validateForm()) return;
-
-        setIsSubmitting(true);
         setPageError(null);
 
         const payload = {
-            name: formData.name.trim(),
-            duration_months: formData.duration_months.trim() === '' ? null : parseInt(formData.duration_months, 10),
-            description: formData.description.trim() === '' ? null : formData.description.trim(),
+            name: data.name.trim(),
+            duration_months: data.duration_months === '' || data.duration_months === null ? null : parseInt(data.duration_months, 10),
+            description: data.description?.trim() === '' ? null : data.description?.trim(),
         };
 
         try {
@@ -127,16 +118,19 @@ function WarrantyForm() {
         } catch (err) {
             console.error("[WarrantyForm] Error saving warranty:", err);
             const errMsg = err.response?.data?.message || `Failed to ${isEditing ? 'update' : 'create'} warranty.`;
-            setPageError(errMsg);
-            if (err.response?.data?.errors) {
-                setFormErrors(prev => ({ ...prev, ...err.response.data.errors }));
+            setPageError(errMsg); // General error
+            if (err.response?.data?.errors) { // Field-specific errors from API
+                Object.entries(err.response.data.errors).forEach(([field, message]) => {
+                    setFormError(field, { type: 'server', message });
+                });
             }
-        } finally {
-            setIsSubmitting(false);
         }
     };
 
-    if (authLoading || (initialLoading && isEditing)) {
+    // Combines authLoading (initial auth check) and formLoading (RHF async defaultValues loading)
+    const isPageLoading = authLoading || formLoading;
+
+    if (isPageLoading) {
         return (
             <Paper sx={{ p: 3, m: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                 <CircularProgress />
@@ -145,6 +139,7 @@ function WarrantyForm() {
         );
     }
 
+    // Display error if not authenticated or no permission, and a pageError exists
     if ((!isAuthenticated || (userCan && !userCan(requiredPermission))) && pageError) {
         return (
             <Paper sx={{ p: 3, m: 2, maxWidth: 600, mx: 'auto' }}>
@@ -164,50 +159,62 @@ function WarrantyForm() {
             <Typography variant="h5" align="center" gutterBottom>
                 {isEditing ? `Edit Warranty (ID: ${warrantyId})` : 'Add New Warranty'}
             </Typography>
-            {pageError && !Object.keys(formErrors).length && (
+            {pageError && ( // Display general page errors if any
                 <Alert severity="error" sx={{ mb: 2 }}>{pageError}</Alert>
             )}
-            <Box component="form" onSubmit={handleSubmit} noValidate>
+            <Box component="form" onSubmit={handleSubmit(onSubmit)} noValidate>
                 <Grid container spacing={2}>
                     <Grid item xs={12}>
-                        <TextField
-                            label="Warranty Name"
+                        <Controller
                             name="name"
-                            value={formData.name}
-                            onChange={handleChange}
-                            required
-                            fullWidth
-                            disabled={isSubmitting || initialLoading}
-                            error={Boolean(formErrors.name)}
-                            helperText={formErrors.name || "e.g., 1 Year Limited, 6 Month RTB"}
+                            control={control}
+                            render={({ field }) => (
+                                <TextField
+                                    {...field}
+                                    label="Warranty Name"
+                                    required
+                                    fullWidth
+                                    disabled={isSubmitting}
+                                    error={Boolean(errors.name)}
+                                    helperText={errors.name?.message || "e.g., 1 Year Limited, 6 Month RTB"}
+                                />
+                            )}
                         />
                     </Grid>
                     <Grid item xs={12}>
-                        <TextField
-                            label="Duration (Months)"
+                        <Controller
                             name="duration_months"
-                            type="number"
-                            value={formData.duration_months}
-                            onChange={handleChange}
-                            fullWidth
-                            disabled={isSubmitting || initialLoading}
-                            inputProps={{ min: "0", step: "1" }}
-                            error={Boolean(formErrors.duration_months)}
-                            helperText={formErrors.duration_months || "e.g., 12 (Leave blank if not applicable)"}
+                            control={control}
+                            render={({ field }) => (
+                                <TextField
+                                    {...field}
+                                    label="Duration (Months)"
+                                    type="number" // Still use number for keyboard, Yup handles conversion
+                                    fullWidth
+                                    disabled={isSubmitting}
+                                    inputProps={{ min: "0", step: "1" }}
+                                    error={Boolean(errors.duration_months)}
+                                    helperText={errors.duration_months?.message || "e.g., 12 (Leave blank if not applicable)"}
+                                />
+                            )}
                         />
                     </Grid>
                     <Grid item xs={12}>
-                        <TextField
-                            label="Description"
+                        <Controller
                             name="description"
-                            value={formData.description}
-                            onChange={handleChange}
-                            fullWidth
-                            multiline
-                            rows={3}
-                            disabled={isSubmitting || initialLoading}
-                            error={Boolean(formErrors.description)}
-                            helperText={formErrors.description || "Details about the warranty terms and conditions..."}
+                            control={control}
+                            render={({ field }) => (
+                                <TextField
+                                    {...field}
+                                    label="Description"
+                                    fullWidth
+                                    multiline
+                                    rows={3}
+                                    disabled={isSubmitting}
+                                    error={Boolean(errors.description)}
+                                    helperText={errors.description?.message || "Details about the warranty terms and conditions..."}
+                                />
+                            )}
                         />
                     </Grid>
                 </Grid>
@@ -219,7 +226,7 @@ function WarrantyForm() {
                         type="submit"
                         variant="contained"
                         color="primary"
-                        disabled={isSubmitting || initialLoading || (userCan && !userCan(requiredPermission))}
+                        disabled={isSubmitting || (userCan && !userCan(requiredPermission))}
                     >
                         {isSubmitting ? <CircularProgress size={24} /> : (isEditing ? 'Update Warranty' : 'Create Warranty')}
                     </Button>

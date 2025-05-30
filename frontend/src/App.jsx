@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
-import { Routes, Route, Navigate, Outlet, Link, useLocation } from 'react-router-dom'; // Router removed from here
-import { useAuth } from "./context/AuthContext";
+import { Routes, Route, Navigate, Outlet, Link, useLocation } from 'react-router-dom';
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ROLES } from './utils/roles';
 import { useSecondaryMenu } from './context/SecondaryMenuContext'; // Ensure this import is correct
 
@@ -266,10 +266,10 @@ const AppRoutes = () => {
 
 function App() {
     return (
-        <> {/* You can use a fragment or a simple div if needed */}
+        <AuthProvider> {/* Wrap the routes or relevant part of the app with AuthProvider */}
             <h1>My Wholesale/Retail App</h1>
             <AppRoutes />
-        </>
+        </AuthProvider>
     );
 }
 

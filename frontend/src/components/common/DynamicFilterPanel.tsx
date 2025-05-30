@@ -76,7 +76,7 @@ const EntityFilterPanel: React.FC<Props> = ({
             flexDirection: 'column',
             gap: 2,
             p: 1,
-            height: '100%',
+            height: '50%',
             minHeight: 0,
             overflow: 'auto'
         }}>

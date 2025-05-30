@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { Box, Paper, Typography, Button, CircularProgress, Alert } from '@mui/material';
 import { DataGrid, GridColDef, GridValueGetterParams } from '@mui/x-data-grid';
 import AddIcon from '@mui/icons-material/Add';
@@ -10,7 +10,7 @@ import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 
 import SidePanelsLayout from './common/SidePanelsLayout';
-import DynamicFilterPanel, { FilterFieldDefinition, ActiveFilter } from './common/DynamicFilterPanel';
+import DynamicFilterPanel, { FilterFieldDefinition, ActiveFilter } from './common/DynamicFilterPanel'; // Assuming FilterFieldDefinition is exported
 
 import apiInstance from '../services/api';
 import { useNavigate } from 'react-router-dom';
@@ -25,7 +25,16 @@ interface Warranty {
     description?: string;
 }
 
+// Define an extended GridColDef type for filter metadata
+interface FilterableColumnDef extends GridColDef<Warranty> {
+    filterable?: boolean;
+    filterType?: FilterFieldDefinition['type']; // 'text', 'number', 'select', 'date'
+    filterOptions?: FilterFieldDefinition['options'];
+    filterLabel?: string; // Optional: Use if headerName is not suitable for filter label
+}
+
 const WarrantyDetailsView = ({ warranty }: { warranty: Warranty | null }) => {
+    // ... existing code ...
     if (!warranty) return <Typography sx={{ p: 2 }}>No warranty selected.</Typography>;
     return (
         <Box sx={{ p: 2 }}>
@@ -39,12 +48,8 @@ const WarrantyDetailsView = ({ warranty }: { warranty: Warranty | null }) => {
     );
 };
 
-const WARRANTY_AVAILABLE_FILTER_FIELDS: FilterFieldDefinition[] = [
-    { value: 'name', label: 'Warranty Name', type: 'text', placeholder: 'Enter warranty name' },
-    { value: 'productName', label: 'Product Name', type: 'text', placeholder: 'Enter product name' },
-    { value: 'status', label: 'Status', type: 'select', options: ['Active', 'Inactive', 'Expired'] },
-    { value: 'duration_months', label: 'Duration (Months)', type: 'number', placeholder: 'Enter duration' },
-];
+// REMOVE the static WARRANTY_AVAILABLE_FILTER_FIELDS constant
+// const WARRANTY_AVAILABLE_FILTER_FIELDS: FilterFieldDefinition[] = [ ... ];
 
 const WarrantyList = () => {
     const navigate = useNavigate();
@@ -55,8 +60,8 @@ const WarrantyList = () => {
     const [error, setError] = useState<string | null>(null);
     const [feedback, setFeedback] = useState<{ message: string, type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
 
-    const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([]); // Filters currently in the panel
-    const [appliedFilters, setAppliedFilters] = useState<ActiveFilter[]>([]); // Filters applied for fetching
+    const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([]);
+    const [appliedFilters, setAppliedFilters] = useState<ActiveFilter[]>([]);
 
     const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
     const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(false);
@@ -68,7 +73,109 @@ const WarrantyList = () => {
     const [selectionModel, setSelectionModel] = useState<(number | string)[]>([]);
     const [multiSelectMode, setMultiSelectMode] = useState(false);
 
+    // Define columns with filter metadata
+    // Memoize columns array if its definition is complex or depends on other state/props
+    // For now, assuming it's relatively stable.
+    const columns: FilterableColumnDef[] = useMemo(() => [
+        {
+            field: 'id',
+            headerName: 'ID',
+            width: 90,
+            type: 'number', // GridColDef type
+            filterable: true,
+            filterType: 'number', // Filter type
+        },
+        {
+            field: 'name',
+            headerName: 'Name',
+            flex: 1,
+            minWidth: 150,
+            type: 'string',
+            filterable: true,
+            filterType: 'text',
+        },
+        {
+            field: 'productName',
+            headerName: 'Product',
+            flex: 1,
+            minWidth: 150,
+            type: 'string',
+            filterable: true,
+            filterType: 'text',
+        },
+        {
+            field: 'status',
+            headerName: 'Status',
+            width: 120,
+            type: 'string',
+            filterable: true,
+            filterType: 'select',
+            filterOptions: ['Active', 'Inactive', 'Expired'],
+        },
+        {
+            field: 'duration_months',
+            headerName: 'Duration',
+            width: 150,
+            type: 'number',
+            valueGetter: (params) => (params && params.row) ? params.row.duration_months : null,
+            renderCell: (params) => {
+                const duration = params.value;
+                return duration !== null && duration !== undefined ? `${duration} months` : 'N/A';
+            },
+            filterable: true,
+            filterType: 'number',
+            filterLabel: 'Duration (Months)', // Custom label for filter
+        },
+        {
+            field: 'description',
+            headerName: 'Description',
+            flex: 1,
+            minWidth: 200,
+            type: 'string',
+            valueGetter: (params) => (params && params.row) ? (params.row.description || '-') : '-',
+            filterable: true, // Decide if you want to filter by description
+            filterType: 'text',
+        },
+        {
+            field: 'actions',
+            headerName: '',
+            width: 50,
+            sortable: false,
+            filterable: false, // This column is not filterable
+            disableColumnMenu: true,
+            align: 'center',
+            renderCell: (params) => (
+                <>
+                    <IconButton
+                        size="small"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            handleMenuOpen(event, params.row as Warranty);
+                        }}
+                    >
+                        <MoreVertIcon />
+                    </IconButton>
+                </>
+            ),
+        },
+    ], []); // Empty dependency array as columns are static in this example
+
+    // Dynamically generate availableFilterFields from columns
+    const availableFilterFields = useMemo((): FilterFieldDefinition[] => {
+        return columns
+            .filter(col => col.filterable && col.field) // Ensure it's filterable and has a field
+            .map(col => ({
+                value: col.field!, // col.field is checked by the filter
+                label: col.filterLabel || col.headerName || col.field!,
+                type: col.filterType || 'text', // Default to 'text' if not specified
+                options: col.filterOptions,
+                placeholder: `Enter ${col.filterLabel || col.headerName || col.field!}`
+            }));
+    }, [columns]);
+
+
     const fetchWarranties = useCallback(async (filtersToApply: ActiveFilter[]) => {
+        // ... existing code ...
         console.log('[WarrantyList] fetchWarranties called. Filters:', filtersToApply);
         setIsLoading(true);
         setError(null);
@@ -76,10 +183,6 @@ const WarrantyList = () => {
             const queryParams = new URLSearchParams();
             filtersToApply.forEach(filter => {
                 if (filter.value !== undefined && filter.value !== '' && filter.value !== null) {
-                    // Example: field=name&operator=contains&value=test
-                    // Adjust the key format based on your backend API's expectation
-                    // e.g., queryParams.append(filter.field, filter.value.toString());
-                    // or queryParams.append(`${filter.field}[${filter.operator}]`, filter.value.toString());
                     queryParams.append(`${filter.field}[${filter.operator}]`, String(filter.value));
                 }
             });
@@ -109,28 +212,27 @@ const WarrantyList = () => {
         }
     }, []);
 
+    // ... (rest of your useEffects and handlers remain largely the same) ...
+    // Make sure to pass the new `availableFilterFields` to DynamicFilterPanel
+
     useEffect(() => {
         console.log('[WarrantyList] useEffect for appliedFilters/fetchWarranties triggered. Current appliedFilters:', appliedFilters);
         fetchWarranties(appliedFilters);
     }, [appliedFilters, fetchWarranties]);
 
     useEffect(() => {
-        fetchWarranties(activeFilters); // fetchWarranties should use activeFilters directly
+        fetchWarranties(activeFilters); 
     }, [activeFilters, fetchWarranties]);
 
     const handleRowClick = (warranty: Warranty) => {
         setSelectedWarranty(warranty);
-        // Optionally open details panel on row click if not already open, or toggle
-        // if (!isDetailsPanelOpen) {
-        //     setIsDetailsPanelOpen(true);
-        // }
     };
 
     const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, row: Warranty) => {
         setAnchorEl(event.currentTarget);
         setMenuRow(row);
         if (!multiSelectMode) {
-            setSelectionModel([row.id]); // <-- Set selection to this row
+            setSelectionModel([row.id]); 
         }
     };
     const handleMenuClose = () => {
@@ -138,7 +240,6 @@ const WarrantyList = () => {
         setMenuRow(null);
     };
 
-    // Update selectedWarranty when single row is selected
     useEffect(() => {
         if (selectionModel.length === 1) {
             const selected = warranties.find(w => w.id === selectionModel[0]) || null;
@@ -150,64 +251,10 @@ const WarrantyList = () => {
 
     const handleSelectMore = () => {
         setMultiSelectMode(true);
-        setSelectionModel([]); // Clear previous selection
+        setSelectionModel([]); 
         handleMenuClose();
     };
-
-    const columns: GridColDef<Warranty>[] = [
-        { field: 'id', headerName: 'ID', width: 90, type: 'number' },
-        { field: 'name', headerName: 'Name', flex: 1, minWidth: 150, type: 'string' },
-        { field: 'productName', headerName: 'Product', flex: 1, minWidth: 150, type: 'string' },
-        { field: 'status', headerName: 'Status', width: 120, type: 'string' },
-        {
-            field: 'duration_months',
-            headerName: 'Duration', 
-            width: 150,
-            type: 'number', 
-            valueGetter: (params) => (params && params.row) ? params.row.duration_months : null, 
-            renderCell: (params) => {
-                const duration = params.value; 
-                return duration !== null && duration !== undefined ? `${duration} months` : 'N/A';
-            }
-        },
-        {
-            field: 'description',
-            headerName: 'Description',
-            flex: 1, // Changed from 2 to 1 to match your current code
-            minWidth: 200,
-            type: 'string',
-            valueGetter: (params) => (params && params.row) ? (params.row.description || '-') : '-', 
-            // If you want Typography for description as in previous versions:
-            // renderCell: (params) => (
-            //   <Typography noWrap title={params.value || ''} sx={{overflow: 'hidden', textOverflow: 'ellipsis'}}>
-            //       {params.value || '-'}
-            //   </Typography>
-            // )
-        },
-        {
-            field: 'actions',
-            headerName: '',
-            width: 50,
-            sortable: false,
-            filterable: false,
-            disableColumnMenu: true,
-            align: 'center',
-            renderCell: (params) => (
-                <>
-                    <IconButton
-                        size="small"
-                        onClick={(event) => {
-                            event.stopPropagation();
-                            handleMenuOpen(event, params.row as Warranty);
-                        }}
-                    >
-                        <MoreVertIcon />
-                    </IconButton>
-                </>
-            ),
-        },
-    ];
-
+    
     const handleAddNew = () => navigate('/dashboard/warranties/new');
 
     const handleEditSelected = () => {
@@ -231,7 +278,7 @@ const WarrantyList = () => {
                 setIsDetailsPanelOpen(false);
                 setSelectionModel([]);
                 setMultiSelectMode(false);
-                fetchWarranties(appliedFilters); // Refresh list with current filters
+                fetchWarranties(appliedFilters); 
             } catch (err: any) {
                 setFeedback({ message: err.response?.data?.message || 'Failed to delete warranty.', type: 'error' });
                 console.error("Error deleting warranty:", err);
@@ -260,7 +307,7 @@ const WarrantyList = () => {
             newActionIcon: <AddIcon fontSize="small" />,
             showDeleteAction: true,
             onDeleteActionClick: handleDeleteSelected,
-            isDeleteActionEnabled: selectionModel.length > 0, // <-- Enable delete for 1 or more
+            isDeleteActionEnabled: selectionModel.length > 0, 
             deleteActionLabel: "Delete",
             deleteActionIcon: <DeleteIcon fontSize="small" />,
             showInfo: true,
@@ -272,7 +319,7 @@ const WarrantyList = () => {
                 label: 'Edit',
                 icon: <EditIcon fontSize="small" />,
                 onClick: handleEditSelected,
-                disabled: selectionModel.length !== 1, // <-- Only enable edit for exactly one
+                disabled: selectionModel.length !== 1, 
                 variant: 'outlined',
                 color: 'inherit',
             }]
@@ -284,14 +331,10 @@ const WarrantyList = () => {
         isFilterPanelOpen, 
         isDetailsPanelOpen, 
         selectedWarranty,
-        appliedFilters,
-        selectionModel
+        appliedFilters, // Ensure this is correct, or remove if fetchWarranties is stable
+        selectionModel,
+        fetchWarranties // Added fetchWarranties if it's memoized and used in handlers
     ]);
-
-    // Fetch warranties whenever activeFilters changes (live filtering)
-    useEffect(() => {
-        fetchWarranties(activeFilters);
-    }, [fetchWarranties, activeFilters]);
 
     useEffect(() => {
         if (!multiSelectMode) return;
@@ -305,7 +348,9 @@ const WarrantyList = () => {
         return () => window.removeEventListener("keydown", handleEsc);
     }, [multiSelectMode]);
 
+
     if (isLoading && warranties.length === 0 && !error) {
+        // ... existing code ...
         console.log('[WarrantyList] Rendering: Loading state (initial)');
         return (
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 64px)', p: 3 }}> {/* Adjust height if needed */}
@@ -316,6 +361,7 @@ const WarrantyList = () => {
     }
 
     if (error && warranties.length === 0) {
+        // ... existing code ...
         console.log('[WarrantyList] Rendering: Error state');
         return (
             <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 64px)', p: 3 }}>
@@ -328,17 +374,17 @@ const WarrantyList = () => {
     console.log('[WarrantyList] Rendering: Main content. Warranties count:', warranties.length, 'IsLoading:', isLoading, 'Error:', error);
 
     const mainContent = (
+        // ... existing code ...
         <Paper sx={{
-            p: 1, // Reduce padding
+            p: 1, 
             height: '100%',
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
             boxSizing: 'border-box',
-            minHeight: 0 // Important for flex layouts
+            minHeight: 0 
         }}>
             {feedback && <Alert severity={feedback.type} sx={{ mb: 2, flexShrink: 0 }}>{feedback.message}</Alert>}
-            {/* Show non-blocking error if data is already present */}
             {error && warranties.length > 0 && <Alert severity="warning" sx={{ mb: 2 }}>{`Warning: ${error}`}</Alert>}
 
             <Box sx={{
@@ -346,9 +392,9 @@ const WarrantyList = () => {
                 width: '100%',
                 overflow: 'auto',
                 position: 'relative',
-                minHeight: 0 // Important for flex layouts
+                minHeight: 0 
             }}>
-                {isLoading && ( /* More subtle loading indicator when data is already present */
+                {isLoading && ( 
                     <Box sx={{ position: 'absolute', top: 8, right: 8, zIndex: 10 }}>
                         <CircularProgress size={24} />
                     </Box>
@@ -359,7 +405,7 @@ const WarrantyList = () => {
                 {warranties.length > 0 && (
                     <DataGrid
                         rows={warranties}
-                        columns={columns}
+                        columns={columns} // Use the memoized columns
                         checkboxSelection={multiSelectMode}
                         disableSelectionOnClick
                         selectionModel={selectionModel}
@@ -373,12 +419,9 @@ const WarrantyList = () => {
                         onRowDoubleClick={(params) => {
                             navigate(`/dashboard/warranties/edit/${params.id}`);
                         }}
-                        autoHeight={false} // Important for layout to fill height
+                        autoHeight={false} 
                         sx={{ border: 0, '& .MuiDataGrid-virtualScroller': { flexGrow: 1 }, height: '100%' }}
                         density="compact"
-                        // loading={isLoading} // Can be redundant if using the absolute positioned CircularProgress
-                        // pageSizeOptions={[10, 25, 50]} // MUI X v6+
-                        // initialState={{ pagination: { paginationModel: { pageSize: 10 }}}} // MUI X v6+
                     />
                 )}
             </Box>
@@ -394,7 +437,8 @@ const WarrantyList = () => {
                 <DynamicFilterPanel
                     activeFilters={activeFilters}
                     onActiveFiltersChange={setActiveFilters}
-                    availableFilterFields={WARRANTY_AVAILABLE_FILTER_FIELDS}
+                    availableFilterFields={availableFilterFields} // Pass the dynamically generated fields
+                    // onApplyFilters={() => setAppliedFilters([...activeFilters])} // Keep if you have an apply button
                 />
             }
             detailsPanelOpen={isDetailsPanelOpen}
@@ -402,8 +446,8 @@ const WarrantyList = () => {
             onDetailsPanelClose={() => setIsDetailsPanelOpen(false)}
             detailsPanelContent={<WarrantyDetailsView warranty={selectedWarranty} />}
             mainContentSx={{
-                p: 0, // Remove extra padding
-                height: 'calc(100vh - 64px)', // Only subtract your top bar height
+                p: 0,
+                height: 'calc(100vh - 64px)', 
                 minHeight: 0,
                 display: 'flex',
                 flexDirection: 'column'
