@@ -169,6 +169,18 @@ const SecondaryHorizontalMenu: React.FC = () => {
                     {pageTitle}
                 </Typography>
 
+                {/* Store Selector or Store Name Display */}
+                {menuProps.storeSelectorComponent && (
+                    <Box sx={{ ml: 2, minWidth: 200 }}>
+                        {menuProps.storeSelectorComponent}
+                    </Box>
+                )}
+                {menuProps.storeNameDisplay && (
+                    <Box sx={{ ml: 2, minWidth: 200 }}>
+                        {menuProps.storeNameDisplay}
+                    </Box>
+                )}
+
                 {/* Divider after Page Title */}
                 {(showSearchAction || showNewAction || showDeleteAction || (viewSelector && viewSelector.options.length > 0)) && (
                     <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />

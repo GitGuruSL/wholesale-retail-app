@@ -345,6 +345,44 @@ const PurchaseOrderList = () => {
     }, [feedback]);
 
     useEffect(() => {
+        let storeSelectorComponent = null;
+        let storeNameDisplay = null;
+
+        if (user && user.role_name === 'global_admin') {
+            storeSelectorComponent = (
+                <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 250 }}>
+                    <Typography sx={{ mr: 1, whiteSpace: 'nowrap' }}>Store:</Typography>
+                    <FormControl size="small" sx={{ minWidth: 180 }}>
+                        <Select
+                            value={selectedStoreId || ''}
+                            onChange={e => setSelectedStoreId(e.target.value as string | number)}
+                            disabled={stores.length === 0}
+                            displayEmpty
+                        >
+                            {stores.map((store) => (
+                                <MenuItem key={store.id} value={store.id}>
+                                    {store.name}
+                                </MenuItem>
+                            ))}
+                            {stores.length === 0 && <MenuItem value="" disabled>No stores available</MenuItem>}
+                        </Select>
+                    </FormControl>
+                </Box>
+            );
+        } else if (user && user.store_id) {
+            const storeName = stores.find(s => s.id === user.store_id)?.name || `Store ID: ${user.store_id}`;
+            storeNameDisplay = (
+                <TextField
+                    label="Store"
+                    value={storeName}
+                    fullWidth
+                    size="small"
+                    disabled
+                    variant="outlined"
+                />
+            );
+        }
+
         setMenuProps({
             pageTitle: "Manage Purchase Orders",
             breadcrumbs: [{ label: "Dashboard", path: "/dashboard" }, { label: "Purchase Orders" }],
@@ -373,7 +411,9 @@ const PurchaseOrderList = () => {
                 disabled: selectionModel.length !== 1,
                 variant: 'outlined',
                 color: 'inherit',
-            }]
+            }],
+            storeSelectorComponent,
+            storeNameDisplay,
         });
         return () => setMenuProps({});
     }, [
@@ -384,7 +424,10 @@ const PurchaseOrderList = () => {
         selectedPO,
         appliedFilters,
         selectionModel,
-        fetchPurchaseOrders
+        fetchPurchaseOrders,
+        user,
+        stores,
+        selectedStoreId
     ]);
 
     useEffect(() => {
@@ -541,7 +584,7 @@ const PurchaseOrderList = () => {
                 flexDirection: 'column'
             }}
         >
-            {storeSelector}
+           
             {mainContent}
             <Menu
                 anchorEl={anchorEl}
