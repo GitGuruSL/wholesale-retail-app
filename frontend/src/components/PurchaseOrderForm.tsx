@@ -627,7 +627,7 @@ const PurchaseOrderForm = () => {
                 <Box component="form" onSubmit={handleSubmit(onSubmit)} noValidate>
                     {/* Header Section */}
                     <Grid container spacing={2} sx={{ mb: 2 }}>
-                        <Grid item xs={12} md={4}>
+                        <Grid item xs={12} md={6}> {/* Changed md from 4 to 6 */}
                             <Controller
                                 name="supplier_id"
                                 control={control}
@@ -644,7 +644,7 @@ const PurchaseOrderForm = () => {
                                 )}
                             />
                         </Grid>
-                        <Grid item xs={12} md={4}>
+                        <Grid item xs={12} md={6}> {/* Adjusted md from 4 to 6 to balance the row if supplier is wider */}
                              <Controller
                                 name="contact_person" // Placeholder for new field
                                 control={control}
@@ -696,7 +696,7 @@ const PurchaseOrderForm = () => {
                                 )}
                             />
                         </Grid>
-                         <Grid item xs={12} md={4}>
+                         <Grid item xs={12} md={6}> {/* Changed md from 4 to 6 */}
                             <Controller
                                 name="store_id" // Represents header level "Location Code"
                                 control={control}
@@ -714,7 +714,7 @@ const PurchaseOrderForm = () => {
                                 )}
                             />
                         </Grid>
-                        <Grid item xs={12} md={4}>
+                        <Grid item xs={12} md={6}> {/* Adjusted md from 4 to 6 to balance the row if store_id is wider */}
                              <Controller
                                 name="expected_delivery_date"
                                 control={control}
@@ -738,7 +738,7 @@ const PurchaseOrderForm = () => {
                     {/* Item Selection Section - More compact */}
                     <Typography variant="h6" sx={{ mb: 1 }}>Lines</Typography>
                     <Grid container spacing={2} alignItems="flex-end" sx={{ mb: 2 }}>
-                        <Grid item xs={12} sm={6} md={3}>
+                        <Grid item xs={12} sm={6} md={5}> {/* Changed md from 3 to 5 */}
                             <Autocomplete
                                 options={productLines}
                                 getOptionLabel={(option) => `${option.item_name}${option.base_item_sku ? ` (${option.base_item_sku})` : ''}`}
@@ -750,7 +750,7 @@ const PurchaseOrderForm = () => {
                             />
                         </Grid>
                         {selectedProductLine && selectedProductLine.item_type === 'Variable' && !selectedProductLine.is_directly_purchasable && (
-                            <Grid item xs={12} sm={6} md={3}>
+                            <Grid item xs={12} sm={6} md={4}> {/* Changed md from 3 to 4 */}
                                 <Autocomplete
                                     options={variations}
                                     getOptionLabel={(option) => `${option.variation_display_name}${option.variation_sku ? ` (${option.variation_sku})` : ''}`}
