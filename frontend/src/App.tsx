@@ -1,64 +1,67 @@
 import React, { useEffect } from 'react';
 import { Routes, Route, Navigate, Outlet, Link, useLocation } from 'react-router-dom';
-import { AuthProvider, useAuth } from "./context/AuthContext";
-import { ROLES } from './utils/roles';
-import { useSecondaryMenu } from './context/SecondaryMenuContext'; // Ensure this import is correct
+import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
+import { ROLES } from './utils/roles.js';
+import { useSecondaryMenu } from './context/SecondaryMenuContext.tsx'; // Ensure this import is correct
 
 import ProtectedRoute from './components/ProtectedRoute';
-import MainLayout from './components/MainLayout'; // For regular pages
-import DashboardLayout from './components/DashboardLayout'; // <-- Create this
+import MainLayout from './components/MainLayout.jsx'; // For regular pages
+import DashboardLayout from './components/DashboardLayout.tsx'; // <-- Create this
 
-import LoginPage from "./pages/LoginPage";
-import AccessDeniedPage from './pages/AccessDeniedPage';
+import LoginPage from "./pages/LoginPage.jsx";
+import AccessDeniedPage from './pages/AccessDeniedPage.jsx';
 
-import CustomersList from './components/CustomersList';
-import CustomerForm from "./components/CustomerForm";
+import CustomersList from './components/CustomersList.jsx';
+import CustomerForm from "./components/CustomerForm.jsx";
 import ItemList from "./components/ItemList.jsx";
 import ItemForm from "./components/ItemForm.jsx";
 import ItemAttributeListPage from './components/ItemAttributeList.tsx';
-import ItemAttributeFormPage from './components/ItemAttributeForm';
-import CategoryList from './components/CategoryList';
-import CategoryForm from './components/CategoryForm';
-import SubCategoryList from './components/SubCategoryList';
-import SubCategoryForm from './components/SubCategoryForm';
-import BrandList from './components/BrandList';
-import BrandForm from './components/BrandForm';
-import SpecialCategoryList from './components/SpecialCategoryList';
-import SpecialCategoryForm from './components/SpecialCategoryForm';
-import TaxTypeList from './components/TaxTypeList';
-import TaxTypeForm from './components/TaxTypeForm';
-import TaxList from './components/TaxList';
-import TaxForm from './components/TaxForm';
-import UnitList from './components/UnitList';
-import UnitForm from './components/UnitForm';
-import ManufacturerList from './components/ManufacturerList';
-import ManufacturerForm from './components/ManufacturerForm';
+import ItemAttributeFormPage from './components/ItemAttributeForm.jsx';
+import CategoryList from './components/CategoryList.jsx';
+import CategoryForm from './components/CategoryForm.jsx';
+import SubCategoryList from './components/SubCategoryList.jsx';
+import SubCategoryForm from './components/SubCategoryForm.jsx';
+import BrandList from './components/BrandList.jsx';
+import BrandForm from './components/BrandForm.jsx';
+import SpecialCategoryList from './components/SpecialCategoryList.jsx';
+import SpecialCategoryForm from './components/SpecialCategoryForm.jsx';
+import TaxTypeList from './components/TaxTypeList.jsx';
+import TaxTypeForm from './components/TaxTypeForm.jsx';
+import TaxList from './components/TaxList.jsx';
+import TaxForm from './components/TaxForm.jsx';
+import UnitList from './components/UnitList.jsx';
+import UnitForm from './components/UnitForm.jsx';
+import ManufacturerList from './components/ManufacturerList.jsx';
+import ManufacturerForm from './components/ManufacturerForm.jsx';
 import WarrantyList from './components/WarrantyList.tsx';
-import WarrantyForm from './components/WarrantyForm';
-import BarcodeSymbologyList from './components/BarcodeSymbologyList';
-import BarcodeSymbologyForm from './components/BarcodeSymbologyForm';
-import DiscountTypeList from './components/DiscountTypeList';
-import DiscountTypeForm from './components/DiscountTypeForm';
-import SupplierList from './components/SupplierList';
-import SupplierForm from './components/SupplierForm';
-import UserList from './components/UserList';
-import UserForm from './components/UserForm';
-import StoreList from './components/StoreList';
-import StoreForm from './components/StoreForm';
-import RolesList from './components/RolesList';
-import RoleForm from './components/RoleForm';
-import PermissionList from './components/PermissionList';
-import PermissionForm from './components/PermissionForm';
-import PermissionCategoryList from './components/PermissionCategoryList';
-import PermissionCategoryForm from './components/PermissionCategoryForm';
-import AccessControl from './components/AccessControl';
-import StoreSettings from './components/StoreSettings';
-import InventoryList from './components/InventoryList';
+import WarrantyForm from './components/WarrantyForm.jsx';
+import BarcodeSymbologyList from './components/BarcodeSymbologyList.jsx';
+import BarcodeSymbologyForm from './components/BarcodeSymbologyForm.jsx';
+import DiscountTypeList from './components/DiscountTypeList.jsx';
+import DiscountTypeForm from './components/DiscountTypeForm.jsx';
+import SupplierList from './components/SupplierList.jsx';
+import SupplierForm from './components/SupplierForm.jsx';
+import UserList from './components/UserList.jsx';
+import UserForm from './components/UserForm.jsx';
+import StoreList from './components/StoreList.jsx';
+import StoreForm from './components/StoreForm.jsx';
+import RolesList from './components/RolesList.jsx';
+import RoleForm from './components/RoleForm.jsx';
+import PermissionList from './components/PermissionList.jsx';
+import PermissionForm from './components/PermissionForm.jsx';
+import PermissionCategoryList from './components/PermissionCategoryList.jsx';
+import PermissionCategoryForm from './components/PermissionCategoryForm.jsx';
+import AccessControl from './components/AccessControl.jsx';
+import StoreSettings from './components/StoreSettings.jsx';
+import InventoryList from './components/InventoryList.jsx';
 
-import PurchaseOrderList from './components/PurchaseOrderList';
-import PurchaseOrderForm from './components/PurchaseOrderForm';
+import PurchaseOrderList from './components/PurchaseOrderList.tsx';
+import PurchaseOrderForm from './components/PurchaseOrderForm.tsx';
 import PurchaseList from './components/PurchaseList.tsx';
 
+import GoodsReceiptList from './components/GoodsReceiptList.tsx';
+import GoodsReceiptForm from './components/GoodsReceiptForm.tsx';
+import GoodsReceiptView from './components/GoodsReceiptView.tsx';
 
 const HomePage = () => {
     const location = useLocation();
@@ -256,6 +259,42 @@ const AppRoutes = () => {
                     {/* Settings Section */}
                     <Route path="settings/company" element={<ProtectedRoute roles={globalAdminOnly} permissions={['system:manage_settings']}><PlaceholderComponent title="Company Settings" /></ProtectedRoute>} />
                     <Route path="settings/store" element={<ProtectedRoute roles={storeAdminAndGlobalAdminRoles} permissions={['store_settings:read', 'store_settings:update']}><StoreSettings /></ProtectedRoute>} />
+
+                    {/* Goods Receipt Management */}
+                    <Route
+                      path="goods-receipts"
+                      element={
+                        <ProtectedRoute
+                          roles={storeAdminAndGlobalAdminRoles}
+                          permissions={['goods_receipt:read']}
+                        >
+                          <GoodsReceiptList />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="goods-receipts/new"
+                      element={
+                        <ProtectedRoute
+                          roles={storeAdminAndGlobalAdminRoles}
+                          permissions={['goods_receipt:create']}
+                        >
+                          <GoodsReceiptForm />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="goods-receipts/view/:id"
+                      element={
+                        <ProtectedRoute
+                          roles={storeAdminAndGlobalAdminRoles}
+                          permissions={['goods_receipt:read']}
+                        >
+                          <GoodsReceiptView />
+                        </ProtectedRoute>
+                      }
+                    />
+
                     <Route path="*" element={<PlaceholderComponent title="Page Not Found in Dashboard" />} />
                 </Route>
             </Route>

@@ -196,6 +196,7 @@ const HorizontalMenu = () => {
                     items: [
                         { text: 'Purchases', icon: <ShoppingCartIcon />, path: '/dashboard/purchases', requiredPermission: 'purchase:read' },
                         { text: 'Purchase Order', icon: <LocalMallIcon />, path: '/dashboard/purchase-orders', requiredPermission: 'purchase_order:read' },
+                        { text: 'Goods Receiving', icon: <ReceiptIcon />, path: '/dashboard/goods-receipts', requiredPermission: 'goods_receipt:read' },
                         { text: 'Purchase Return', icon: <AssignmentReturnIcon />, path: '/dashboard/purchase-returns', requiredPermission: 'purchase_return:read' },
                     ]
                 },

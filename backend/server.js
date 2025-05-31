@@ -35,6 +35,7 @@ const createCustomersRouter = require('./routes/customers');
 const createAttributesRouter = require('./routes/attributes');
 const createPurchaseOrdersRouter = require('./routes/purchaseOrders');
 const createItemVariantsRouter = require('./routes/itemVariants'); 
+const goodsReceiptsRouter = require('./routes/goodsReceipts');
 
 const app = express();
 
@@ -140,6 +141,8 @@ mountProtectedRouter('/api/suppliers', createSuppliersRouter);
 mountProtectedRouter('/api/purchase-orders', createPurchaseOrdersRouter);
 mountProtectedRouter('/api/item-units', createItemUnitsRouterFunction); 
 
+// Mount goods receipts router
+app.use('/api/goods-receipts', goodsReceiptsRouter);
 
 // Use for routers whose factories only expect `knex` and auth is handled at path level
 mountSimpleProtectedRoute('/api/barcode-symbologies', createBarcodeSymbologiesRouter);
