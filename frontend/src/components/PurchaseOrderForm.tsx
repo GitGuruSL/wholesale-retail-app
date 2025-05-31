@@ -337,13 +337,38 @@ const PurchaseOrderForm = () => {
 
     // Auto-fill price for new item
     useEffect(() => {
-        if (selectedVariation) {
-            setNewItemPrice(selectedVariation.unit_price || 0);
+        let priceToSet: number = 0;
+
+        if (selectedVariation && typeof selectedVariation.unit_price !== 'undefined' && selectedVariation.unit_price !== null) {
+            // Ensure selectedVariation.unit_price is treated as a number
+            const variationPrice = parseFloat(String(selectedVariation.unit_price));
+            priceToSet = isNaN(variationPrice) ? 0 : variationPrice;
         } else if (selectedProductLine && selectedProductLine.is_directly_purchasable) {
-            setNewItemPrice(selectedProductLine.unit_price_if_direct || selectedProductLine.base_cost_price || 0);
+            let directPrice: number | null = null;
+            if (typeof selectedProductLine.unit_price_if_direct !== 'undefined' && selectedProductLine.unit_price_if_direct !== null) {
+                const parsedDirectPrice = parseFloat(String(selectedProductLine.unit_price_if_direct));
+                if (!isNaN(parsedDirectPrice)) {
+                    directPrice = parsedDirectPrice;
+                }
+            }
+
+            let basePrice: number | null = null;
+            if (typeof selectedProductLine.base_cost_price !== 'undefined' && selectedProductLine.base_cost_price !== null) {
+                const parsedBasePrice = parseFloat(String(selectedProductLine.base_cost_price));
+                if (!isNaN(parsedBasePrice)) {
+                    basePrice = parsedBasePrice;
+                }
+            }
+            
+            priceToSet = directPrice ?? basePrice ?? 0;
+
         } else {
-            setNewItemPrice(0);
+            priceToSet = 0;
         }
+        
+        setNewItemPrice(priceToSet);
+        console.log("[useEffect Auto-fill Price] selectedVariation:", selectedVariation, "selectedProductLine:", selectedProductLine, "Calculated newItemPrice:", priceToSet);
+
     }, [selectedProductLine, selectedVariation]);
 
     // ADD this useEffect for focusing the edit input
@@ -355,56 +380,115 @@ const PurchaseOrderForm = () => {
     }, [editingCell]);
 
     const handleAddItem = () => {
+        console.log("[handleAddItem] Function called.");
+        console.log("[handleAddItem] Initial state: selectedProductLine:", selectedProductLine, "selectedVariation:", selectedVariation, "newItemQuantity:", newItemQuantity, "newItemPrice:", newItemPrice);
+
         let itemToAdd: Omit<PurchaseOrderItemForm, 'id' | 'subtotal'> | null = null;
-        let determinedPrice = newItemPrice;
+        let determinedPrice = newItemPrice; // newItemPrice should be a number due to previous fixes
 
         if (selectedProductLine) {
+            console.log("[handleAddItem] selectedProductLine is present:", selectedProductLine);
             let itemName = selectedProductLine.item_name;
             let itemNo = selectedProductLine.base_item_sku || selectedProductLine.item_name;
-            let itemVariantIdToUse: number;
+            let itemVariantIdToUse: number | undefined = undefined; // Initialize to be sure
+
+            console.log(`[handleAddItem] Product Type: ${selectedProductLine.item_type}, Directly Purchasable: ${selectedProductLine.is_directly_purchasable}, Variant ID if Direct: ${selectedProductLine.item_variant_id_if_direct}`);
 
             if (selectedProductLine.item_type === 'Variable' && !selectedProductLine.is_directly_purchasable) {
+                console.log("[handleAddItem] Path: Variable item, not directly purchasable.");
                 if (selectedVariation) {
+                    console.log("[handleAddItem] Variable item - selectedVariation is present:", selectedVariation);
                     itemName = `${selectedProductLine.item_name} - ${selectedVariation.variation_display_name}`;
                     itemNo = selectedVariation.variation_sku || itemNo;
                     itemVariantIdToUse = selectedVariation.item_variant_id;
                 } else {
-                    setPageError("Please select a variation for the variable product."); return;
+                    console.error("[handleAddItem] Error: Variable item, but no variation selected.");
+                    setPageError("Please select a variation for the variable product.");
+                    return;
                 }
-            } else if (selectedProductLine.is_directly_purchasable && selectedProductLine.item_variant_id_if_direct) {
+            } else if (selectedProductLine.is_directly_purchasable && typeof selectedProductLine.item_variant_id_if_direct === 'number') {
+                // This path should be taken for Standard items if data is correct
+                console.log("[handleAddItem] Path: Directly purchasable item (e.g., Standard). item_variant_id_if_direct:", selectedProductLine.item_variant_id_if_direct);
                 itemVariantIdToUse = selectedProductLine.item_variant_id_if_direct;
             } else {
-                 setPageError("This product line cannot be added directly or is missing variant ID."); return;
+                console.error("[handleAddItem] Error: Conditions for adding item not met. Product Line Type:", selectedProductLine.item_type, "Is Directly Purchasable:", selectedProductLine.is_directly_purchasable, "Variant ID if Direct:", selectedProductLine.item_variant_id_if_direct);
+                let detailedError = "This product line cannot be added. It might be misconfigured or missing a required variant ID.";
+                if (selectedProductLine.item_type !== 'Variable' && selectedProductLine.is_directly_purchasable && typeof selectedProductLine.item_variant_id_if_direct !== 'number') {
+                    detailedError = `The product '${selectedProductLine.item_name}' (Type: ${selectedProductLine.item_type}) is set to be directly purchasable, but its default active variation ID is missing or invalid. Please check this item's configuration. Current variant ID: ${selectedProductLine.item_variant_id_if_direct}`;
+                } else if (selectedProductLine.item_type === 'Variable' && selectedProductLine.is_directly_purchasable) {
+                    detailedError = `The variable product '${selectedProductLine.item_name}' has an unexpected configuration (marked directly purchasable without a clear direct variant path). Please review its setup.`;
+                }
+                setPageError(detailedError);
+                return;
             }
-             itemToAdd = {
+
+            if (typeof itemVariantIdToUse !== 'number') {
+                console.error("[handleAddItem] Error: itemVariantIdToUse was not successfully assigned a numeric value. Value:", itemVariantIdToUse);
+                setPageError("Failed to determine a valid item variant ID for the selected product.");
+                return;
+            }
+            
+            console.log("[handleAddItem] itemVariantIdToUse determined:", itemVariantIdToUse);
+
+            itemToAdd = {
                 item_variant_id: itemVariantIdToUse,
                 item_name: itemName,
                 quantity: newItemQuantity,
                 unit_price: determinedPrice,
-                item_type_display: "Item", // Defaulting to "Item"
+                item_type_display: selectedProductLine.item_type,
                 item_no_display: itemNo,
-                // location_code: watch("store_id") || undefined // Example: use header store_id
             };
+            console.log("[handleAddItem] Constructed itemToAdd:", JSON.stringify(itemToAdd, null, 2));
 
         } else {
-            setPageError("Please select a product."); return;
+            console.error("[handleAddItem] Error: No product line selected (selectedProductLine is null).");
+            setPageError("Please select a product.");
+            return;
         }
 
+        console.log("[handleAddItem] Checking conditions before append/update. itemToAdd:", itemToAdd);
+        if (itemToAdd) {
+            console.log(`[handleAddItem] Condition check: itemToAdd.quantity (${itemToAdd.quantity}) > 0 is ${itemToAdd.quantity > 0}`);
+            console.log(`[handleAddItem] Condition check: typeof itemToAdd.unit_price (${typeof itemToAdd.unit_price}) === 'number' is ${typeof itemToAdd.unit_price === 'number'}`);
+            console.log(`[handleAddItem] Condition check: itemToAdd.unit_price (${itemToAdd.unit_price}) >= 0 is ${itemToAdd.unit_price >= 0}`);
+        }
+
+
         if (itemToAdd && itemToAdd.quantity > 0 && typeof itemToAdd.unit_price === 'number' && itemToAdd.unit_price >= 0) {
+            console.log("[handleAddItem] All conditions met. Proceeding to add or update item in the list.");
             const existingItemIndex = watchedItems.findIndex(i => i.item_variant_id === itemToAdd!.item_variant_id);
+            
             if (existingItemIndex > -1) {
+                console.log(`[handleAddItem] Item with variant ID ${itemToAdd.item_variant_id} already exists at index ${existingItemIndex}. Updating quantity.`);
                 const updatedQuantity = watchedItems[existingItemIndex].quantity + itemToAdd.quantity;
                 setValue(`items.${existingItemIndex}.quantity`, updatedQuantity);
+                console.log(`[handleAddItem] Quantity updated for items[${existingItemIndex}] to ${updatedQuantity}.`);
             } else {
+                console.log(`[handleAddItem] Item with variant ID ${itemToAdd.item_variant_id} is new. Appending.`);
                 append(itemToAdd as PurchaseOrderItemForm);
+                console.log("[handleAddItem] Item appended.");
             }
-            setSelectedProductLine(null); setSelectedVariation(null);
-            setNewItemQuantity(1); setNewItemPrice(0);
-            setPageError(null);
-        } else if (!itemToAdd) {
-            setPageError("Please select a valid item.");
-        } else if (itemToAdd.quantity <= 0) {
-            setPageError("Quantity must be greater than 0.");
+
+            // Log current form state for items
+            console.log("[handleAddItem] Watched items after append/update:", JSON.stringify(watch("items"), null, 2));
+
+            setSelectedProductLine(null);
+            setSelectedVariation(null);
+            setNewItemQuantity(1);
+            setNewItemPrice(0); // newItemPrice is already a number
+            setPageError(null); // Clear any previous item-specific errors
+            console.log("[handleAddItem] State reset after adding item.");
+        } else {
+            let finalError = "Failed to add item due to invalid data.";
+            if (!itemToAdd) {
+                finalError = "Please select a valid item to add (itemToAdd object is null).";
+            } else if (itemToAdd.quantity <= 0) {
+                finalError = `Quantity (${itemToAdd.quantity}) must be greater than 0.`;
+            } else if (typeof itemToAdd.unit_price !== 'number' || itemToAdd.unit_price < 0) {
+                finalError = `Unit price (${itemToAdd.unit_price}, type: ${typeof itemToAdd.unit_price}) must be a valid non-negative number.`;
+            }
+            console.error("[handleAddItem] Error: Conditions to add item not met.", finalError, "itemToAdd:", itemToAdd);
+            setPageError(finalError);
         }
     };
 
@@ -685,16 +769,22 @@ const PurchaseOrderForm = () => {
                             <TextField label="Unit Price" type="number" value={newItemPrice} onChange={(e) => setNewItemPrice(parseFloat(e.target.value) || 0)} InputProps={{ inputProps: { step: "0.01", min: 0 } }} fullWidth variant="standard"/>
                         </Grid>
                         <Grid item xs={12} sm={6} md={3}>
+                            {/* ADD THIS LOG BEFORE THE BUTTON */}
+                            {console.log("[Button Check] Disabled because:", {
+                                noSelectedProductLine: !selectedProductLine,
+                                isVariableAndNoVariation: (selectedProductLine?.item_type === 'Variable' && !selectedProductLine?.is_directly_purchasable && !selectedVariation),
+                                isEditingCell: !!editingCell
+                            })}
                             <Button 
                                 variant="contained" 
-                                color="secondary" 
-                                startIcon={<AddCircleOutlineOutlinedIcon />} 
-                                onClick={handleAddItem} 
+                                color="secondary"
+                                startIcon={<AddCircleOutlineOutlinedIcon />}
+                                onClick={handleAddItem}
                                 disabled={
-                                    !selectedProductLine || 
+                                    !selectedProductLine ||
                                     (selectedProductLine?.item_type === 'Variable' && !selectedProductLine?.is_directly_purchasable && !selectedVariation) ||
-                                    !!editingCell // Disable if a cell is being edited
-                                } 
+                                    !!editingCell
+                                }
                                 fullWidth
                             >
                                 Add Item to Order
