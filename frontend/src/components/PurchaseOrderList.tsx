@@ -1,15 +1,17 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
-import {
-    Box, Paper, Typography, Button, Table, TableBody, TableCell,
-    TableContainer, TableHead, TableRow, IconButton, CircularProgress, Alert, Chip, Tooltip,
-    TablePagination, Select, MenuItem, FormControl, InputLabel, TextField
-} from '@mui/material';
-import { Edit as EditIcon, DeleteOutline as DeleteIcon, Add as AddIcon, Visibility as ViewIcon } from '@mui/icons-material';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import { Box, Paper, Typography, Button, CircularProgress, Alert, Chip, IconButton, Menu, MenuItem, FormControl, InputLabel, Select, TextField } from '@mui/material';
+import { DataGrid, GridColDef } from '@mui/x-data-grid';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/DeleteOutline';
+import EditIcon from '@mui/icons-material/Edit';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 import apiInstance from '../services/api';
-import { useAuth } from '../context/AuthContext';
-import { format, parseISO } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
 import { useSecondaryMenu } from '../context/SecondaryMenuContext';
+import SidePanelsLayout from './common/SidePanelsLayout';
+import DynamicFilterPanel, { FilterFieldDefinition, ActiveFilter } from './common/DynamicFilterPanel';
+import { useAuth } from '../context/AuthContext';
 
 interface PurchaseOrderListItem {
     id: string | number;
@@ -26,35 +28,64 @@ interface Store {
     name: string;
 }
 
-const PurchaseOrderList: React.FC = () => {
-    const navigate = useNavigate();
-    const location = useLocation();
-    const { user, isAuthenticated, userCan, isLoading: authLoading } = useAuth(); // Added user
-    const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrderListItem[]>([]);
-    const [loading, setLoading] = useState<boolean>(false); // General loading for PO list
-    const [pageError, setPageError] = useState<string | null>(null);
-    const [feedback, setFeedback] = useState<{ message: string | null, type: 'success' | 'error' | null }>({ message: null, type: null });
+const PurchaseOrderDetailsView = ({ po }: { po: PurchaseOrderListItem | null }) => {
+    if (!po) return <Typography sx={{ p: 2 }}>No purchase order selected.</Typography>;
+    return (
+        <Box sx={{ p: 2 }}>
+            <Typography variant="h6">PO #{po.id}</Typography>
+            <Typography>Supplier: {po.supplier_name}</Typography>
+            <Typography>Store: {po.store_name || 'N/A'}</Typography>
+            <Typography>Order Date: {po.order_date}</Typography>
+            <Typography>Expected Delivery: {po.expected_delivery_date || 'N/A'}</Typography>
+            <Typography>Status: {po.status}</Typography>
+            <Typography>Total Amount: {po.total_amount != null ? Number(po.total_amount).toFixed(2) : '0.00'}</Typography>
+        </Box>
+    );
+};
 
+interface FilterableColumnDef extends GridColDef<PurchaseOrderListItem> {
+    filterable?: boolean;
+    filterType?: FilterFieldDefinition['type'];
+    filterOptions?: FilterFieldDefinition['options'];
+    filterLabel?: string;
+}
+
+const PurchaseOrderList = () => {
+    const navigate = useNavigate();
+    const { setMenuProps } = useSecondaryMenu();
+    const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+
+    const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrderListItem[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [feedback, setFeedback] = useState<{ message: string, type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
+
+    const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([]);
+    const [appliedFilters, setAppliedFilters] = useState<ActiveFilter[]>([]);
+
+    const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+    const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(false);
+    const [selectedPO, setSelectedPO] = useState<PurchaseOrderListItem | null>(null);
+
+    const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+    const [menuRow, setMenuRow] = useState<PurchaseOrderListItem | null>(null);
+
+    const [selectionModel, setSelectionModel] = useState<(number | string)[]>([]);
+    const [multiSelectMode, setMultiSelectMode] = useState(false);
+
+    // Store selection state
     const [stores, setStores] = useState<Store[]>([]);
     const [selectedStoreId, setSelectedStoreId] = useState<string | number | null>(null);
     const [initialStoreLoading, setInitialStoreLoading] = useState<boolean>(true);
 
-
-    // Pagination state
-    const [page, setPage] = useState(0);
-    const [rowsPerPage, setRowsPerPage] = useState(10);
-    const [totalRows, setTotalRows] = useState(0);
-
-    const { setMenuProps } = useSecondaryMenu();
-
-    // Effect 1: Fetch stores for global_admin or set store for other users
+    // Fetch stores and set selectedStoreId
     useEffect(() => {
         if (authLoading || !user) {
             setInitialStoreLoading(true);
             return;
         }
         setInitialStoreLoading(true);
-        setPageError(null);
+        setError(null);
 
         if (user.role_name === 'global_admin') {
             apiInstance.get('/stores')
@@ -65,31 +96,26 @@ const PurchaseOrderList: React.FC = () => {
                         setSelectedStoreId(fetchedStores[0].id);
                     } else {
                         setSelectedStoreId(null);
-                        setPurchaseOrders([]); // Clear POs if no store can be selected
-                        if (fetchedStores.length === 0) {
-                            setPageError("No stores available for selection.");
-                        }
+                        setPurchaseOrders([]);
+                        setError("No stores available for selection.");
                     }
                 })
                 .catch(err => {
-                    console.error('[POList] Error fetching stores:', err);
-                    setPageError(err.response?.data?.message || 'Failed to fetch stores.');
+                    setError(err.response?.data?.message || 'Failed to fetch stores.');
                     setStores([]);
                     setSelectedStoreId(null);
                     setPurchaseOrders([]);
                 })
                 .finally(() => setInitialStoreLoading(false));
-        } else { // For non-global admins
+        } else {
             if (user.store_id) {
                 setSelectedStoreId(user.store_id);
-                // Find the store name to display if not directly on user object
                 apiInstance.get(`/stores/${user.store_id}`).then(res => {
                     const store = res.data?.data || res.data;
-                    if (store) setStores([store]); // Set a single store for display purposes
-                }).catch(err => console.error("Failed to fetch store details for non-global admin", err));
-
+                    if (store) setStores([store]);
+                }).catch(err => {});
             } else {
-                setPageError('You do not have an assigned store. Cannot fetch purchase orders.');
+                setError('You do not have an assigned store. Cannot fetch purchase orders.');
                 setSelectedStoreId(null);
                 setPurchaseOrders([]);
             }
@@ -97,146 +123,294 @@ const PurchaseOrderList: React.FC = () => {
         }
     }, [user, authLoading]);
 
+    // Define columns with filter metadata
+    const columns: FilterableColumnDef[] = useMemo(() => [
+        {
+            field: 'id',
+            headerName: 'PO ID',
+            width: 90,
+            type: 'number',
+            filterable: true,
+            filterType: 'number',
+        },
+        {
+            field: 'supplier_name',
+            headerName: 'Supplier',
+            flex: 1,
+            minWidth: 150,
+            type: 'string',
+            filterable: true,
+            filterType: 'text',
+        },
+        {
+            field: 'store_name',
+            headerName: 'Store',
+            flex: 1,
+            minWidth: 150,
+            type: 'string',
+            filterable: true,
+            filterType: 'text',
+        },
+        {
+            field: 'order_date',
+            headerName: 'Order Date',
+            width: 130,
+            type: 'string',
+            filterable: true,
+            filterType: 'date',
+        },
+        {
+            field: 'expected_delivery_date',
+            headerName: 'Expected Delivery',
+            width: 130,
+            type: 'string',
+            filterable: true,
+            filterType: 'date',
+        },
+        {
+            field: 'status',
+            headerName: 'Status',
+            width: 120,
+            type: 'string',
+            filterable: true,
+            filterType: 'select',
+            filterOptions: ['Pending', 'Ordered', 'Shipped', 'Partial', 'Received', 'Cancelled'],
+            renderCell: (params) => (
+                <Chip label={params.value} size="small" />
+            ),
+        },
+        {
+            field: 'total_amount',
+            headerName: 'Total Amount',
+            width: 120,
+            type: 'number',
+            filterable: true,
+            filterType: 'number',
+            renderCell: (params) => (
+                params.value != null ? Number(params.value).toFixed(2) : '0.00'
+            ),
+        },
+        {
+            field: 'actions',
+            headerName: '',
+            width: 50,
+            sortable: false,
+            filterable: false,
+            disableColumnMenu: true,
+            align: 'center',
+            renderCell: (params) => (
+                <IconButton
+                    size="small"
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        handleMenuOpen(event, params.row as PurchaseOrderListItem);
+                    }}
+                >
+                    <MoreVertIcon />
+                </IconButton>
+            ),
+        },
+    ], []);
 
-    const fetchPurchaseOrders = useCallback(async () => {
-        if (!isAuthenticated || !selectedStoreId) { // Ensure a store is selected
-            if (!selectedStoreId && user && user.role_name === 'global_admin' && stores.length > 0) {
-                // Global admin has stores but hasn't selected one (or default selection failed)
-                // This case should be handled by initialStoreLoading or pageError
-            } else if (!selectedStoreId && user && user.role_name !== 'global_admin' && !user.store_id) {
-                setPageError("No store assigned to fetch purchase orders.");
-            }
-            setPurchaseOrders([]);
-            setTotalRows(0);
-            setLoading(false);
-            return;
-        }
-        setLoading(true);
-        setPageError(null);
+    // Dynamically generate availableFilterFields from columns
+    const availableFilterFields = useMemo((): FilterFieldDefinition[] => {
+        return columns
+            .filter(col => col.filterable && col.field)
+            .map(col => ({
+                value: col.field!,
+                label: col.filterLabel || col.headerName || col.field!,
+                type: col.filterType || 'text',
+                options: col.filterOptions,
+                placeholder: `Enter ${col.filterLabel || col.headerName || col.field!}`
+            }));
+    }, [columns]);
+
+    // Always include store_id in API request
+    const fetchPurchaseOrders = useCallback(async (filtersToApply: ActiveFilter[]) => {
+        setIsLoading(true);
+        setError(null);
         try {
-            const response = await apiInstance.get<{ data: PurchaseOrderListItem[], total: number, count: number }>(
-                `/purchase-orders?page=${page + 1}&limit=${rowsPerPage}&store_id=${selectedStoreId}`
-            );
-            setPurchaseOrders(response.data.data || []);
-            setTotalRows(response.data.total || 0);
+            const queryParams = new URLSearchParams();
+            if (selectedStoreId) {
+                queryParams.append('store_id', String(selectedStoreId));
+            }
+            filtersToApply.forEach(filter => {
+                if (filter.value !== undefined && filter.value !== '' && filter.value !== null) {
+                    queryParams.append(`${filter.field}[${filter.operator}]`, String(filter.value));
+                }
+            });
+            const endpoint = `/purchase-orders${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+            const response = await apiInstance.get(endpoint);
+            if (Array.isArray(response.data.data)) {
+                setPurchaseOrders(response.data.data);
+            } else if (Array.isArray(response.data)) {
+                setPurchaseOrders(response.data);
+            } else {
+                setPurchaseOrders([]);
+                setError("Received invalid data format from server.");
+            }
         } catch (err: any) {
-            setPageError(err.response?.data?.message || 'Failed to fetch purchase orders.');
-            console.error("Error fetching purchase orders:", err);
+            setError(err.response?.data?.message || err.message || "Failed to fetch purchase orders.");
             setPurchaseOrders([]);
-            setTotalRows(0);
         } finally {
-            setLoading(false);
+            setIsLoading(false);
         }
-    }, [isAuthenticated, page, rowsPerPage, selectedStoreId, user, stores]); // Added selectedStoreId, user, stores
+    }, [selectedStoreId]);
+
+    // Only fetch on appliedFilters change
+    useEffect(() => {
+        if (!initialStoreLoading && selectedStoreId) {
+            fetchPurchaseOrders(appliedFilters);
+        }
+    }, [appliedFilters, fetchPurchaseOrders, initialStoreLoading, selectedStoreId]);
 
     useEffect(() => {
-        if (location.state?.message) {
-            setFeedback({ message: location.state.message, type: location.state.type || 'success' });
-            navigate(location.pathname, { replace: true, state: {} });
-            const timer = setTimeout(() => setFeedback({ message: null, type: null }), 5000);
+        if (!initialStoreLoading && selectedStoreId) {
+            fetchPurchaseOrders(activeFilters);
+        }
+    }, [activeFilters, fetchPurchaseOrders, initialStoreLoading, selectedStoreId]);
+
+    const handleRowClick = (po: PurchaseOrderListItem) => {
+        setSelectedPO(po);
+    };
+
+    const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, row: PurchaseOrderListItem) => {
+        setAnchorEl(event.currentTarget);
+        setMenuRow(row);
+        if (!multiSelectMode) {
+            setSelectionModel([row.id]);
+        }
+    };
+    const handleMenuClose = () => {
+        setAnchorEl(null);
+        setMenuRow(null);
+    };
+
+    useEffect(() => {
+        if (selectionModel.length === 1) {
+            const selected = purchaseOrders.find(po => po.id === selectionModel[0]) || null;
+            setSelectedPO(selected);
+        } else {
+            setSelectedPO(null);
+        }
+    }, [selectionModel, purchaseOrders]);
+
+    const handleSelectMore = () => {
+        setMultiSelectMode(true);
+        setSelectionModel([]);
+        handleMenuClose();
+    };
+
+    const handleAddNew = () => navigate('/dashboard/purchase-orders/new');
+
+    const handleEditSelected = () => {
+        if (selectedPO) {
+            navigate(`/dashboard/purchase-orders/edit/${selectedPO.id}`);
+        }
+    };
+
+    const handleViewSelected = () => {
+        if (selectedPO) {
+            navigate(`/dashboard/purchase-orders/view/${selectedPO.id}`);
+        }
+    };
+
+    const handleDeleteSelected = async () => {
+        if (selectionModel.length === 0) {
+            setFeedback({ message: 'No purchase order selected for deletion.', type: 'warning' });
+            return;
+        }
+        if (window.confirm(`Are you sure you want to delete ${selectionModel.length > 1 ? 'these purchase orders' : 'this purchase order'}?`)) {
+            try {
+                await Promise.all(
+                    selectionModel.map(id => apiInstance.delete(`/purchase-orders/${id}`))
+                );
+                setFeedback({ message: 'Purchase order(s) deleted successfully.', type: 'success' });
+                setSelectedPO(null);
+                setIsDetailsPanelOpen(false);
+                setSelectionModel([]);
+                setMultiSelectMode(false);
+                fetchPurchaseOrders(appliedFilters);
+            } catch (err: any) {
+                setFeedback({ message: err.response?.data?.message || 'Failed to delete purchase order.', type: 'error' });
+            }
+        }
+    };
+
+    useEffect(() => {
+        if (feedback?.message) {
+            const timer = setTimeout(() => setFeedback(null), 4000);
             return () => clearTimeout(timer);
         }
-    }, [location, navigate]);
-
-    // Effect 2: Fetch POs when selectedStoreId changes or pagination changes
-    useEffect(() => {
-        if (!authLoading && isAuthenticated && !initialStoreLoading && selectedStoreId) {
-            fetchPurchaseOrders();
-        } else if (!authLoading && isAuthenticated && !initialStoreLoading && user?.role_name === 'global_admin' && stores.length > 0 && !selectedStoreId) {
-            // Global admin, stores loaded, but no store selected (e.g. if default selection failed)
-            // setPageError("Please select a store to view purchase orders.");
-            setPurchaseOrders([]);
-            setTotalRows(0);
-        } else if (!authLoading && !isAuthenticated) {
-            setPageError("User not authenticated.");
-            setLoading(false);
-            setPurchaseOrders([]);
-            setTotalRows(0);
-        }
-    }, [isAuthenticated, authLoading, initialStoreLoading, selectedStoreId, fetchPurchaseOrders, user, stores]);
-
-
-    const handleDelete = async (id: string | number, poIdentifier: string) => {
-        if (!isAuthenticated || (userCan && !userCan('purchase_order:delete'))) {
-            setFeedback({ message: "You don't have permission to delete purchase orders.", type: 'error' });
-            setTimeout(() => setFeedback({ message: null, type: null }), 3000);
-            return;
-        }
-        if (window.confirm(`Are you sure you want to delete Purchase Order #${poIdentifier}? This action might be irreversible.`)) {
-            try {
-                await apiInstance.delete(`/purchase-orders/${id}`); // Backend should check store ownership for non-global admin
-                setFeedback({ message: `Purchase Order #${poIdentifier} deleted successfully.`, type: 'success' });
-                fetchPurchaseOrders();
-            } catch (err: any) {
-                setFeedback({ message: err.response?.data?.message || `Failed to delete PO #${poIdentifier}.`, type: 'error' });
-                console.error("Error deleting purchase order:", err);
-            }
-            setTimeout(() => setFeedback({ message: null, type: null }), 5000);
-        }
-    };
-
-    const handleChangePage = (_event: unknown, newPage: number) => {
-        setPage(newPage);
-    };
-
-    const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
-        setRowsPerPage(parseInt(event.target.value, 10));
-        setPage(0);
-    };
-
-    const handleStoreChange = (event: React.ChangeEvent<{ value: unknown }>) => {
-        setSelectedStoreId(event.target.value as string | number);
-        setPage(0); // Reset page when store changes
-    };
-
-    const getStatusChipColor = (status: PurchaseOrderListItem['status']): "warning" | "info" | "secondary" | "success" | "error" | "default" => {
-        switch (status) {
-            case 'Pending': return 'warning';
-            case 'Ordered': return 'info';
-            case 'Shipped': return 'secondary';
-            case 'Partial': return 'secondary';
-            case 'Received': return 'success';
-            case 'Cancelled': return 'error';
-            default: return 'default';
-        }
-    };
+    }, [feedback]);
 
     useEffect(() => {
         setMenuProps({
-            pageTitle: 'Purchase Orders',
-            canCreateNew: true,
-            createNewLink: '/dashboard/purchase-orders/new',
-            createNewText: 'New Purchase Order',
-            // Add other props as needed
+            pageTitle: "Manage Purchase Orders",
+            breadcrumbs: [{ label: "Dashboard", path: "/dashboard" }, { label: "Purchase Orders" }],
+            showFilter: true,
+            toggleFilterSidebar: () => setIsFilterPanelOpen(prev => !prev),
+            isFilterSidebarVisible: isFilterPanelOpen,
+            showNewAction: true,
+            onNewActionClick: handleAddNew,
+            isNewActionEnabled: true,
+            newActionLabel: "+ New",
+            newActionIcon: <AddIcon fontSize="small" />,
+            showDeleteAction: true,
+            onDeleteActionClick: handleDeleteSelected,
+            isDeleteActionEnabled: selectionModel.length > 0,
+            deleteActionLabel: "Delete",
+            deleteActionIcon: <DeleteIcon fontSize="small" />,
+            showInfo: true,
+            onInfoClick: () => setIsDetailsPanelOpen(prev => !prev),
+            isInfoActionEnabled: true,
+            actions: [{
+                id: 'edit-po',
+                type: 'button',
+                label: 'Edit',
+                icon: <EditIcon fontSize="small" />,
+                onClick: handleEditSelected,
+                disabled: selectionModel.length !== 1,
+                variant: 'outlined',
+                color: 'inherit',
+            }]
         });
-        // Optionally clear on unmount
         return () => setMenuProps({});
-    }, [setMenuProps]);
+    }, [
+        setMenuProps,
+        navigate,
+        isFilterPanelOpen,
+        isDetailsPanelOpen,
+        selectedPO,
+        appliedFilters,
+        selectionModel,
+        fetchPurchaseOrders
+    ]);
+
+    useEffect(() => {
+        if (!multiSelectMode) return;
+        const handleEsc = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                setMultiSelectMode(false);
+                setSelectionModel([]);
+            }
+        };
+        window.addEventListener("keydown", handleEsc);
+        return () => window.removeEventListener("keydown", handleEsc);
+    }, [multiSelectMode]);
 
     if (authLoading || initialStoreLoading) {
-        return <Paper sx={{ p: 3, textAlign: 'center' }}><CircularProgress /></Paper>;
-    }
-    
-    const canCreatePO = isAuthenticated && userCan && userCan('purchase_order:create') && selectedStoreId;
-
-    return (
-        <Paper sx={{ p: { xs: 2, md: 3 }, m: { xs: 1, md: 2 } }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h5">Purchase Orders</Typography>
-                {canCreatePO && (
-                    <Button
-                        variant="contained"
-                        color="primary"
-                        startIcon={<AddIcon />}
-                        component={RouterLink}
-                        to={`/dashboard/purchase-orders/new?store_id=${selectedStoreId}`} // Pass store_id for new PO
-                    >
-                        New Purchase Order
-                    </Button>
-                )}
+        return (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 64px)', p: 3 }}>
+                <CircularProgress />
+                <Typography sx={{ ml: 2 }}>Loading purchase orders...</Typography>
             </Box>
+        );
+    }
 
-            {/* Store Selector */}
+    // Store selector UI
+    const storeSelector = (
+        <>
             {user && user.role_name === 'global_admin' && (
                 <Box sx={{ mb: 2, maxWidth: 300 }}>
                     <FormControl fullWidth>
@@ -245,7 +419,7 @@ const PurchaseOrderList: React.FC = () => {
                             labelId="store-select-label"
                             value={selectedStoreId || ''}
                             label="Select Store"
-                            onChange={handleStoreChange}
+                            onChange={e => setSelectedStoreId(e.target.value as string | number)}
                             disabled={stores.length === 0}
                         >
                             {stores.map((store) => (
@@ -259,7 +433,7 @@ const PurchaseOrderList: React.FC = () => {
                 </Box>
             )}
             {user && user.role_name !== 'global_admin' && user.store_id && (
-                 <Box sx={{ mb: 2, maxWidth: 300 }}>
+                <Box sx={{ mb: 2, maxWidth: 300 }}>
                     <TextField
                         label="Store"
                         value={stores.find(s => s.id === user.store_id)?.name || `Store ID: ${user.store_id}`}
@@ -268,91 +442,135 @@ const PurchaseOrderList: React.FC = () => {
                     />
                 </Box>
             )}
+        </>
+    );
 
+    if (isLoading && purchaseOrders.length === 0 && !error) {
+        return (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 64px)', p: 3 }}>
+                <CircularProgress />
+                <Typography sx={{ ml: 2 }}>Loading purchase orders...</Typography>
+            </Box>
+        );
+    }
 
-            {feedback.message && <Alert severity={feedback.type || 'info'} sx={{ mb: 2 }} onClose={() => setFeedback({message: null, type: null})}>{feedback.message}</Alert>}
-            {pageError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setPageError(null)}>{pageError}</Alert>}
+    if (error && purchaseOrders.length === 0) {
+        return (
+            <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 64px)', p: 3 }}>
+                <Alert severity="error" sx={{ width: '100%', maxWidth: '600px', mb: 2 }}>{error}</Alert>
+                <Button variant="outlined" onClick={() => fetchPurchaseOrders(appliedFilters)}>Try Again</Button>
+            </Box>
+        );
+    }
 
-            {(loading && purchaseOrders.length === 0) && <Box sx={{textAlign: 'center', p:2}}><CircularProgress /></Box>}
-            
-            {!loading && purchaseOrders.length === 0 && !pageError && selectedStoreId && (
-                <Typography sx={{textAlign: 'center', p:2}}>No purchase orders found for this store.</Typography>
-            )}
-             {!loading && !selectedStoreId && user && user.role_name === 'global_admin' && stores.length > 0 && (
-                <Typography sx={{textAlign: 'center', p:2}}>Please select a store to view purchase orders.</Typography>
-            )}
+    const mainContent = (
+        <Paper sx={{
+            p: 1,
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            boxSizing: 'border-box',
+            minHeight: 0
+        }}>
+            {feedback && <Alert severity={feedback.type} sx={{ mb: 2, flexShrink: 0 }}>{feedback.message}</Alert>}
+            {error && purchaseOrders.length > 0 && <Alert severity="warning" sx={{ mb: 2 }}>{`Warning: ${error}`}</Alert>}
 
-
-            {purchaseOrders.length > 0 && selectedStoreId && (
-                <>
-                <TableContainer>
-                    <Table stickyHeader>
-                        <TableHead>
-                            <TableRow>
-                                <TableCell>PO ID</TableCell>
-                                <TableCell>Supplier</TableCell>
-                                <TableCell>Store</TableCell>
-                                <TableCell>Order Date</TableCell>
-                                <TableCell>Expected Delivery</TableCell>
-                                <TableCell>Status</TableCell>
-                                <TableCell>Total Amount</TableCell>
-                                <TableCell align="right">Actions</TableCell>
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {purchaseOrders.map((po) => (
-                                <TableRow hover key={po.id}>
-                                    <TableCell>#{po.id}</TableCell>
-                                    <TableCell>{po.supplier_name}</TableCell>
-                                    <TableCell>{po.store_name || stores.find(s => s.id === selectedStoreId)?.name || 'N/A'}</TableCell>
-                                    <TableCell>{format(parseISO(po.order_date), 'PP')}</TableCell>
-                                    <TableCell>{po.expected_delivery_date ? format(parseISO(po.expected_delivery_date), 'PP') : 'N/A'}</TableCell>
-                                    <TableCell>
-                                        <Chip label={po.status} color={getStatusChipColor(po.status)} size="small" />
-                                    </TableCell>
-                                    <TableCell align="right">
-                                        {po.total_amount != null ? Number(po.total_amount).toFixed(2) : '0.00'}
-                                    </TableCell>
-                                    <TableCell align="right">
-                                        {isAuthenticated && userCan && userCan('purchase_order:read') && (
-                                            <Tooltip title="View Details">
-                                                <IconButton component={RouterLink} to={`/dashboard/purchase-orders/view/${po.id}`} color="default" size="small">
-                                                    <ViewIcon />
-                                                </IconButton>
-                                            </Tooltip>
-                                        )}
-                                        {isAuthenticated && userCan && userCan('purchase_order:update') && (
-                                            <Tooltip title="Edit">
-                                                <IconButton component={RouterLink} to={`/dashboard/purchase-orders/edit/${po.id}`} color="primary" size="small">
-                                                    <EditIcon />
-                                                </IconButton>
-                                            </Tooltip>
-                                        )}
-                                        {isAuthenticated && userCan && userCan('purchase_order:delete') && (
-                                            <Tooltip title="Delete/Cancel">
-                                                <IconButton onClick={() => handleDelete(po.id, String(po.id))} color="error" size="small">
-                                                    <DeleteIcon />
-                                                </IconButton>
-                                            </Tooltip>
-                                        )}
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </TableContainer>
-                <TablePagination
-                    rowsPerPageOptions={[5, 10, 25, 50]}
-                    component="div"
-                    count={totalRows}
-                    rowsPerPage={rowsPerPage}
-                    page={page}
-                    onPageChange={handleChangePage}
-                    onRowsPerPageChange={handleChangeRowsPerPage}
-                />
-                </>
-            )}
+            <Box sx={{
+                flexGrow: 1,
+                width: '100%',
+                overflow: 'auto',
+                position: 'relative',
+                minHeight: 0
+            }}>
+                {isLoading && (
+                    <Box sx={{ position: 'absolute', top: 8, right: 8, zIndex: 10 }}>
+                        <CircularProgress size={24} />
+                    </Box>
+                )}
+                {purchaseOrders.length === 0 && !isLoading && !error && (
+                    <Alert severity="info" sx={{ mt: 2 }}>No purchase orders found matching your criteria.</Alert>
+                )}
+                {purchaseOrders.length > 0 && (
+                    <DataGrid
+                        rows={purchaseOrders}
+                        columns={columns}
+                        checkboxSelection={multiSelectMode}
+                        disableSelectionOnClick
+                        selectionModel={selectionModel}
+                        onSelectionModelChange={(newSelection) => setSelectionModel(newSelection)}
+                        onRowClick={(params) => {
+                            if (!multiSelectMode) {
+                                handleRowClick(params.row as PurchaseOrderListItem);
+                                setSelectionModel([params.id]);
+                            }
+                        }}
+                        onRowDoubleClick={(params) => {
+                            navigate(`/dashboard/purchase-orders/edit/${params.id}`);
+                        }}
+                        autoHeight={false}
+                        sx={{ border: 0, '& .MuiDataGrid-virtualScroller': { flexGrow: 1 }, height: '100%' }}
+                        density="compact"
+                    />
+                )}
+            </Box>
         </Paper>
+    );
+
+    return (
+        <SidePanelsLayout
+            filterPanelOpen={isFilterPanelOpen}
+            onFilterPanelClose={() => setIsFilterPanelOpen(false)}
+            filterPanelTitle="Filter Purchase Orders"
+            filterPanelContent={
+                <DynamicFilterPanel
+                    activeFilters={activeFilters}
+                    onActiveFiltersChange={setActiveFilters}
+                    availableFilterFields={availableFilterFields}
+                />
+            }
+            detailsPanelOpen={isDetailsPanelOpen}
+            detailsPanelTitle={selectedPO ? `Details: #${selectedPO.id} - ${selectedPO.supplier_name}` : "Details"}
+            onDetailsPanelClose={() => setIsDetailsPanelOpen(false)}
+            detailsPanelContent={<PurchaseOrderDetailsView po={selectedPO} />}
+            mainContentSx={{
+                p: 0,
+                height: 'calc(100vh - 64px)',
+                minHeight: 0,
+                display: 'flex',
+                flexDirection: 'column'
+            }}
+        >
+            {storeSelector}
+            {mainContent}
+            <Menu
+                anchorEl={anchorEl}
+                open={Boolean(anchorEl)}
+                onClose={handleMenuClose}
+                onClick={handleMenuClose}
+            >
+                <MenuItem onClick={() => { setIsDetailsPanelOpen(true); handleMenuClose(); }}>
+                    <VisibilityIcon fontSize="small" sx={{ mr: 1 }} /> View Details
+                </MenuItem>
+                <MenuItem
+                    onClick={() => { handleEditSelected(); handleMenuClose(); }}
+                    disabled={selectionModel.length !== 1}
+                >
+                    <EditIcon fontSize="small" sx={{ mr: 1 }} /> Edit
+                </MenuItem>
+                <MenuItem
+                    disabled={selectionModel.length === 0}
+                    onClick={() => { handleDeleteSelected(); handleMenuClose(); }}
+                >
+                    <DeleteIcon fontSize="small" sx={{ mr: 1 }} /> Delete
+                </MenuItem>
+                <MenuItem onClick={handleSelectMore}>
+                    <span style={{ display: 'flex', alignItems: 'center' }}>
+                        <AddIcon fontSize="small" style={{ marginRight: 8 }} /> Select More
+                    </span>
+                </MenuItem>
+            </Menu>
+        </SidePanelsLayout>
     );
 };
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, Button, Menu, MenuItem, TextField, Select, FormControl, InputLabel, IconButton, Typography, Paper } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
@@ -9,7 +9,6 @@ interface Props {
     activeFilters: ActiveFilter[];
     onActiveFiltersChange: (filters: ActiveFilter[]) => void;
     availableFilterFields: FilterFieldDefinition[];
-    onApplyFilters: () => void;
 }
 
 const getOperatorsForType = (type: FilterFieldDefinition['type']) => {

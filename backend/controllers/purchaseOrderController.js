@@ -9,7 +9,7 @@ const GLOBAL_ADMIN_ROLE_NAME = 'global_admin'; // Consistent role name
  */
 exports.getPurchaseOrders = async (req, res) => {
     try {
-        const { status, supplier_id, sort_by, order = 'desc', page = 1, limit = 10 } = req.query;
+        const { sort_by, order = 'desc', page = 1, limit = 10 } = req.query;
         let queryStoreId = req.query.store_id;
 
         if (!req.user) {
@@ -18,29 +18,14 @@ exports.getPurchaseOrders = async (req, res) => {
 
         let effectiveStoreId;
         if (req.user.role_name === GLOBAL_ADMIN_ROLE_NAME) {
-            if (!queryStoreId) {
-                // For global admin, if no store_id is provided, we might return an empty set or error
-                // Or, if you want to allow fetching for ALL stores (potentially large data), remove this check.
-                // For now, let's assume frontend sends it or we return empty if not.
-                // return res.status(400).json({ success: false, message: 'Store ID is required for global admin.' });
-                effectiveStoreId = null; // Or handle as "all stores" if desired
-            } else {
-                effectiveStoreId = queryStoreId;
-            }
-        } else { // Non-global admin
-            if (!req.user.store_id) {
-                return res.status(403).json({ success: false, message: 'User has no assigned store.' });
-            }
+            effectiveStoreId = queryStoreId;
+        } else {
             effectiveStoreId = req.user.store_id;
-            // If queryStoreId is provided by non-admin, ensure it matches their assigned store
-            if (queryStoreId && String(queryStoreId) !== String(effectiveStoreId)) {
-                return res.status(403).json({ success: false, message: 'Access denied to purchase orders for the specified store.' });
-            }
         }
-        
+
         let query = knex('purchase_orders')
             .leftJoin('suppliers', 'purchase_orders.supplier_id', 'suppliers.id')
-            .leftJoin('stores', 'purchase_orders.store_id', 'stores.id') // Join stores
+            .leftJoin('stores', 'purchase_orders.store_id', 'stores.id')
             .select(
                 'purchase_orders.id',
                 'purchase_orders.order_date',
@@ -50,47 +35,88 @@ exports.getPurchaseOrders = async (req, res) => {
                 'purchase_orders.created_at',
                 'purchase_orders.updated_at',
                 'suppliers.name as supplier_name',
-                'stores.name as store_name' // Select store name
+                'stores.name as store_name'
             );
+
+        // --- DYNAMIC FILTERING ---
+        const allowedFields = [
+            'id', 'supplier_name', 'order_date', 'expected_delivery_date', 'status', 'total_amount', 'store_name'
+        ];
+        for (const key in req.query) {
+            const match = key.match(/^(\w+)\[(\w+)\]$/);
+            if (match && allowedFields.includes(match[1])) {
+                const field = match[1];
+                const operator = match[2];
+                const value = req.query[key];
+
+                let column;
+                if (field === 'supplier_name') column = 'suppliers.name';
+                else if (field === 'store_name') column = 'stores.name';
+                else column = `purchase_orders.${field}`;
+
+                if (operator === 'contains') {
+                    query = query.whereILike(column, `%${value}%`);
+                } else if (operator === 'equals') {
+                    query = query.where(column, value);
+                } else if (operator === 'gt') {
+                    query = query.where(column, '>', value);
+                } else if (operator === 'lt') {
+                    query = query.where(column, '<', value);
+                }
+            }
+        }
 
         if (effectiveStoreId) {
             query = query.where('purchase_orders.store_id', effectiveStoreId);
-        } else if (req.user.role_name === GLOBAL_ADMIN_ROLE_NAME && !queryStoreId) {
-            // If global admin and no store_id, and you decided not to error,
-            // you might fetch all or return empty. Returning empty for safety if not explicitly "all".
-             return res.status(200).json({
-                success: true,
-                count: 0,
-                total: 0,
-                totalPages: 0,
-                currentPage: parseInt(page, 10),
-                data: []
-            });
         }
 
-
-        if (status) query = query.where('purchase_orders.status', status);
-        if (supplier_id) query = query.where('purchase_orders.supplier_id', supplier_id);
-
-        const allowedSortColumns = ['order_date', 'expected_delivery_date', 'status', 'total_amount', 'created_at', 'supplier_name', 'store_name'];
-        let sortColumn = 'purchase_orders.created_at'; // Default
+        const allowedSortColumns = [
+            'order_date', 'expected_delivery_date', 'status', 'total_amount', 'created_at', 'supplier_name', 'store_name'
+        ];
+        let sortColumn = 'purchase_orders.created_at';
         if (sort_by && allowedSortColumns.includes(sort_by)) {
             if (sort_by === 'supplier_name') sortColumn = 'suppliers.name';
             else if (sort_by === 'store_name') sortColumn = 'stores.name';
             else sortColumn = `purchase_orders.${sort_by}`;
         }
         query = query.orderBy(sortColumn, order === 'asc' ? 'asc' : 'desc');
-        
+
         const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
         const dataQuery = query.clone().limit(parseInt(limit, 10)).offset(offset);
         const purchaseOrders = await dataQuery;
 
-        let countBaseQuery = knex('purchase_orders');
-        if (effectiveStoreId) countBaseQuery = countBaseQuery.where('purchase_orders.store_id', effectiveStoreId);
-        if (status) countBaseQuery = countBaseQuery.where('purchase_orders.status', status);
-        if (supplier_id) countBaseQuery = countBaseQuery.where('purchase_orders.supplier_id', supplier_id);
-        
-        const totalCountResult = await countBaseQuery.count('id as total').first();
+        // Count query (apply same filters)
+        let countBaseQuery = knex('purchase_orders')
+            .leftJoin('suppliers', 'purchase_orders.supplier_id', 'suppliers.id')
+            .leftJoin('stores', 'purchase_orders.store_id', 'stores.id');
+
+        for (const key in req.query) {
+            const match = key.match(/^(\w+)\[(\w+)\]$/);
+            if (match && allowedFields.includes(match[1])) {
+                const field = match[1];
+                const operator = match[2];
+                const value = req.query[key];
+
+                let column;
+                if (field === 'supplier_name') column = 'suppliers.name';
+                else if (field === 'store_name') column = 'stores.name';
+                else column = `purchase_orders.${field}`;
+
+                if (operator === 'contains') {
+                    countBaseQuery = countBaseQuery.whereILike(column, `%${value}%`);
+                } else if (operator === 'equals') {
+                    countBaseQuery = countBaseQuery.where(column, value);
+                } else if (operator === 'gt') {
+                    countBaseQuery = countBaseQuery.where(column, '>', value);
+                } else if (operator === 'lt') {
+                    countBaseQuery = countBaseQuery.where(column, '<', value);
+                }
+            }
+        }
+        if (effectiveStoreId) {
+            countBaseQuery = countBaseQuery.where('purchase_orders.store_id', effectiveStoreId);
+        }
+        const totalCountResult = await countBaseQuery.count('purchase_orders.id as total').first();
         const total = totalCountResult ? parseInt(totalCountResult.total, 10) : 0;
 
         res.status(200).json({

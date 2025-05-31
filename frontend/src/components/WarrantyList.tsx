@@ -117,14 +117,14 @@ const WarrantyList = () => {
             headerName: 'Duration',
             width: 150,
             type: 'number',
-            valueGetter: (params) => (params && params.row) ? params.row.duration_months : null,
-            renderCell: (params) => {
-                const duration = params.value;
-                return duration !== null && duration !== undefined ? `${duration} months` : 'N/A';
-            },
             filterable: true,
             filterType: 'number',
-            filterLabel: 'Duration (Months)', // Custom label for filter
+            filterLabel: 'Duration (Months)',
+            renderCell: (params) => {
+                // Debug output
+                console.log('params.row:', params.row);
+                return params.row.duration_months;
+            }
         },
         {
             field: 'description',
@@ -172,7 +172,6 @@ const WarrantyList = () => {
                 placeholder: `Enter ${col.filterLabel || col.headerName || col.field!}`
             }));
     }, [columns]);
-
 
     const fetchWarranties = useCallback(async (filtersToApply: ActiveFilter[]) => {
         // ... existing code ...
@@ -348,6 +347,9 @@ const WarrantyList = () => {
         return () => window.removeEventListener("keydown", handleEsc);
     }, [multiSelectMode]);
 
+    useEffect(() => {
+        console.log('Fetched warranties:', warranties);
+    }, [warranties]);
 
     if (isLoading && warranties.length === 0 && !error) {
         // ... existing code ...
@@ -405,7 +407,8 @@ const WarrantyList = () => {
                 {warranties.length > 0 && (
                     <DataGrid
                         rows={warranties}
-                        columns={columns} // Use the memoized columns
+                        columns={columns}
+                        getRowId={(row) => row.id} // Add this if your id field is not 'id' or is a string
                         checkboxSelection={multiSelectMode}
                         disableSelectionOnClick
                         selectionModel={selectionModel}
@@ -437,8 +440,7 @@ const WarrantyList = () => {
                 <DynamicFilterPanel
                     activeFilters={activeFilters}
                     onActiveFiltersChange={setActiveFilters}
-                    availableFilterFields={availableFilterFields} // Pass the dynamically generated fields
-                    // onApplyFilters={() => setAppliedFilters([...activeFilters])} // Keep if you have an apply button
+                    availableFilterFields={availableFilterFields}
                 />
             }
             detailsPanelOpen={isDetailsPanelOpen}

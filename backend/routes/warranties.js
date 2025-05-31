@@ -17,7 +17,7 @@ function createWarrantiesRouter(knex) {
         return countResult && countResult.count > 0;
     };
 
-    // GET /api/warranties - Fetch all warranties (with filtering)
+    // GET /api/warranties - Fetch all warranties (with dynamic filtering)
     router.get('/', async (req, res) => {
         try {
             const query = knex('warranties')
@@ -26,33 +26,33 @@ function createWarrantiesRouter(knex) {
                     'name',
                     'duration_months',
                     'description'
-                    // 'productName', // Temporarily remove or implement JOIN
-                    // 'status'       // Temporarily remove or implement JOIN
                 );
 
-            // Filtering logic
-            if (req.query['name[contains]']) {
-                query.where('warranties.name', 'like', `%${req.query['name[contains]']}%`);
-            }
-            if (req.query['name[eq]']) {
-                query.where('warranties.name', req.query['name[eq]']);
-            }
+            // --- DYNAMIC FILTERING ---
+            const allowedFields = [
+                'id', 'name', 'duration_months', 'description'
+            ];
+            for (const key in req.query) {
+                const match = key.match(/^(\w+)\[(\w+)\]$/);
+                if (match && allowedFields.includes(match[1])) {
+                    const field = match[1];
+                    const operator = match[2];
+                    const value = req.query[key];
 
-            // Remove or comment out filters for productName and status if they are not selected
-            // if (req.query['productName[contains]']) {
-            //     // This will error if 'productName' isn't a selected column or valid alias from a join
-            //     query.where('warranties.productName', 'like', `%${req.query['productName[contains]']}%`);
-            // }
-            // if (req.query['status[eq]']) {
-            //     // This will error if 'status' isn't a selected column or valid alias from a join
-            //     query.where('warranties.status', req.query['status[eq]']);
-            // }
+                    let column = `warranties.${field}`;
 
-            if (req.query['duration_months[eq]']) {
-                query.where('warranties.duration_months', req.query['duration_months[eq]']);
-            }
-            if (req.query['description[contains]']) {
-                query.where('warranties.description', 'like', `%${req.query['description[contains]']}%`);
+                    if (operator === 'contains') {
+                        query.whereILike(column, `%${value}%`);
+                    } else if (operator === 'equals' || operator === 'eq') {
+                        query.where(column, value);
+                    } else if (operator === 'gt') {
+                        query.where(column, '>', value);
+                    } else if (operator === 'lt') {
+                        query.where(column, '<', value);
+                    } else if (operator === 'notEquals') {
+                        query.whereNot(column, value);
+                    }
+                }
             }
 
             query.orderBy('warranties.name');

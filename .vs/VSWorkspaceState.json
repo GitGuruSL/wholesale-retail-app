@@ -1,7 +1,14 @@
 {
   "ExpandedNodes": [
-    ""
+    "",
+    "\\backend",
+    "\\backend\\controllers",
+    "\\backend\\routes",
+    "\\frontend",
+    "\\frontend\\src",
+    "\\frontend\\src\\components",
+    "\\frontend\\src\\components\\common"
   ],
-  "SelectedNode": "\\backend",
+  "SelectedNode": "\\frontend\\src\\components\\common\\DynamicFilterPanel.tsx",
   "PreviewInSolutionExplorer": false
 }
